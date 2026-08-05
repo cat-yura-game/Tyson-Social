@@ -102,7 +102,6 @@ const chatInput = document.querySelector('#ai-chat-input');
 const chatMessages = document.querySelector('.ai-chat-messages');
 const chatSuggestions = document.querySelectorAll('.ai-chat-suggestions button');
 const chatHistory = [];
-const CHAT_API_URL = 'https://ai.clickerscatom.workers.dev/api/chat';
 
 const setChatOpen = (open) => {
   chatPanel.hidden = !open;
@@ -140,7 +139,7 @@ const askAboutBot = async (question) => {
   submitButton.disabled = true;
 
   try {
-    const response = await fetch(CHAT_API_URL, {
+    const response = await fetch('/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
