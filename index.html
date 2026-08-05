@@ -150,6 +150,10 @@
         <h2>Начни бесплатно.<br><span>Усиль, когда нужно.</span></h2>
         <p>Оплата внутри Telegram через Stars. Все лимиты обновляются каждый день.</p>
       </div>
+      <div class="period-switch reveal" role="group" aria-label="Срок действия тарифа">
+        <button class="active" type="button" data-period="7" aria-pressed="true">7 дней</button>
+        <button type="button" data-period="14" aria-pressed="false">14 дней <span>ВЫГОДНО</span></button>
+      </div>
       <div class="plan-grid">
         <article class="plan-card reveal">
           <div class="plan-name"><span>FREE</span><b>Навсегда</b></div>
@@ -158,30 +162,31 @@
           <ul><li>10 Low-запросов в день</li><li>5 Medium-запросов</li><li>1 High-запрос</li><li>2 сообщения в минуту</li></ul>
           <a class="button button-outline" href="https://t.me/zashugannyygiftcat_bot?start=site_free" target="_blank" rel="noopener noreferrer">Начать бесплатно ↗</a>
         </article>
-        <article class="plan-card reveal">
-          <div class="plan-name"><span>GO</span><b>7 дней</b></div>
-          <div class="price"><strong>2</strong><span>⭐</span></div>
+        <article class="plan-card reveal" data-plan="go" data-price7="1" data-regular7="2" data-price14="4" data-regular14="">
+          <div class="plan-name"><span>GO</span><b class="plan-duration">7 дней</b></div>
+          <div class="price discount-price"><del>2</del><strong>1</strong><span>⭐</span><em>СКИДКА</em></div>
           <p>Больше свободы для регулярных повседневных задач.</p>
           <ul><li>25 Low-запросов в день</li><li>10 Medium-запросов</li><li>5 High-запросов</li><li>3 сообщения в минуту</li></ul>
           <a class="button button-outline" href="https://t.me/zashugannyygiftcat_bot?start=site_go" target="_blank" rel="noopener noreferrer">Выбрать Go ↗</a>
         </article>
-        <article class="plan-card popular reveal">
+        <article class="plan-card popular reveal" data-plan="pro" data-price7="3" data-regular7="5" data-price14="8" data-regular14="10">
           <span class="popular-label">ПОПУЛЯРНЫЙ</span>
-          <div class="plan-name"><span>PRO</span><b>7 дней</b></div>
-          <div class="price"><strong>5</strong><span>⭐</span></div>
+          <div class="plan-name"><span>PRO</span><b class="plan-duration">7 дней</b></div>
+          <div class="price discount-price"><del>5</del><strong>3</strong><span>⭐</span><em>СКИДКА</em></div>
           <p>Для активной работы, учёбы и серьёзных проектов.</p>
           <ul><li>Low без ограничений</li><li>25 Medium-запросов</li><li>10 High-запросов</li><li>5 сообщений в минуту</li></ul>
           <a class="button button-primary" href="https://t.me/zashugannyygiftcat_bot?start=site_pro" target="_blank" rel="noopener noreferrer">Выбрать Pro ↗</a>
         </article>
-        <article class="plan-card reveal">
-          <div class="plan-name"><span>ULTRA</span><b>7 дней</b></div>
-          <div class="price"><strong>8</strong><span>⭐</span></div>
+        <article class="plan-card reveal" data-plan="ultra" data-price7="5" data-regular7="8" data-price14="13" data-regular14="16">
+          <div class="plan-name"><span>ULTRA</span><b class="plan-duration">7 дней</b></div>
+          <div class="price discount-price"><del>8</del><strong>5</strong><span>⭐</span><em>СКИДКА</em></div>
           <p>Никаких компромиссов для максимальной продуктивности.</p>
           <ul><li>Все модели без ограничений</li><li>Безлимитные сообщения</li><li>Максимум возможностей</li><li>Полная свобода работы</li></ul>
           <a class="button button-outline" href="https://t.me/zashugannyygiftcat_bot?start=site_ultra" target="_blank" rel="noopener noreferrer">Выбрать Ultra ↗</a>
         </article>
       </div>
-      <p class="plan-note reveal">Есть выгодные варианты на 14 дней: Go — 4 ⭐, Pro — 8 ⭐, Ultra — 13 ⭐</p>
+      <p class="discount-note reveal" data-period-note="7">Скидка действует только на первую покупку тарифа на 7 дней</p>
+      <p class="discount-note limited-offer reveal" data-period-note="14" hidden>Скидка на тарифы на 14 дней ограничена по времени — успейте воспользоваться предложением</p>
     </section>
 
     <section class="faq section-pad" id="faq">
@@ -190,7 +195,13 @@
         <details><summary><span>Нужно ли что-то устанавливать?</span><b>+</b></summary><p>Нет. zashugannyy kot | Ai работает прямо в Telegram — достаточно открыть ссылку и нажать «Старт».</p></details>
         <details><summary><span>Можно пользоваться бесплатно?</span><b>+</b></summary><p>Да. На тарифе Free каждый день доступны запросы ко всем трём уровням модели.</p></details>
         <details><summary><span>Что можно отправлять боту?</span><b>+</b></summary><p>Текстовые сообщения, фотографии, голосовые и документы. Бот распознает содержимое и поможет с задачей.</p></details>
+        <details><summary><span>Какую модель выбрать: Low, Medium или High?</span><b>+</b></summary><p>Low подходит для быстрых вопросов и переводов, Medium — универсальный режим для большинства задач, а High лучше выбирать для сложного анализа, больших документов, логики и кода.</p></details>
+        <details><summary><span>Что делать, если дневные запросы закончились?</span><b>+</b></summary><p>Можно перейти на более высокий тариф или отдельно купить дополнительные запросы нужного уровня — Low, Medium или High.</p></details>
         <details><summary><span>Сохраняется ли история?</span><b>+</b></summary><p>Да, диалоги можно продолжать, переименовывать и экспортировать. Для приватных разговоров есть временный чат без сохранения истории.</p></details>
+        <details><summary><span>Что такое временный чат?</span><b>+</b></summary><p>Это отдельный режим для разговора без сохранения диалога в истории. Он удобен для разовых или приватных вопросов.</p></details>
+        <details><summary><span>Можно вызвать бота в другой переписке?</span><b>+</b></summary><p>Да. Inline-режим позволяет обратиться к нейросети прямо в чате с другом или коллегой, не переключаясь между диалогами.</p></details>
+        <details><summary><span>Как получить бонусы за друзей?</span><b>+</b></summary><p>Открой раздел «Рефералы», скопируй личную ссылку и отправь её другу. Бонусы начисляются за его первый вход и первую успешную оплату.</p></details>
+        <details><summary><span>Что такое AI-викторины?</span><b>+</b></summary><p>Бот создаёт викторину по выбранной теме, сложности и количеству вопросов. Её можно пройти самому, отправить друзьям и посмотреть результаты участников.</p></details>
         <details><summary><span>Как работает оплата?</span><b>+</b></summary><p>Покупка проходит внутри Telegram через безопасную систему Telegram Stars.</p></details>
       </div>
     </section>
