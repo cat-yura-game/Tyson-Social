@@ -97,6 +97,7 @@ document.getElementById('year').textContent = new Date().getFullYear();
 const chatLauncher = document.querySelector('.ai-chat-launcher');
 const chatPanel = document.querySelector('.ai-chat-panel');
 const chatClose = document.querySelector('.ai-chat-close');
+const faqChatButton = document.querySelector('.faq-chat-button');
 const chatForm = document.querySelector('.ai-chat-form');
 const chatInput = document.querySelector('#ai-chat-input');
 const chatMessages = document.querySelector('.ai-chat-messages');
@@ -112,6 +113,7 @@ const setChatOpen = (open) => {
 
 chatLauncher?.addEventListener('click', () => setChatOpen(chatPanel.hidden));
 chatClose?.addEventListener('click', () => setChatOpen(false));
+faqChatButton?.addEventListener('click', () => setChatOpen(true));
 
 const addChatMessage = (text, role, extraClass = '') => {
   const message = document.createElement('div');
