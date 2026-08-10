@@ -1,0 +1,52 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tyson-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-10",
+  "workers_dev": true,
+  "vars": {
+    "APP_ENV": "development",
+    "ALLOWED_ORIGINS": "http://localhost:5173,https://368240.lol,https://www.368240.lol",
+    "GEMINI_MODERATION_MODEL": "gemini-3.5-flash-lite",
+    "GEMINI_SUMMARY_MODEL": "gemini-3.5-flash-lite"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tyson-db",
+      "database_id": "d8a1f929-7985-43ce-8e4a-3d1d8a154ae6",
+      "migrations_dir": "../database/migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "MEDIA",
+      "id": "664a57172b19434f849f1f9abf6aefb0"
+    }
+  ],
+  "env": {
+    "production": {
+      "name": "tyson-api-production",
+      "vars": {
+        "APP_ENV": "production",
+        "ALLOWED_ORIGINS": "https://368240.lol,https://www.368240.lol",
+        "GEMINI_MODERATION_MODEL": "gemini-3.5-flash-lite",
+        "GEMINI_SUMMARY_MODEL": "gemini-3.5-flash-lite"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "tyson-db-production",
+          "database_id": "581bd56d-772a-48a2-8b6b-7bd00c6234ba",
+          "migrations_dir": "../database/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "MEDIA",
+          "id": "059d48a90dcf4108b1ae23732b5bac78"
+        }
+      ]
+    }
+  }
+}
