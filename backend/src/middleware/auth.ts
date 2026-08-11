@@ -13,7 +13,9 @@ export const sessionContext = createMiddleware<{
   c.set('authUser', null);
   c.set('sessionId', null);
 
-  const token = getCookie(c, SESSION_COOKIE);
+  const authorization = c.req.header('authorization');
+  const bearerToken = authorization?.startsWith('Bearer ') ? authorization.slice(7).trim() : null;
+  const token = bearerToken || getCookie(c, SESSION_COOKIE);
   if (token) {
     const session = await findUserBySessionHash(c.env.DB, await sha256(token), new Date().toISOString());
     if (session) {

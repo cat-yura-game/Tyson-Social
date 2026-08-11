@@ -63,8 +63,8 @@ function validationFailure(c: Parameters<typeof fail>[0], error: unknown): Respo
   return fail(c, 400, 'INVALID_JSON', 'The request body must be valid JSON.');
 }
 
-function sessionPayload(user: AuthUser) {
-  return { user, emailDelivery: 'disabled' as const };
+function sessionPayload(user: AuthUser, accessToken: string) {
+  return { user, accessToken, emailDelivery: 'disabled' as const };
 }
 
 authRoutes.post('/register', async (c) => {
@@ -131,7 +131,7 @@ authRoutes.post('/register', async (c) => {
   }
 
   setSessionCookie(c, sessionToken);
-  return ok(c, sessionPayload(user), 201);
+  return ok(c, sessionPayload(user, sessionToken), 201);
 });
 
 authRoutes.post('/login', async (c) => {
@@ -191,11 +191,13 @@ authRoutes.post('/login', async (c) => {
     now: now.toISOString(),
   });
   setSessionCookie(c, sessionToken);
-  return ok(c, sessionPayload(safeUser));
+  return ok(c, sessionPayload(safeUser, sessionToken));
 });
 
 authRoutes.post('/logout', async (c) => {
-  const token = getCookie(c, SESSION_COOKIE);
+  const authorization = c.req.header('authorization');
+  const bearerToken = authorization?.startsWith('Bearer ') ? authorization.slice(7).trim() : null;
+  const token = bearerToken || getCookie(c, SESSION_COOKIE);
   if (token) await revokeSession(c.env.DB, await sha256(token), new Date().toISOString());
   clearSessionCookie(c);
   return ok(c, { loggedOut: true });

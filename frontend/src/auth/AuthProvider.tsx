@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { apiRequest } from '../api/client';
+import { apiRequest, setAccessToken } from '../api/client';
 
 export interface AuthUser {
   id: string;
@@ -43,8 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const session = await apiRequest<{ user: AuthUser | null }>('/auth/session');
       setUser(session.user);
+      if (!session.user) setAccessToken(null);
     } catch {
       setUser(null);
+      setAccessToken(null);
     } finally {
       setLoading(false);
     }
@@ -53,18 +55,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const login = useCallback(async (input: Credentials) => {
-    const session = await apiRequest<{ user: AuthUser }>('/auth/login', { method: 'POST', body: JSON.stringify(input) });
+    const session = await apiRequest<{ user: AuthUser; accessToken: string }>('/auth/login', { method: 'POST', body: JSON.stringify(input) });
+    setAccessToken(session.accessToken);
     setUser(session.user);
   }, []);
 
   const register = useCallback(async (input: Registration) => {
-    const session = await apiRequest<{ user: AuthUser }>('/auth/register', { method: 'POST', body: JSON.stringify(input) });
+    const session = await apiRequest<{ user: AuthUser; accessToken: string }>('/auth/register', { method: 'POST', body: JSON.stringify(input) });
+    setAccessToken(session.accessToken);
     setUser(session.user);
   }, []);
 
   const logout = useCallback(async () => {
-    await apiRequest('/auth/logout', { method: 'POST' });
-    setUser(null);
+    try {
+      await apiRequest('/auth/logout', { method: 'POST' });
+    } finally {
+      setAccessToken(null);
+      setUser(null);
+    }
   }, []);
 
   const value = useMemo(() => ({ user, loading, login, register, logout, refresh }), [user, loading, login, register, logout, refresh]);

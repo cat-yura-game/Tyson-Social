@@ -31,7 +31,7 @@ export const secureCors = createMiddleware<{
 
   if (c.req.method === 'OPTIONS') {
     c.header('access-control-allow-methods', 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS');
-    c.header('access-control-allow-headers', 'content-type, x-csrf-token');
+    c.header('access-control-allow-headers', 'authorization, content-type, x-csrf-token');
     c.header('access-control-max-age', '86400');
     return c.body(null, 204);
   }
