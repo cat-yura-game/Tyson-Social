@@ -9,6 +9,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid_callback: 'Telegram вернул некорректный ответ.',
   expired_state: 'Время авторизации истекло. Попробуйте войти снова.',
   provider_failed: 'Telegram не завершил авторизацию. Попробуйте ещё раз.',
+  display_name_rejected: 'Имя из Telegram не прошло проверку безопасности. Измените его в Telegram и попробуйте снова.',
 };
 
 export function TelegramCallbackPage() {

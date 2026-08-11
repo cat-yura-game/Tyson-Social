@@ -6,6 +6,8 @@ import type { AppVariables, AuthUser, Env } from '../types';
 import { assertImageSignature, assertValidMedia, createMediaKey, KvMediaStorage } from '../services/media-storage';
 import { feedPreferencesSchema } from '../schemas/preferences';
 import { FEED_TOPICS, type FeedTopicId } from '../recommendations/topics';
+import { base64Encode } from '../security/encoding';
+import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
 
 export const userRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -67,6 +69,13 @@ userRoutes.patch('/me', async (c) => {
     if (input.username && !user.usernameChangeAvailable) {
       return fail(c, 409, 'USERNAME_CHANGE_USED', 'Username can only be changed once after registration.');
     }
+    if (input.displayName && input.displayName !== user.displayName) {
+      const moderation = await moderatePublicContent(c.env, input.displayName);
+      await saveModerationResult(c.env.DB, 'display_name', user.id, moderation, input.displayName);
+      if (moderation.decision !== 'allow') {
+        return fail(c, 422, 'DISPLAY_NAME_REJECTED', 'This display name could not be approved by safety checks.');
+      }
+    }
     const updated = await updateProfile(c.env.DB, user.id, input);
     return updated ? ok(c, { user: updated }) : fail(c, 409, 'USERNAME_CHANGE_USED', 'Username can only be changed once after registration.');
   } catch (error) {
@@ -89,6 +98,12 @@ userRoutes.post('/me/avatar', async (c) => {
     assertImageSignature(contentType, new Uint8Array(body));
   } catch (error) {
     return fail(c, 422, 'INVALID_IMAGE', error instanceof Error ? error.message : 'Invalid image.');
+  }
+  const encoded = base64Encode(new Uint8Array(body));
+  const moderation = await moderatePublicContent(c.env, '', [{ mimeType: contentType, objectKey: 'pending-avatar', base64Data: encoded }]);
+  await saveModerationResult(c.env.DB, 'avatar', user.id, moderation, encoded);
+  if (moderation.decision !== 'allow') {
+    return fail(c, 422, 'AVATAR_REJECTED', 'This avatar could not be approved by safety checks.');
   }
   const storage = new KvMediaStorage(c.env.MEDIA);
   const key = createMediaKey(user.id, contentType);

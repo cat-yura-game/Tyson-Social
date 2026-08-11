@@ -5,11 +5,11 @@ import { fail, ok } from '../lib/responses';
 import { commentBodySchema, extractLinks, postBodySchema, reactionSchema } from '../schemas/content';
 import { sha256 } from '../security/tokens';
 import type { AppVariables, Env } from '../types';
-import type { ModerationResult } from '../ai/moderation';
 import { rankFeed, type FeedCandidate } from '../recommendations/feed-ranking';
 import { extractTrends, type TrendSourcePost } from '../trends/extract-trends';
 import { assertImageSignature, assertValidMedia, createMediaKey, KvMediaStorage, MAX_MEDIA_BYTES, type AllowedImageType } from '../services/media-storage';
 import { base64Encode } from '../security/encoding';
+import { moderatePublicContent } from '../services/moderation-service';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const contentRoutes = new Hono<App>();
@@ -19,26 +19,6 @@ function requireUser(c: Parameters<typeof fail>[0]) {
   if (!user) return { error: fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.') };
   if (user.status === 'limited') return { error: fail(c, 403, 'ACCOUNT_LIMITED', 'This account is currently limited.') };
   return { user };
-}
-
-async function moderate(env: Env, body: string, media: Array<{ mimeType: string; objectKey: string; base64Data: string }> = []): Promise<ModerationResult> {
-  if (env.MODERATION_MODE === 'bypass') {
-    return {
-      decision: 'allow',
-      riskScore: 0,
-      categories: ['temporary_test_bypass'],
-      reason: 'AI moderation is temporarily bypassed for MVP testing.',
-      provider: 'tyson-test-bypass',
-      modelVersion: 'bypass-v1',
-    };
-  }
-  try {
-    return await createAiProviders(env).moderation.moderate({ text: body, links: extractLinks(body), media });
-  } catch (error) {
-    const providerError = error instanceof Error ? error.message.slice(0, 500) : 'unknown';
-    console.error(JSON.stringify({ event: 'moderation_provider_failed', error: providerError }));
-    return { decision: 'review', riskScore: 0.5, categories: ['provider_unavailable'], reason: `Moderation provider was unavailable; queued for human review. ${providerError}`, provider: 'tyson-fallback', modelVersion: 'fallback-v1' };
-  }
 }
 
 interface CreatePostImage {
@@ -148,7 +128,7 @@ contentRoutes.post('/posts', async (c) => {
   const input = await createPostInput(c); if (input instanceof Response) return input;
   const imageBase64 = input.image ? base64Encode(new Uint8Array(input.image.bytes)) : null;
   const moderationText = input.title ? `${input.title}\n\n${input.body}` : input.body;
-  const result = await moderate(c.env, moderationText, input.image && imageBase64 ? [{ mimeType: input.image.contentType, objectKey: 'pending-upload', base64Data: imageBase64 }] : []);
+  const result = await moderatePublicContent(c.env, moderationText, input.image && imageBase64 ? [{ mimeType: input.image.contentType, objectKey: 'pending-upload', base64Data: imageBase64 }] : [], extractLinks(moderationText));
   const postId = crypto.randomUUID();
   const now = new Date().toISOString();
   const status = result.decision === 'allow' ? 'published' : result.decision === 'block' ? 'blocked' : 'review';
@@ -179,7 +159,7 @@ contentRoutes.patch('/posts/:id', async (c) => {
   const owned = await c.env.DB.prepare(`SELECT id FROM posts WHERE id = ? AND author_user_id = ? AND status != 'deleted'`).bind(c.req.param('id'), auth.user.id).first();
   if (!owned) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
   const moderationText = input.title ? `${input.title}\n\n${input.body}` : input.body;
-  const result = await moderate(c.env, moderationText);
+  const result = await moderatePublicContent(c.env, moderationText, [], extractLinks(moderationText));
   if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Publication was blocked by safety checks.');
   const now = new Date().toISOString();
   await c.env.DB.batch([
@@ -263,7 +243,7 @@ contentRoutes.post('/posts/:id/comments', async (c) => {
   const input = await json(c, commentBodySchema); if (input instanceof Response) return input;
   const post = await c.env.DB.prepare(`SELECT id FROM posts WHERE id = ? AND status = 'published'`).bind(c.req.param('id')).first();
   if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
-  const result = await moderate(c.env, input.body);
+  const result = await moderatePublicContent(c.env, input.body, [], extractLinks(input.body));
   if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Comment was blocked by safety checks.');
   const id = crypto.randomUUID(); const now = new Date().toISOString(); const status = result.decision === 'allow' ? 'published' : 'review';
   await c.env.DB.batch([

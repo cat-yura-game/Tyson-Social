@@ -14,6 +14,7 @@ import { loginSchema, parseJsonBody, registerSchema } from '../schemas/auth';
 import { hashPassword, verifyPassword } from '../security/passwords';
 import { keyedHash, randomToken, sha256 } from '../security/tokens';
 import type { AppVariables, AuthUser, Env } from '../types';
+import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
 
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
 const VERIFICATION_SECONDS = 60 * 60 * 24;
@@ -106,6 +107,12 @@ authRoutes.post('/register', async (c) => {
     usernameChangeAvailable: true,
     createdAt: now.toISOString(),
   };
+
+  const nameModeration = await moderatePublicContent(c.env, input.displayName);
+  await saveModerationResult(c.env.DB, 'display_name', userId, nameModeration, input.displayName);
+  if (nameModeration.decision !== 'allow') {
+    return fail(c, 422, 'DISPLAY_NAME_REJECTED', 'This display name could not be approved by safety checks.');
+  }
 
   try {
     await createUserWithSession(c.env.DB, {

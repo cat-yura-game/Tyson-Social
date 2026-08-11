@@ -8,6 +8,8 @@ import {
   KvMediaStorage,
 } from '../services/media-storage';
 import type { AppVariables, Env } from '../types';
+import { base64Encode } from '../security/encoding';
+import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
 
 const STORY_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
@@ -46,6 +48,12 @@ storyRoutes.post('/', async (c) => {
   }
 
   const id = crypto.randomUUID();
+  const encoded = base64Encode(new Uint8Array(body));
+  const moderation = await moderatePublicContent(c.env, '', [{ mimeType: contentType, objectKey: 'pending-story', base64Data: encoded }]);
+  await saveModerationResult(c.env.DB, 'story', id, moderation, encoded);
+  if (moderation.decision !== 'allow') {
+    return fail(c, 422, 'STORY_REJECTED', 'This story could not be approved by safety checks.');
+  }
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + STORY_LIFETIME_MS);
   const storageKey = createStoryMediaKey(user.id, contentType);

@@ -8,6 +8,7 @@ import { keyedHash, randomToken, sha256 } from '../security/tokens';
 import { createTelegramAuthorizationUrl, exchangeTelegramCode } from '../services/telegram-oidc';
 import type { AppVariables, Env } from '../types';
 import { hashPassword } from '../security/passwords';
+import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
 
 const STATE_TTL_MS = 10 * 60_000;
 const TICKET_TTL_MS = 2 * 60_000;
@@ -152,6 +153,11 @@ telegramAuthRoutes.get('/callback', async (c) => {
       userId = crypto.randomUUID();
       const username = await availableTelegramUsername(c.env.DB, identity.username, identity.subject);
       const displayName = identity.displayName?.trim().slice(0, 80) || username;
+      const nameModeration = await moderatePublicContent(c.env, displayName);
+      await saveModerationResult(c.env.DB, 'display_name', userId, nameModeration, displayName);
+      if (nameModeration.decision !== 'allow') {
+        return c.redirect(frontendUrl(c.env, '/auth/telegram/callback', { error: 'display_name_rejected' }));
+      }
       const syntheticEmail = `telegram+${(await sha256(identity.subject)).slice(0, 32)}@accounts.tyson.invalid`;
       await c.env.DB.batch([
         c.env.DB.prepare(`INSERT INTO users
