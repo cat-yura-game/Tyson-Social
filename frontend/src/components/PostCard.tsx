@@ -14,6 +14,9 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
   const [pending, setPending] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const time = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' });
   const minutes = Math.round((new Date(post.publishedAt).getTime() - Date.now()) / 60_000);
 
@@ -44,6 +47,21 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
     }
   };
 
+  const summarize = async () => {
+    if (summary) { setSummary(null); return; }
+    if (summaryLoading) return;
+    setSummaryLoading(true);
+    setSummaryError(null);
+    try {
+      const result = await apiRequest<{ summary: string }>(`/posts/${encodeURIComponent(post.id)}/summary`, { method: 'POST' });
+      setSummary(result.summary);
+    } catch (error) {
+      setSummaryError(error instanceof Error ? error.message : 'Не удалось сократить публикацию.');
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
   if (deleted) return null;
 
   return (
@@ -57,12 +75,14 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
       </header>
       <Link className="post-body" to={`/post/${post.id}`}>{post.title && <h2 className="post-title">{post.title}</h2>}<RichPostText text={post.body} /></Link>
       {post.mediaKey && <Link className="post-media" to={`/post/${post.id}`}><img loading="lazy" src={mediaUrl(post.mediaKey) ?? ''} alt="Изображение публикации" /></Link>}
+      {summary && <aside className="post-summary"><span><Sparkles size={15} />Краткое содержание от AI</span><p>{summary}</p></aside>}
+      {summaryError && <p className="post-summary-error" role="alert">{summaryError}</p>}
       <footer className="post-actions">
         <button className={reaction === 'like' ? 'reaction-active' : ''} disabled={pending} type="button" aria-label="Нравится" onClick={() => void react('like')}><Heart size={19} /><span>{likes}</span></button>
         <button className={reaction === 'dislike' ? 'reaction-active' : ''} disabled={pending} type="button" aria-label="Не показывать похожее" onClick={() => void react('dislike')}><ThumbsDown size={19} /></button>
         <Link to={`/post/${post.id}`} aria-label={`${post.commentCount} комментариев`}><MessageCircle size={19} /><span>{post.commentCount}</span></Link>
         <button type="button" aria-label="Отправить публикацию в Messenger" onClick={() => navigate(user ? `/messages?sharePost=${post.id}` : '/login')}><Share2 size={19} /></button>
-        {post.body.length > 500 && <button className="ai-action" type="button"><Sparkles size={17} /><span>Коротко с AI</span></button>}
+        {post.body.length > 500 && <button className="ai-action" type="button" disabled={summaryLoading} onClick={() => void summarize()}><Sparkles size={17} /><span>{summaryLoading ? 'Сокращаем…' : summary ? 'Скрыть краткое' : 'Коротко с AI'}</span></button>}
       </footer>
     </article>
   );

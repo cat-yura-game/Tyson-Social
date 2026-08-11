@@ -203,6 +203,38 @@ contentRoutes.delete('/posts/:id', async (c) => {
   return ok(c, { deleted: true });
 });
 
+contentRoutes.post('/posts/:id/summary', async (c) => {
+  const post = await c.env.DB.prepare(`SELECT title, body FROM posts WHERE id = ? AND status = 'published'`)
+    .bind(c.req.param('id')).first<{ title: string | null; body: string }>();
+  if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
+  if (post.body.length <= 500) return fail(c, 422, 'POST_TOO_SHORT', 'This post is already short enough.');
+  const source = post.title ? `${post.title}\n\n${post.body}` : post.body;
+  const contentHash = await sha256(source);
+  const cached = await c.env.DB.prepare(`SELECT summary, provider, model_version AS modelVersion, created_at AS createdAt
+    FROM ai_summaries WHERE post_id = ? AND content_hash = ?`).bind(c.req.param('id'), contentHash)
+    .first<{ summary: string; provider: string; modelVersion: string; createdAt: string }>();
+  if (cached) return ok(c, { ...cached, cached: true });
+
+  const requestedLocale = c.req.header('accept-language')?.split(',')[0]?.trim() ?? 'ru-RU';
+  const locale = /^[a-z]{2,3}(?:-[a-z]{2})?$/iu.test(requestedLocale) ? requestedLocale : 'ru-RU';
+  try {
+    const result = await createAiProviders(c.env).summary.summarize(source, locale);
+    const id = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    await c.env.DB.prepare(`INSERT INTO ai_summaries
+      (id, post_id, content_hash, summary, provider, model_version, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(post_id, content_hash) DO NOTHING`)
+      .bind(id, c.req.param('id'), contentHash, result.summary, result.provider, result.modelVersion, createdAt).run();
+    const stored = await c.env.DB.prepare(`SELECT summary, provider, model_version AS modelVersion, created_at AS createdAt
+      FROM ai_summaries WHERE post_id = ? AND content_hash = ?`).bind(c.req.param('id'), contentHash)
+      .first<{ summary: string; provider: string; modelVersion: string; createdAt: string }>();
+    return ok(c, { ...(stored ?? { ...result, createdAt }), cached: false });
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'post_summary_failed', postId: c.req.param('id'), error: error instanceof Error ? error.message : 'unknown' }));
+    return fail(c, 502, 'AI_PROVIDER_UNAVAILABLE', 'AI summary is temporarily unavailable. Try again later.');
+  }
+});
+
 contentRoutes.put('/posts/:id/reaction', async (c) => {
   const auth = requireUser(c); if ('error' in auth) return auth.error;
   const input = await json(c, reactionSchema); if (input instanceof Response) return input;
