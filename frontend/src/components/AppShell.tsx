@@ -4,6 +4,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { mediaUrl } from '../api/client';
 import { Brand } from './Brand';
+import { TrendsCard } from './TrendsCard';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
@@ -42,7 +43,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className="main-content">{children}</main>
       <aside className="right-rail">
         <label className="search-box"><Search size={18} /><input type="search" placeholder="Найти в Tyson" aria-label="Поиск в Tyson" /></label>
-        <section className="rail-card"><p className="eyebrow">Сейчас обсуждают</p><a href="#topic-design"><strong>Новый городской дизайн</strong><small>1 284 публикации</small></a><a href="#topic-ai"><strong>AI без шума</strong><small>892 публикации</small></a><a href="#topic-photo"><strong>Уличная фотография</strong><small>517 публикаций</small></a></section>
+        <TrendsCard />
         <section className="rail-card quiet-card"><p className="eyebrow">Ваши рекомендации</p><p>Лента становится точнее с каждым лайком, открытием и скрытым дизлайком.</p></section>
       </aside>
       <nav className="bottom-nav" aria-label="Мобильная навигация">

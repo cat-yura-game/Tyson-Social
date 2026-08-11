@@ -48,6 +48,7 @@ button { color: inherit; }
 .rail-card a { display: flex; flex-direction: column; gap: 4px; padding: 15px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .rail-card a:last-child { border: 0; padding-bottom: 0; }
 .rail-card a small { color: var(--muted); }
+.trends-status { margin: 16px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .quiet-card { background: var(--green); color: white; border: 0; }
 .quiet-card .eyebrow { color: #a9c1b1; }
 .quiet-card p:last-child { margin-bottom: 0; font-size: 13px; line-height: 1.6; color: #d8e2dc; }
@@ -57,6 +58,8 @@ button { color: inherit; }
 .feed-tabs { display: flex; gap: 5px; padding: 4px; width: fit-content; margin-bottom: 16px; border-radius: 12px; background: #e9ebe5; }
 .feed-tabs button { padding: 8px 15px; border: 0; border-radius: 9px; background: none; color: var(--muted); font-size: 12px; font-weight: 700; cursor: pointer; }
 .feed-tabs button.active { background: white; color: var(--ink); box-shadow: 0 3px 10px rgb(24 32 25 / 7%); }
+.active-topic { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 16px; padding: 11px 14px; border-radius: 12px; background: var(--soft-green); color: var(--green); font-size: 12px; }
+.active-topic a { font-weight: 800; }
 .feed-list { display: grid; gap: 14px; }
 .post-card { padding: 21px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); box-shadow: 0 8px 40px rgb(33 47 38 / 4%); transition: transform .2s ease, box-shadow .2s ease; }
 .post-card:hover { transform: translateY(-2px); box-shadow: 0 14px 45px rgb(33 47 38 / 8%); }

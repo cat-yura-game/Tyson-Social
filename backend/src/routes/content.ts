@@ -7,6 +7,7 @@ import { sha256 } from '../security/tokens';
 import type { AppVariables, Env } from '../types';
 import type { ModerationResult } from '../ai/moderation';
 import { rankFeed, type FeedCandidate } from '../recommendations/feed-ranking';
+import { extractTrends, type TrendSourcePost } from '../trends/extract-trends';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const contentRoutes = new Hono<App>();
@@ -55,7 +56,10 @@ const POST_SELECT = `SELECT p.id, p.body, p.like_count AS likeCount, p.comment_c
 
 contentRoutes.get('/feed', async (c) => {
   const viewerId = c.get('authUser')?.id ?? '';
-  const rows = await c.env.DB.prepare(`${POST_SELECT} WHERE p.status = 'published' ORDER BY p.published_at DESC LIMIT 50`).bind(viewerId).all();
+  const topic = c.req.query('topic')?.trim().slice(0, 40);
+  const topicFilter = topic ? ' AND instr(lower(p.body), lower(?)) > 0' : '';
+  const statement = c.env.DB.prepare(`${POST_SELECT} WHERE p.status = 'published'${topicFilter} ORDER BY p.published_at DESC LIMIT 50`);
+  const rows = topic ? await statement.bind(viewerId, topic).all() : await statement.bind(viewerId).all();
   let posts = rows.results as unknown as FeedCandidate[];
   let strategy: 'recent' | 'scoring' | 'gemini' = 'recent';
   if (viewerId) {
@@ -75,6 +79,14 @@ contentRoutes.get('/feed', async (c) => {
     }
   }
   return ok(c, { posts, recommendation: { strategy } });
+});
+
+contentRoutes.get('/trends', async (c) => {
+  const rows = await c.env.DB.prepare(`SELECT id, body, like_count AS likeCount, comment_count AS commentCount
+    FROM posts WHERE status = 'published'
+      AND published_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 days')
+    ORDER BY published_at DESC LIMIT 200`).all<TrendSourcePost>();
+  return ok(c, { topics: extractTrends(rows.results) });
 });
 
 contentRoutes.get('/posts/:id', async (c) => {
