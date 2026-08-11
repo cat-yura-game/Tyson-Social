@@ -125,7 +125,7 @@ export function AiPage() {
       <div className="ai-conversation-list">{conversations.map((conversation) => <button className={conversation.id === activeId ? 'active' : ''} key={conversation.id} type="button" onClick={() => { setActiveId(conversation.id); setSidebarOpen(false); }}><span>{conversation.title}</span><small>{new Date(conversation.updatedAt).toLocaleDateString('ru-RU')}</small></button>)}</div>
     </aside>
     <div className="ai-chat">
-      <header><button className="ai-menu-button" type="button" onClick={() => setSidebarOpen((open) => !open)} aria-label="Диалоги"><Menu /></button><span className="ai-logo"><Sparkles /></span><div><strong>Tyson AI</strong><small>Gemini 3.5 Flash Lite</small></div>{activeId && <button className="ai-delete-conversation" type="button" onClick={() => void removeConversation(activeId)} aria-label="Удалить диалог"><Trash2 size={18} /></button>}</header>
+      <header><button className="ai-menu-button" type="button" onClick={() => setSidebarOpen((open) => !open)} aria-label="Диалоги"><Menu /></button><span className="ai-logo"><Sparkles /></span><div><strong>Tyson AI</strong><small>На основе Gemini</small></div>{activeId && <button className="ai-delete-conversation" type="button" onClick={() => void removeConversation(activeId)} aria-label="Удалить диалог"><Trash2 size={18} /></button>}</header>
       <div className="ai-message-stream" ref={streamRef}>
         {!messages.length && <div className="ai-welcome"><span><Sparkles size={30} /></span><h1>Чем я могу помочь?</h1><p>Задайте вопрос или прикрепите изображение. Диалог сохранится в Tyson.</p></div>}
         {messages.map((message) => <article className={`ai-message ${message.role}`} key={message.id}>
