@@ -1,4 +1,4 @@
-import { LockKeyhole, Plus, Send, Smile } from 'lucide-react';
+import { ChevronLeft, LockKeyhole, Plus, Send, Smile } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../api/client';
@@ -34,6 +34,7 @@ export function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busy = useRef(false);
+  const messageEnd = useRef<HTMLDivElement>(null);
   const active = conversations.find((conversation) => conversation.id === activeId) ?? null;
 
   const loadConversations = useCallback(async () => {
@@ -42,7 +43,7 @@ export function MessagesPage() {
     const requested = searchParams.get('conversation');
     setActiveId((current) => requested && result.conversations.some((item) => item.id === requested)
       ? requested
-      : current ?? result.conversations[0]?.id ?? null);
+      : current ?? (window.matchMedia('(min-width: 761px)').matches ? result.conversations[0]?.id ?? null : null));
   }, [searchParams]);
 
   useEffect(() => {
@@ -86,6 +87,10 @@ export function MessagesPage() {
     const timer = window.setInterval(() => void loadMessages(), 4000);
     return () => window.clearInterval(timer);
   }, [loadMessages]);
+
+  useEffect(() => {
+    messageEnd.current?.scrollIntoView({ block: 'end' });
+  }, [activeId, messages.length]);
 
   const startConversation = async (event: FormEvent) => {
     event.preventDefault();
@@ -146,21 +151,27 @@ export function MessagesPage() {
     await sendContent({ type: 'sticker', stickerId });
   };
 
-  return <section className="messages-page">
+  const closeMobileChat = () => {
+    setActiveId(null);
+    setSearchParams({});
+    setShowStickers(false);
+  };
+
+  return <section className={`messages-page${active ? ' mobile-chat-open' : ''}`}>
     <aside className="conversation-list">
       <div className="messages-title"><div><p className="eyebrow">End-to-end encryption</p><h1>Сообщения</h1></div><LockKeyhole size={21} /></div>
       <form className="new-conversation" onSubmit={(event) => void startConversation(event)}><input required value={newUsername} onChange={(event) => setNewUsername(event.target.value)} placeholder="username получателя" /><button type="submit" aria-label="Начать разговор"><Plus /></button></form>
       {conversations.map((conversation) => <button key={conversation.id} className={conversation.id === activeId ? 'conversation active' : 'conversation'} onClick={() => { setActiveId(conversation.id); setSearchParams({ conversation: conversation.id }); }}><span className="avatar avatar-small">{conversation.otherDisplayName.slice(0, 1).toUpperCase()}</span><span><strong>{conversation.otherDisplayName}</strong><small>@{conversation.otherUsername}</small></span></button>)}
     </aside>
     <div className="chat-panel">{active ? <>
-      <header><div><strong>{active.otherDisplayName}</strong><small>@{active.otherUsername}</small></div><span><LockKeyhole size={14} />E2EE</span></header>
+      <header><button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={closeMobileChat}><ChevronLeft /></button><div><strong>{active.otherDisplayName}</strong><small>@{active.otherUsername}</small></div><span><LockKeyhole size={14} />E2EE</span></header>
       <div className="message-stream">{messages.map((message) => {
         const sticker = message.content.type === 'sticker' ? getSticker(message.content.stickerId) : null;
         return <article key={message.id} className={`${message.senderUserId === user?.id ? 'message mine' : 'message'}${sticker ? ' sticker-message' : ''}`}>
           {message.content.type === 'text' ? <p>{message.content.text}</p> : sticker ? <img className="message-sticker" src={sticker.src} alt={sticker.accessibleLabel} /> : null}
           <small>{new Date(message.sentAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small>
         </article>;
-      })}{!messages.length && <div className="chat-empty"><LockKeyhole /><p>Сообщения и выбранные стикеры шифруются на вашем устройстве.</p></div>}</div>
+      })}{!messages.length && <div className="chat-empty"><LockKeyhole /><p>Сообщения и выбранные стикеры шифруются на вашем устройстве.</p></div>}<div ref={messageEnd} aria-hidden="true" /></div>
       <div className="composer-area">
         {showStickers && <div className="sticker-picker" aria-label="Стикеры">{STICKERS.map((sticker) => <button key={sticker.id} type="button" disabled={sending} aria-label={sticker.accessibleLabel} onClick={() => void sendSticker(sticker.id)}><img src={sticker.src} alt="" /></button>)}</div>}
         <form className="message-composer" onSubmit={(event) => void sendText(event)}>
