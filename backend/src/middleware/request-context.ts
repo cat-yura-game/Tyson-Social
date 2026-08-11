@@ -7,6 +7,8 @@ export const requestContext = createMiddleware<{
 }>(async (c, next) => {
   const requestId = c.req.header('cf-ray') ?? crypto.randomUUID();
   c.set('requestId', requestId);
+  c.set('authUser', null);
+  c.set('sessionId', null);
   await next();
   c.header('x-request-id', requestId);
   c.header('x-content-type-options', 'nosniff');

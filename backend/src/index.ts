@@ -3,6 +3,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { fail } from './lib/responses';
 import { secureCors } from './middleware/cors';
 import { requestContext } from './middleware/request-context';
+import { sessionContext } from './middleware/auth';
 import { api } from './routes';
 import type { AppVariables, Env } from './types';
 
@@ -11,6 +12,7 @@ const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 app.use('*', requestContext);
 app.use('*', secureHeaders());
 app.use('/api/*', secureCors);
+app.use('/api/*', sessionContext);
 app.route('/api', api);
 
 app.notFound((c) => fail(c, 404, 'NOT_FOUND', 'The requested endpoint does not exist.'));
