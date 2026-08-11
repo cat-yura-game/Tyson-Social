@@ -6,6 +6,7 @@ import { PostCard } from '../components/PostCard';
 import { FeedPreferencesDialog } from '../components/FeedPreferencesDialog';
 import type { Post } from '../types/content';
 import { useAuth } from '../auth/AuthProvider';
+import { StoriesBar } from '../components/StoriesBar';
 
 export function FeedPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -38,6 +39,7 @@ export function FeedPage() {
     setSearchParams(next);
   };
   return <div className="feed-page">
+    <StoriesBar />
     <header className="page-heading feed-heading"><div><p className="eyebrow">Персональная лента</p><h1>{view === 'fresh' ? 'Свежие публикации' : view === 'following' ? 'Публикации подписок' : 'Интересное для вас'}</h1></div><button className="filter-button" type="button" onClick={() => setShowPreferences(true)}><SlidersHorizontal size={18} /><span>Настроить</span></button></header>
     <div className="feed-tabs"><button className={view === 'for-you' ? 'active' : ''} type="button" onClick={() => selectView('for-you')}>Для вас</button><button className={view === 'following' ? 'active' : ''} type="button" onClick={() => selectView('following')}>Подписки</button><button className={view === 'fresh' ? 'active' : ''} type="button" onClick={() => selectView('fresh')}>Свежее</button></div>
     {topic && <div className="active-topic"><span>Тема: <strong>{topic}</strong></span><Link to="/">Показать всю ленту</Link></div>}

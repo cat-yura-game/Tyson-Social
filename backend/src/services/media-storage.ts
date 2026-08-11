@@ -7,12 +7,21 @@ export const ALLOWED_IMAGE_TYPES = {
   'image/avif': 'avif',
 } as const;
 
+export const ALLOWED_VIDEO_TYPES = {
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/quicktime': 'mov',
+} as const;
+
 export type AllowedImageType = keyof typeof ALLOWED_IMAGE_TYPES;
+export type AllowedVideoType = keyof typeof ALLOWED_VIDEO_TYPES;
+export type AllowedMediaType = AllowedImageType | AllowedVideoType;
 
 export interface MediaMetadata {
-  contentType: AllowedImageType;
+  contentType: AllowedMediaType;
   byteSize: number;
   ownerUserId: string;
+  expiresAt?: string;
 }
 
 export interface StoredMedia {
@@ -21,7 +30,7 @@ export interface StoredMedia {
 }
 
 export interface MediaStorage {
-  put(key: string, body: ReadableStream | ArrayBuffer, metadata: MediaMetadata): Promise<void>;
+  put(key: string, body: ReadableStream | ArrayBuffer, metadata: MediaMetadata, expiration?: number): Promise<void>;
   get(key: string): Promise<StoredMedia | null>;
   delete(key: string): Promise<void>;
 }
@@ -30,6 +39,13 @@ export function assertValidMedia(contentType: string, byteSize: number): asserts
   if (!(contentType in ALLOWED_IMAGE_TYPES)) throw new Error('Unsupported image type.');
   if (!Number.isSafeInteger(byteSize) || byteSize <= 0 || byteSize > MAX_MEDIA_BYTES) {
     throw new Error('Image size must be between 1 byte and 5 MiB.');
+  }
+}
+
+export function assertValidStoryMedia(contentType: string, byteSize: number): asserts contentType is AllowedMediaType {
+  if (!(contentType in ALLOWED_IMAGE_TYPES) && !(contentType in ALLOWED_VIDEO_TYPES)) throw new Error('Unsupported story media type.');
+  if (!Number.isSafeInteger(byteSize) || byteSize <= 0 || byteSize > MAX_MEDIA_BYTES) {
+    throw new Error('Story media size must be between 1 byte and 5 MiB.');
   }
 }
 
@@ -44,17 +60,36 @@ export function assertImageSignature(contentType: AllowedImageType, bytes: Uint8
   if (!matches) throw new Error('Image content does not match its MIME type.');
 }
 
+export function assertStoryMediaSignature(contentType: AllowedMediaType, bytes: Uint8Array): void {
+  if (contentType in ALLOWED_IMAGE_TYPES) {
+    assertImageSignature(contentType as AllowedImageType, bytes);
+    return;
+  }
+  const isValid = contentType === 'video/webm'
+    ? bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3
+    : new TextDecoder().decode(bytes.slice(4, 8)) === 'ftyp';
+  if (!isValid) throw new Error('Video content does not match its MIME type.');
+}
+
 export function createMediaKey(ownerUserId: string, contentType: AllowedImageType): string {
   if (!/^[0-9a-f-]{36}$/i.test(ownerUserId)) throw new Error('Invalid owner ID.');
   return `media/${ownerUserId}/${crypto.randomUUID()}.${ALLOWED_IMAGE_TYPES[contentType]}`;
 }
 
+export function createStoryMediaKey(ownerUserId: string, contentType: AllowedMediaType): string {
+  if (!/^[0-9a-f-]{36}$/i.test(ownerUserId)) throw new Error('Invalid owner ID.');
+  const extension = contentType in ALLOWED_IMAGE_TYPES
+    ? ALLOWED_IMAGE_TYPES[contentType as AllowedImageType]
+    : ALLOWED_VIDEO_TYPES[contentType as AllowedVideoType];
+  return `media/${ownerUserId}/${crypto.randomUUID()}.${extension}`;
+}
+
 export class KvMediaStorage implements MediaStorage {
   constructor(private readonly namespace: KVNamespace) {}
 
-  async put(key: string, body: ReadableStream | ArrayBuffer, metadata: MediaMetadata): Promise<void> {
-    assertValidMedia(metadata.contentType, metadata.byteSize);
-    await this.namespace.put(key, body, { metadata });
+  async put(key: string, body: ReadableStream | ArrayBuffer, metadata: MediaMetadata, expiration?: number): Promise<void> {
+    assertValidStoryMedia(metadata.contentType, metadata.byteSize);
+    await this.namespace.put(key, body, { metadata, ...(expiration ? { expiration } : {}) });
   }
 
   async get(key: string): Promise<StoredMedia | null> {

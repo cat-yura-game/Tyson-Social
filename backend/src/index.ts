@@ -6,6 +6,7 @@ import { requestContext } from './middleware/request-context';
 import { sessionContext } from './middleware/auth';
 import { api } from './routes';
 import type { AppVariables, Env } from './types';
+import { deleteExpiredStories } from './routes/stories';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -28,4 +29,9 @@ app.onError((error, c) => {
   return fail(c, 500, 'INTERNAL_ERROR', 'An unexpected error occurred.');
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(deleteExpiredStories(env));
+  },
+};

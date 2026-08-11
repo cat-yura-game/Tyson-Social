@@ -4,6 +4,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-08",
   "workers_dev": true,
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  },
   "vars": {
     "APP_ENV": "development",
     "ALLOWED_ORIGINS": "http://localhost:5173,https://368240.lol,https://www.368240.lol",
