@@ -18,6 +18,16 @@ function requireUser(c: Parameters<typeof fail>[0]) {
 }
 
 async function moderate(env: Env, body: string): Promise<ModerationResult> {
+  if (env.MODERATION_MODE === 'bypass') {
+    return {
+      decision: 'allow',
+      riskScore: 0,
+      categories: ['temporary_test_bypass'],
+      reason: 'AI moderation is temporarily bypassed for MVP testing.',
+      provider: 'tyson-test-bypass',
+      modelVersion: 'bypass-v1',
+    };
+  }
   try {
     return await createAiProviders(env).moderation.moderate({ text: body, links: extractLinks(body), media: [] });
   } catch (error) {

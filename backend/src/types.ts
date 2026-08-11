@@ -6,6 +6,7 @@ export interface Env {
   SESSION_SECRET?: string;
   EMAIL_PROVIDER_API_KEY?: string;
   EMAIL_DELIVERY_MODE: 'disabled' | 'provider';
+  MODERATION_MODE: 'gemini' | 'bypass';
   GEMINI_API_KEY?: string;
   GEMINI_MODERATION_MODEL: string;
   GEMINI_SUMMARY_MODEL: string;
