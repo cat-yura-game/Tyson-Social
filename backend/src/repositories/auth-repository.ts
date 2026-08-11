@@ -15,6 +15,7 @@ interface UserRow {
   role: AuthUser['role'];
   status: AuthUser['status'];
   email_verified_at: string | null;
+  is_verified: number;
   created_at: string;
 }
 
@@ -29,12 +30,13 @@ function projectUser(row: UserRow): AuthUser {
     role: row.role,
     status: row.status,
     emailVerified: row.email_verified_at !== null,
+    verified: row.is_verified === 1,
     createdAt: row.created_at,
   };
 }
 
 const USER_COLUMNS = `id, email, username, display_name, avatar_key, bio, role, status,
-  email_verified_at, created_at`;
+  email_verified_at, is_verified, created_at`;
 
 export async function findUserByEmail(db: D1Database, email: string): Promise<UserWithPassword | null> {
   const row = await db.prepare(`SELECT ${USER_COLUMNS}, password_hash FROM users WHERE email = ? LIMIT 1`)

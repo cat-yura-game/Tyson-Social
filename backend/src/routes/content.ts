@@ -47,7 +47,7 @@ async function json<T>(c: Parameters<typeof fail>[0], schema: { parse(value: unk
 
 const POST_SELECT = `SELECT p.id, p.body, p.like_count AS likeCount, p.comment_count AS commentCount,
   p.published_at AS publishedAt, p.updated_at AS updatedAt,
-  u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey,
+  u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
   COALESCE((SELECT reaction FROM post_reactions r WHERE r.post_id = p.id AND r.user_id = ?), '') AS viewerReaction
   FROM posts p JOIN users u ON u.id = p.author_user_id`;
 

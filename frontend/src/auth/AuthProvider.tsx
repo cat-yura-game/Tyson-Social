@@ -11,6 +11,7 @@ export interface AuthUser {
   role: 'user' | 'moderator' | 'admin';
   status: 'pending_email' | 'active' | 'limited';
   emailVerified: boolean;
+  verified: boolean;
   createdAt: string;
 }
 

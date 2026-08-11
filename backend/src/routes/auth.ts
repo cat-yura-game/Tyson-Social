@@ -102,6 +102,7 @@ authRoutes.post('/register', async (c) => {
     role: 'user',
     status: 'pending_email',
     emailVerified: false,
+    verified: false,
     createdAt: now.toISOString(),
   };
 
@@ -177,6 +178,7 @@ authRoutes.post('/login', async (c) => {
     role: user.role,
     status: user.status,
     emailVerified: user.emailVerified,
+    verified: user.verified,
     createdAt: user.createdAt,
   };
   const now = new Date();

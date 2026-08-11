@@ -14,6 +14,7 @@ function publicProfile(user: AuthUser) {
     avatarKey: user.avatarKey,
     bio: user.bio,
     emailVerified: user.emailVerified,
+    verified: user.verified,
     createdAt: user.createdAt,
   };
 }

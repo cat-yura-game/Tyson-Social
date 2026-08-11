@@ -9,6 +9,7 @@ export interface Post {
   username: string;
   displayName: string;
   avatarKey: string | null;
+  verified: number | boolean;
   viewerReaction: '' | 'like' | 'dislike';
 }
 

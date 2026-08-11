@@ -1,10 +1,10 @@
-import { CalendarDays } from 'lucide-react';
+import { BadgeCheck, CalendarDays } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client';
 import { useAuth, type AuthUser } from '../auth/AuthProvider';
 
-type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarKey' | 'bio' | 'status' | 'createdAt'>;
+type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarKey' | 'bio' | 'status' | 'verified' | 'createdAt'>;
 
 export function ProfilePage() {
   const { username = '' } = useParams();
@@ -34,7 +34,7 @@ export function ProfilePage() {
         <div className="avatar profile-avatar">{profile.displayName.slice(0, 1).toUpperCase()}</div>
         {isOwner && <Link className="secondary-button" to="/settings">Редактировать профиль</Link>}
         <div className="profile-copy">
-          <h1>{profile.displayName}</h1><p>@{profile.username}</p>
+          <h1>{profile.displayName}{profile.verified && <BadgeCheck className="verified" size={21} aria-label="Подтверждённый аккаунт" />}</h1><p>@{profile.username}</p>
           <p className="profile-bio">{profile.bio || 'Пользователь пока ничего о себе не рассказал.'}</p>
           <span><CalendarDays size={16} />В Tyson с {joined}</span>
           {isOwner && !user.emailVerified && <span className="unverified-badge">Email пока не подтверждён</span>}
