@@ -104,7 +104,8 @@ button { color: inherit; }
 .profile-header { position: relative; padding: 0 28px 25px; }
 .profile-avatar { width: 90px; height: 90px; margin-top: -45px; border: 5px solid white; border-radius: 26px; font-size: 27px; }
 .profile-avatar-image { display: block; object-fit: cover; background: white; }
-.profile-header > .secondary-button { position: absolute; top: 16px; right: 25px; }
+.profile-controls { position: absolute; top: 16px; right: 25px; display: flex; gap: 8px; }
+.profile-controls .secondary-button { position: static; }
 .profile-copy { margin-top: 15px; }
 .profile-copy h1 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 23px; }
 .profile-copy > p { margin: 3px 0; color: var(--muted); font-size: 12px; }

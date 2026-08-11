@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { decryptForDevice, encryptForDevice, getOrCreateIdentity, type DeviceIdentity } from '../messaging/crypto';
+import { useSearchParams } from 'react-router-dom';
 
 interface Conversation {
   id: string;
@@ -20,6 +21,7 @@ interface PlainMessage extends EncryptedMessage { text: string }
 
 export function MessagesPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [identity, setIdentity] = useState<DeviceIdentity | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -33,8 +35,9 @@ export function MessagesPage() {
   const loadConversations = useCallback(async () => {
     const result = await apiRequest<{ conversations: Conversation[] }>('/messages/conversations');
     setConversations(result.conversations);
-    setActiveId((current) => current ?? result.conversations[0]?.id ?? null);
-  }, []);
+    const requested = searchParams.get('conversation');
+    setActiveId((current) => requested && result.conversations.some((item) => item.id === requested) ? requested : current ?? result.conversations[0]?.id ?? null);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!user) return;
@@ -70,7 +73,7 @@ export function MessagesPage() {
     event.preventDefault(); setError(null);
     try {
       const result = await apiRequest<{ conversation: { id: string } }>('/messages/conversations', { method: 'POST', body: JSON.stringify({ recipientUsername: newUsername }) });
-      setNewUsername(''); await loadConversations(); setActiveId(result.conversation.id);
+      setNewUsername(''); await loadConversations(); setActiveId(result.conversation.id); setSearchParams({ conversation: result.conversation.id });
     } catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось начать разговор.'); }
   };
 
@@ -95,7 +98,7 @@ export function MessagesPage() {
   };
 
   return <section className="messages-page">
-    <aside className="conversation-list"><div className="messages-title"><div><p className="eyebrow">End-to-end encryption</p><h1>Сообщения</h1></div><LockKeyhole size={21} /></div><form className="new-conversation" onSubmit={(event) => void startConversation(event)}><input required value={newUsername} onChange={(event) => setNewUsername(event.target.value)} placeholder="username получателя" /><button type="submit" aria-label="Начать разговор"><Plus /></button></form>{conversations.map((conversation) => <button key={conversation.id} className={conversation.id === activeId ? 'conversation active' : 'conversation'} onClick={() => setActiveId(conversation.id)}><span className="avatar avatar-small">{conversation.otherDisplayName.slice(0, 1).toUpperCase()}</span><span><strong>{conversation.otherDisplayName}</strong><small>@{conversation.otherUsername}</small></span></button>)}</aside>
+    <aside className="conversation-list"><div className="messages-title"><div><p className="eyebrow">End-to-end encryption</p><h1>Сообщения</h1></div><LockKeyhole size={21} /></div><form className="new-conversation" onSubmit={(event) => void startConversation(event)}><input required value={newUsername} onChange={(event) => setNewUsername(event.target.value)} placeholder="username получателя" /><button type="submit" aria-label="Начать разговор"><Plus /></button></form>{conversations.map((conversation) => <button key={conversation.id} className={conversation.id === activeId ? 'conversation active' : 'conversation'} onClick={() => { setActiveId(conversation.id); setSearchParams({ conversation: conversation.id }); }}><span className="avatar avatar-small">{conversation.otherDisplayName.slice(0, 1).toUpperCase()}</span><span><strong>{conversation.otherDisplayName}</strong><small>@{conversation.otherUsername}</small></span></button>)}</aside>
     <div className="chat-panel">{active ? <><header><div><strong>{active.otherDisplayName}</strong><small>@{active.otherUsername}</small></div><span><LockKeyhole size={14} />E2EE</span></header><div className="message-stream">{messages.map((message) => <article key={message.id} className={message.senderUserId === user?.id ? 'message mine' : 'message'}><p>{message.text}</p><small>{new Date(message.sentAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small></article>)}{!messages.length && <div className="chat-empty"><LockKeyhole /><p>Сообщения шифруются на вашем устройстве.</p></div>}</div><form className="message-composer" onSubmit={(event) => void send(event)}><textarea required maxLength={4000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Сообщение" /><button type="submit" aria-label="Отправить"><Send /></button></form></> : <div className="chat-empty"><LockKeyhole /><h2>Защищённый разговор</h2><p>Введите username слева, чтобы начать переписку.</p></div>}{error && <p className="messages-error" role="alert">{error}</p>}</div>
   </section>;
 }

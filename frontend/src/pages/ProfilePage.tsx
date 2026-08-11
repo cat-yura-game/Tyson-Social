@@ -1,6 +1,6 @@
-import { BadgeCheck, CalendarDays } from 'lucide-react';
+import { BadgeCheck, CalendarDays, MessageCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
 import { useAuth, type AuthUser } from '../auth/AuthProvider';
 import { PostCard } from '../components/PostCard';
@@ -11,10 +11,12 @@ type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarK
 export function ProfilePage() {
   const { username = '' } = useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
+  const [openingChat, setOpeningChat] = useState(false);
 
   useEffect(() => {
     setLoading(true); setMissing(false);
@@ -31,11 +33,23 @@ export function ProfilePage() {
   const joined = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(new Date(profile.createdAt));
   const isOwner = user?.id === profile.id;
   const avatar = mediaUrl(profile.avatarKey);
+  const openChat = async () => {
+    setOpeningChat(true);
+    try {
+      const result = await apiRequest<{ conversation: { id: string } }>('/messages/conversations', {
+        method: 'POST',
+        body: JSON.stringify({ recipientUsername: profile.username }),
+      });
+      navigate(`/messages?conversation=${encodeURIComponent(result.conversation.id)}`);
+    } finally {
+      setOpeningChat(false);
+    }
+  };
   return <section className="profile-page">
     <div className="profile-cover" />
     <header className="profile-header">
       {avatar ? <img className="profile-avatar profile-avatar-image" src={avatar} alt="" /> : <div className="avatar profile-avatar">{profile.displayName.slice(0, 1).toUpperCase()}</div>}
-      {isOwner && <Link className="secondary-button" to="/settings">Редактировать профиль</Link>}
+      <div className="profile-controls">{isOwner && <Link className="secondary-button" to="/settings">Редактировать профиль</Link>}{user && !isOwner && <button className="secondary-button message-profile-button" type="button" disabled={openingChat} onClick={() => void openChat()}><MessageCircle size={17} />{openingChat ? 'Открываем…' : 'Написать'}</button>}</div>
       <div className="profile-copy"><h1>{profile.displayName}{profile.verified && <BadgeCheck className="verified" size={21} aria-label="Подтверждённый аккаунт" />}</h1><p>@{profile.username}</p><p className="profile-bio">{profile.bio || 'Пользователь пока ничего о себе не рассказал.'}</p><span><CalendarDays size={16} />В Tyson с {joined}</span>{isOwner && !user.emailVerified && <span className="unverified-badge">Email пока не подтверждён</span>}</div>
       <div className="profile-stats"><span><strong>{posts.length}</strong> публикаций</span></div>
     </header>
