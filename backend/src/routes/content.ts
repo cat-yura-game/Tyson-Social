@@ -191,8 +191,16 @@ contentRoutes.patch('/posts/:id', async (c) => {
 
 contentRoutes.delete('/posts/:id', async (c) => {
   const auth = requireUser(c); if ('error' in auth) return auth.error;
-  const changed = await c.env.DB.prepare(`UPDATE posts SET status = 'deleted', updated_at = ? WHERE id = ? AND author_user_id = ? AND status != 'deleted'`).bind(new Date().toISOString(), c.req.param('id'), auth.user.id).run();
-  return changed.meta.changes ? ok(c, { deleted: true }) : fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
+  const post = await c.env.DB.prepare('SELECT id FROM posts WHERE id = ? AND author_user_id = ?')
+    .bind(c.req.param('id'), auth.user.id).first();
+  if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
+  const media = await c.env.DB.prepare('SELECT storage_key AS storageKey FROM post_media WHERE post_id = ?')
+    .bind(c.req.param('id')).all<{ storageKey: string }>();
+  await c.env.DB.prepare('DELETE FROM posts WHERE id = ? AND author_user_id = ?')
+    .bind(c.req.param('id'), auth.user.id).run();
+  const storage = new KvMediaStorage(c.env.MEDIA);
+  await Promise.all(media.results.map((item) => storage.delete(item.storageKey)));
+  return ok(c, { deleted: true });
 });
 
 contentRoutes.put('/posts/:id/reaction', async (c) => {

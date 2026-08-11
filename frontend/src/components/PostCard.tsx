@@ -1,4 +1,4 @@
-import { BadgeCheck, Heart, MessageCircle, MoreHorizontal, Share2, Sparkles, ThumbsDown } from 'lucide-react';
+import { BadgeCheck, Heart, MessageCircle, MoreHorizontal, Share2, Sparkles, ThumbsDown, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
@@ -6,12 +6,14 @@ import { useAuth } from '../auth/AuthProvider';
 import type { Post } from '../types/content';
 import { RichPostText } from './RichPostText';
 
-export function PostCard({ post }: { post: Post }) {
+export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId: string) => void }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [reaction, setReaction] = useState<Post['viewerReaction']>(post.viewerReaction);
   const [likes, setLikes] = useState(post.likeCount);
   const [pending, setPending] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleted, setDeleted] = useState(false);
   const time = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' });
   const minutes = Math.round((new Date(post.publishedAt).getTime() - Date.now()) / 60_000);
 
@@ -27,12 +29,31 @@ export function PostCard({ post }: { post: Post }) {
     } finally { setPending(false); }
   };
 
+  const deletePost = async () => {
+    if (deleting || !window.confirm('Удалить публикацию без возможности восстановления?')) return;
+    setDeleting(true);
+    try {
+      await apiRequest(`/posts/${encodeURIComponent(post.id)}`, { method: 'DELETE' });
+      setDeleted(true);
+      if (onDeleted) onDeleted(post.id);
+      else navigate('/');
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Не удалось удалить публикацию.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  if (deleted) return null;
+
   return (
     <article className="post-card">
       <header className="post-header">
         <Link to={`/profile/${post.username}`} className="avatar">{post.avatarKey ? <img className="avatar-image" src={mediaUrl(post.avatarKey) ?? ''} alt="" /> : post.displayName.slice(0, 1).toUpperCase()}</Link>
         <div className="post-author"><Link to={`/profile/${post.username}`}><strong>{post.displayName}</strong>{post.verified && <BadgeCheck className="verified" size={17} aria-label="Подтверждённый аккаунт" />}</Link><span>@{post.username} · {Math.abs(minutes) < 60 ? time.format(minutes, 'minute') : new Date(post.publishedAt).toLocaleDateString('ru-RU')}</span></div>
-        <button className="icon-button" type="button" aria-label="Действия с публикацией"><MoreHorizontal size={20} /></button>
+        {user?.id === post.authorId
+          ? <button className="icon-button delete-content-button" type="button" disabled={deleting} aria-label="Удалить публикацию" onClick={() => void deletePost()}><Trash2 size={19} /></button>
+          : <button className="icon-button" type="button" aria-label="Действия с публикацией"><MoreHorizontal size={20} /></button>}
       </header>
       <Link className="post-body" to={`/post/${post.id}`}>{post.title && <h2 className="post-title">{post.title}</h2>}<RichPostText text={post.body} /></Link>
       {post.mediaKey && <Link className="post-media" to={`/post/${post.id}`}><img loading="lazy" src={mediaUrl(post.mediaKey) ?? ''} alt="Изображение публикации" /></Link>}

@@ -75,6 +75,6 @@ export function ProfilePage() {
       <div className="profile-stats"><span><strong>{posts.length}</strong> публикаций</span><span><strong>{profile.followerCount}</strong> подписчиков</span><span><strong>{profile.followingCount}</strong> подписок</span></div>
     </header>
     <div className="section-label">Публикации</div>
-    <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div>
+    <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setPosts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div>
   </section>;
 }
