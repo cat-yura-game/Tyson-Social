@@ -7,6 +7,7 @@ import { sessionContext } from './middleware/auth';
 import { api } from './routes';
 import type { AppVariables, Env } from './types';
 import { deleteExpiredStories } from './routes/stories';
+import { deleteExpiredAiChatImages } from './routes/ai-chat';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -32,6 +33,6 @@ app.onError((error, c) => {
 export default {
   fetch: app.fetch,
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(deleteExpiredStories(env));
+    ctx.waitUntil(Promise.all([deleteExpiredStories(env), deleteExpiredAiChatImages(env)]));
   },
 };

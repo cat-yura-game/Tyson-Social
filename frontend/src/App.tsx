@@ -12,6 +12,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { TelegramCallbackPage } from './pages/TelegramCallbackPage';
 
 const MessagesPage = lazy(() => import('./pages/MessagesPage').then((module) => ({ default: module.MessagesPage })));
+const AiPage = lazy(() => import('./pages/AiPage').then((module) => ({ default: module.AiPage })));
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -28,6 +29,7 @@ function ProductRoutes() {
         <Route path="/post/:id" element={<PostPage />} />
         <Route path="/create" element={<RequireAuth><CreatePage /></RequireAuth>} />
         <Route path="/messages" element={<RequireAuth><Suspense fallback={<div className="app-loading">Подготовка защищённого мессенджера…</div>}><MessagesPage /></Suspense></RequireAuth>} />
+        <Route path="/ai" element={<RequireAuth><Suspense fallback={<div className="app-loading">Запускаем Tyson AI…</div>}><AiPage /></Suspense></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
         <Route path="/company" element={<RequireAuth><PlaceholderPage kind="company" /></RequireAuth>} />
         <Route path="/admin" element={<RequireAuth><PlaceholderPage kind="admin" /></RequireAuth>} />

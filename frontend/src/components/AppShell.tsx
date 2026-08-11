@@ -1,4 +1,4 @@
-import { Bell, Building2, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, UserRound } from 'lucide-react';
+import { Bell, Building2, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, Sparkles, UserRound } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -13,6 +13,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navItems = [
     { to: '/', label: 'Главная', icon: Home, end: true },
     { to: '/messages', label: 'Сообщения', icon: MessageCircle },
+    { to: '/ai', label: 'AI', icon: Sparkles },
     { to: '/company', label: 'Для компаний', icon: Building2 },
     { to: profilePath, label: user ? 'Профиль' : 'Войти', icon: user ? UserRound : LogIn },
     { to: '/settings', label: 'Настройки', icon: Settings },
@@ -49,7 +50,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       <nav className="bottom-nav" aria-label="Мобильная навигация">
         {navItems.slice(0, 2).map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} aria-label={label} className={({ isActive }) => isActive ? 'active' : ''}><Icon /></NavLink>)}
         <NavLink className="mobile-create" to={user ? '/create' : '/login'} aria-label="Создать пост"><Plus /></NavLink>
-        {navItems.slice(3, 5).map(({ to, label, icon: Icon }) => <NavLink key={`${to}-${label}`} to={to} aria-label={label} className={({ isActive }) => isActive ? 'active' : ''}><Icon /></NavLink>)}
+        {[navItems[2], navItems[4]].map((item) => {
+          if (!item) return null;
+          const Icon = item.icon;
+          return <NavLink key={`${item.to}-${item.label}`} to={item.to} aria-label={item.label} className={({ isActive }) => isActive ? 'active' : ''}><Icon /></NavLink>;
+        })}
       </nav>
     </div>
   );

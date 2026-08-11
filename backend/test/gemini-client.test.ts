@@ -30,4 +30,25 @@ describe('Gemini Worker client', () => {
     await expect(client.generate({ systemInstruction: 'Classify.', parts: [{ text: 'input' }], maxOutputTokens: 100 }))
       .rejects.toBeInstanceOf(GeminiBlockedError);
   });
+
+  it('sends a bounded multi-turn conversation when contents are provided', async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { contents: Array<{ role: string }> };
+      expect(body.contents.map((item) => item.role)).toEqual(['user', 'model', 'user']);
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: 'answer' }] }, finishReason: 'STOP' }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    const client = new GeminiClient('secret-key', 'gemini-test', fetcher as typeof fetch);
+    await client.generate({
+      systemInstruction: 'Assist.',
+      parts: [{ text: 'latest' }],
+      contents: [
+        { role: 'user', parts: [{ text: 'first' }] },
+        { role: 'model', parts: [{ text: 'reply' }] },
+        { role: 'user', parts: [{ text: 'latest' }] },
+      ],
+      maxOutputTokens: 100,
+    });
+  });
 });

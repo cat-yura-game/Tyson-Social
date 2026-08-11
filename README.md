@@ -32,7 +32,9 @@ The deployed development API is `https://tyson-api.clickerscatom.workers.dev`. I
 7. Add secrets: `pnpm exec wrangler secret put SESSION_SECRET --config backend/wrangler.jsonc`, `pnpm exec wrangler secret put GEMINI_API_KEY --config backend/wrangler.jsonc` and `pnpm exec wrangler secret put TELEGRAM_OIDC_CLIENT_SECRET --config backend/wrangler.jsonc`.
 8. Deploy with `pnpm --filter @tyson/backend deploy`.
 
-Set `GEMINI_MODERATION_MODEL`, `GEMINI_SUMMARY_MODEL` and `GEMINI_RECOMMENDATION_MODEL` as non-secret Wrangler variables. The free-MVP default for all three tasks is `gemini-3.5-flash-lite`. The variables remain separate so each task can be migrated independently later. For local AI calls, copy `backend/.dev.vars.example` to `backend/.dev.vars`. Never commit `.dev.vars`, `.env.local`, API keys or credentials.
+Set `GEMINI_MODERATION_MODEL`, `GEMINI_SUMMARY_MODEL`, `GEMINI_RECOMMENDATION_MODEL` and `GEMINI_CHAT_MODEL` as non-secret Wrangler variables. The free-MVP default for all tasks is `gemini-3.5-flash-lite`. The variables remain separate so each task can be migrated independently later. For local AI calls, copy `backend/.dev.vars.example` to `backend/.dev.vars`. Never commit `.dev.vars`, `.env.local`, API keys or credentials.
+
+The `/ai` area stores private AI conversation text in D1. A regular account receives 10 Gemini requests per UTC day; linking Telegram raises the limit to 20. Attached images are validated by the Worker, limited to 5 MiB, stored with a 24-hour Cloudflare KV expiration and removed from message metadata by the scheduled cleanup job. Conversation text remains until the user deletes the conversation.
 
 All Gemini calls originate in the Cloudflare Worker. The frontend never receives the key and cannot call Gemini directly. Without a Gemini key, non-production environments use deterministic development providers; production fails closed during provider construction.
 

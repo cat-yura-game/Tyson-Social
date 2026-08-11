@@ -18,6 +18,7 @@ export interface GeminiPart {
 export interface GeminiGenerateOptions {
   systemInstruction: string;
   parts: GeminiPart[];
+  contents?: Array<{ role: 'user' | 'model'; parts: GeminiPart[] }>;
   responseJsonSchema?: Record<string, unknown>;
   maxOutputTokens: number;
 }
@@ -71,7 +72,7 @@ export class GeminiClient {
       },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: options.systemInstruction }] },
-        contents: [{ role: 'user', parts: options.parts }],
+        contents: options.contents ?? [{ role: 'user', parts: options.parts }],
         generationConfig,
       }),
       signal: AbortSignal.timeout(20_000),
