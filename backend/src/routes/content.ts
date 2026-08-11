@@ -8,6 +8,8 @@ import type { AppVariables, Env } from '../types';
 import type { ModerationResult } from '../ai/moderation';
 import { rankFeed, type FeedCandidate } from '../recommendations/feed-ranking';
 import { extractTrends, type TrendSourcePost } from '../trends/extract-trends';
+import { assertImageSignature, assertValidMedia, createMediaKey, KvMediaStorage, MAX_MEDIA_BYTES, type AllowedImageType } from '../services/media-storage';
+import { base64Encode } from '../security/encoding';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const contentRoutes = new Hono<App>();
@@ -19,7 +21,7 @@ function requireUser(c: Parameters<typeof fail>[0]) {
   return { user };
 }
 
-async function moderate(env: Env, body: string): Promise<ModerationResult> {
+async function moderate(env: Env, body: string, media: Array<{ mimeType: string; objectKey: string; base64Data: string }> = []): Promise<ModerationResult> {
   if (env.MODERATION_MODE === 'bypass') {
     return {
       decision: 'allow',
@@ -31,11 +33,45 @@ async function moderate(env: Env, body: string): Promise<ModerationResult> {
     };
   }
   try {
-    return await createAiProviders(env).moderation.moderate({ text: body, links: extractLinks(body), media: [] });
+    return await createAiProviders(env).moderation.moderate({ text: body, links: extractLinks(body), media });
   } catch (error) {
     const providerError = error instanceof Error ? error.message.slice(0, 500) : 'unknown';
     console.error(JSON.stringify({ event: 'moderation_provider_failed', error: providerError }));
     return { decision: 'review', riskScore: 0.5, categories: ['provider_unavailable'], reason: `Moderation provider was unavailable; queued for human review. ${providerError}`, provider: 'tyson-fallback', modelVersion: 'fallback-v1' };
+  }
+}
+
+interface CreatePostImage {
+  bytes: ArrayBuffer;
+  contentType: AllowedImageType;
+}
+
+async function createPostInput(c: Parameters<typeof fail>[0]): Promise<{ body: string; image: CreatePostImage | null } | Response> {
+  const contentType = c.req.header('content-type')?.toLowerCase() ?? '';
+  if (!contentType.includes('multipart/form-data')) {
+    const input = await json(c, postBodySchema);
+    return input instanceof Response ? input : { body: input.body, image: null };
+  }
+
+  const declaredLength = Number(c.req.header('content-length') ?? 0);
+  if (declaredLength > MAX_MEDIA_BYTES + 256 * 1024) {
+    return fail(c, 413, 'IMAGE_TOO_LARGE', 'Post image must not exceed 5 MiB.');
+  }
+  try {
+    const form = await c.req.formData();
+    const input = postBodySchema.parse({ body: form.get('body') });
+    const uploaded = form.get('image');
+    if (uploaded === null) return { body: input.body, image: null };
+    if (!(uploaded instanceof File)) return fail(c, 422, 'INVALID_IMAGE', 'A valid image file is required.');
+    const imageContentType = uploaded.type.toLowerCase();
+    const bytes = await uploaded.arrayBuffer();
+    assertValidMedia(imageContentType, bytes.byteLength);
+    if (imageContentType === 'image/avif') throw new Error('Post images must be JPEG, PNG or WebP.');
+    assertImageSignature(imageContentType, new Uint8Array(bytes));
+    return { body: input.body, image: { bytes, contentType: imageContentType } };
+  } catch (error) {
+    if (error instanceof Response) return error;
+    return fail(c, 422, 'INVALID_POST', error instanceof ZodError ? 'The submitted post is invalid.' : error instanceof Error ? error.message : 'Invalid post data.', error instanceof ZodError ? error.flatten() : undefined);
   }
 }
 
@@ -51,6 +87,7 @@ async function json<T>(c: Parameters<typeof fail>[0], schema: { parse(value: unk
 const POST_SELECT = `SELECT p.id, p.body, p.like_count AS likeCount, p.comment_count AS commentCount,
   p.published_at AS publishedAt, p.updated_at AS updatedAt,
   u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
+  (SELECT pm.storage_key FROM post_media pm WHERE pm.post_id = p.id ORDER BY pm.sort_order LIMIT 1) AS mediaKey,
   COALESCE((SELECT reaction FROM post_reactions r WHERE r.post_id = p.id AND r.user_id = ?), '') AS viewerReaction
   FROM posts p JOIN users u ON u.id = p.author_user_id`;
 
@@ -103,15 +140,29 @@ contentRoutes.get('/posts/:id', async (c) => {
 
 contentRoutes.post('/posts', async (c) => {
   const auth = requireUser(c); if ('error' in auth) return auth.error;
-  const input = await json(c, postBodySchema); if (input instanceof Response) return input;
-  const result = await moderate(c.env, input.body);
+  const input = await createPostInput(c); if (input instanceof Response) return input;
+  const imageBase64 = input.image ? base64Encode(new Uint8Array(input.image.bytes)) : null;
+  const result = await moderate(c.env, input.body, input.image && imageBase64 ? [{ mimeType: input.image.contentType, objectKey: 'pending-upload', base64Data: imageBase64 }] : []);
   const postId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const status = result.decision === 'allow' ? 'published' : result.decision;
-  await c.env.DB.batch([
+  const status = result.decision === 'allow' ? 'published' : result.decision === 'block' ? 'blocked' : 'review';
+  const storage = new KvMediaStorage(c.env.MEDIA);
+  const mediaKey = input.image && result.decision !== 'block' ? createMediaKey(auth.user.id, input.image.contentType) : null;
+  const statements = [
     c.env.DB.prepare(`INSERT INTO posts (id, author_user_id, body, status, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(postId, auth.user.id, input.body, status, status === 'published' ? now : null, now, now),
-    c.env.DB.prepare(`INSERT INTO moderation_results (id, subject_type, subject_id, decision, risk_score, categories_json, reason, provider, model_version, input_hash, created_at) VALUES (?, 'post', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), postId, result.decision, result.riskScore, JSON.stringify(result.categories), result.reason, result.provider, result.modelVersion, await sha256(input.body), now),
-  ]);
+    c.env.DB.prepare(`INSERT INTO moderation_results (id, subject_type, subject_id, decision, risk_score, categories_json, reason, provider, model_version, input_hash, created_at) VALUES (?, 'post', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), postId, result.decision, result.riskScore, JSON.stringify(result.categories), result.reason, result.provider, result.modelVersion, await sha256(`${input.body}:${imageBase64 ? await sha256(imageBase64) : ''}`), now),
+  ];
+  if (input.image && mediaKey) {
+    statements.push(c.env.DB.prepare(`INSERT INTO post_media (id, post_id, storage_key, media_type, mime_type, byte_size, sort_order, created_at)
+      VALUES (?, ?, ?, 'image', ?, ?, 0, ?)`).bind(crypto.randomUUID(), postId, mediaKey, input.image.contentType, input.image.bytes.byteLength, now));
+    await storage.put(mediaKey, input.image.bytes, { contentType: input.image.contentType, byteSize: input.image.bytes.byteLength, ownerUserId: auth.user.id });
+  }
+  try {
+    await c.env.DB.batch(statements);
+  } catch (error) {
+    if (mediaKey) await storage.delete(mediaKey);
+    throw error;
+  }
   if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Publication was blocked by safety checks.');
   return ok(c, { id: postId, status }, 201);
 });

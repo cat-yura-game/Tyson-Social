@@ -29,7 +29,9 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   const headers = new Headers(init.headers);
   const accessToken = getAccessToken();
   if (accessToken && !headers.has('authorization')) headers.set('authorization', `Bearer ${accessToken}`);
-  if (init.body && !headers.has('content-type')) headers.set('content-type', 'application/json');
+  if (init.body && !headers.has('content-type') && !(init.body instanceof FormData)) {
+    headers.set('content-type', 'application/json');
+  }
 
   const response = await fetch(`${API_URL}/api${path}`, { ...init, headers, credentials: 'include' });
   const payload = await response.json().catch(() => null) as ({ data?: T } & ApiErrorPayload) | null;
