@@ -111,7 +111,9 @@ button { color: inherit; }
 .post-author { display: flex; flex-direction: column; min-width: 0; }
 .post-author a { display: flex; align-items: center; gap: 5px; font-size: 13px; }
 .post-author span { margin-top: 2px; color: var(--muted); font-size: 11px; }
-.verified { fill: #245a42; color: #245a42; }
+.verified { flex: 0 0 auto; fill: none; color: #245a42; }
+.verified path:first-child { fill: #245a42; stroke: #245a42; }
+.verified path:last-child { fill: none; stroke: #fff; stroke-width: 2.6; }
 .icon-button { display: grid; place-items: center; margin-left: auto; padding: 7px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; color: #747a75; }
 .icon-button:hover { background: #f0f1ed; color: var(--ink); }
 .delete-content-button { color: #a43c3c; }
