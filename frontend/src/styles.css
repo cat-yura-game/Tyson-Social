@@ -60,6 +60,19 @@ button { color: inherit; }
 .feed-tabs button.active { background: white; color: var(--ink); box-shadow: 0 3px 10px rgb(24 32 25 / 7%); }
 .active-topic { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 16px; padding: 11px 14px; border-radius: 12px; background: var(--soft-green); color: var(--green); font-size: 12px; }
 .active-topic a { font-weight: 800; }
+.dialog-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(12 20 15 / 48%); backdrop-filter: blur(5px); }
+.preferences-dialog { position: relative; width: min(560px, 100%); max-height: min(720px, calc(100vh - 40px)); overflow: auto; padding: 30px; border: 1px solid var(--line); border-radius: 22px; background: white; box-shadow: 0 30px 90px rgb(10 24 16 / 25%); }
+.preferences-dialog h2 { margin: 8px 38px 8px 0; font-size: 27px; letter-spacing: -1px; }
+.preferences-dialog > p:not(.eyebrow, .form-error) { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.dialog-close { position: absolute; top: 18px; right: 18px; display: grid; place-items: center; padding: 8px; border: 0; border-radius: 10px; background: #f0f2ed; cursor: pointer; }
+.topic-options { display: flex; flex-wrap: wrap; gap: 9px; margin: 24px 0; }
+.topic-option { display: inline-flex; align-items: center; gap: 6px; padding: 10px 13px; border: 1px solid var(--line); border-radius: 999px; background: white; font-size: 12px; font-weight: 700; cursor: pointer; transition: .18s ease; }
+.topic-option:hover { border-color: #aab8ad; background: #f7f8f4; }
+.topic-option.selected { border-color: var(--green); background: var(--soft-green); color: var(--green); }
+.preferences-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.preferences-footer small, .preferences-loading, .preferences-login span { color: var(--muted); font-size: 12px; }
+.preferences-footer .primary-button, .preferences-login .primary-button { width: auto; }
+.preferences-login { display: grid; gap: 16px; margin-top: 24px; }
 .feed-list { display: grid; gap: 14px; }
 .post-card { padding: 21px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); box-shadow: 0 8px 40px rgb(33 47 38 / 4%); transition: transform .2s ease, box-shadow .2s ease; }
 .post-card:hover { transform: translateY(-2px); box-shadow: 0 14px 45px rgb(33 47 38 / 8%); }

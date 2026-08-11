@@ -4,6 +4,8 @@ import { findUserByUsername, updateProfile } from '../repositories/auth-reposito
 import { parseJsonBody, updateProfileSchema } from '../schemas/auth';
 import type { AppVariables, AuthUser, Env } from '../types';
 import { assertImageSignature, assertValidMedia, createMediaKey, KvMediaStorage } from '../services/media-storage';
+import { feedPreferencesSchema } from '../schemas/preferences';
+import { FEED_TOPICS, type FeedTopicId } from '../recommendations/topics';
 
 export const userRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -23,6 +25,37 @@ function publicProfile(user: AuthUser) {
 userRoutes.get('/me', (c) => {
   const user = c.get('authUser');
   return user ? ok(c, { user }) : fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+});
+
+userRoutes.get('/me/feed-preferences', async (c) => {
+  const user = c.get('authUser');
+  if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const row = await c.env.DB.prepare(`SELECT preferred_topics_json AS preferredTopicsJson
+    FROM user_settings WHERE user_id = ?`).bind(user.id).first<{ preferredTopicsJson: string }>();
+  let selectedTopics: FeedTopicId[] = [];
+  try {
+    selectedTopics = feedPreferencesSchema.parse({ topics: JSON.parse(row?.preferredTopicsJson ?? '[]') }).topics;
+  } catch {
+    selectedTopics = [];
+  }
+  return ok(c, {
+    selectedTopics,
+    availableTopics: FEED_TOPICS.map(({ id, label }) => ({ id, label })),
+    maximumSelectedTopics: 6,
+  });
+});
+
+userRoutes.put('/me/feed-preferences', async (c) => {
+  const user = c.get('authUser');
+  if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  try {
+    const input = feedPreferencesSchema.parse(await parseJsonBody(c.req.raw));
+    await c.env.DB.prepare(`UPDATE user_settings SET preferred_topics_json = ?, updated_at = ? WHERE user_id = ?`)
+      .bind(JSON.stringify(input.topics), new Date().toISOString(), user.id).run();
+    return ok(c, { selectedTopics: input.topics });
+  } catch {
+    return fail(c, 422, 'VALIDATION_ERROR', 'Choose no more than six available topics.');
+  }
 });
 
 userRoutes.patch('/me', async (c) => {

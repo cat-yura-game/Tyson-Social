@@ -3,6 +3,7 @@ import { sha256 } from '../security/tokens';
 import type { Env } from '../types';
 import type { RecommendationSignalType } from './provider';
 import { scoreRecommendation } from './scoring';
+import { calculateTopicAffinity, FEED_TOPIC_IDS, FEED_TOPICS, type FeedTopicId } from './topics';
 
 export interface FeedCandidate {
   id: string;
@@ -33,6 +34,17 @@ function randomExploration(): number {
 }
 
 export async function rankFeed<T extends FeedCandidate>(env: Env, viewerId: string, candidates: T[]): Promise<RankedFeed<T>> {
+  const settings = await env.DB.prepare(`SELECT preferred_topics_json AS preferredTopicsJson
+    FROM user_settings WHERE user_id = ?`).bind(viewerId).first<{ preferredTopicsJson: string }>();
+  let selectedTopics: FeedTopicId[] = [];
+  try {
+    const parsed = JSON.parse(settings?.preferredTopicsJson ?? '[]') as unknown;
+    if (Array.isArray(parsed)) selectedTopics = parsed.filter((value): value is FeedTopicId =>
+      typeof value === 'string' && FEED_TOPIC_IDS.includes(value as FeedTopicId)).slice(0, 6);
+  } catch {
+    selectedTopics = [];
+  }
+  const preferredTopicLabels = FEED_TOPICS.filter((topic) => selectedTopics.includes(topic.id)).map((topic) => topic.label);
   const historyResult = await env.DB.prepare(`SELECT e.event_type AS eventType, p.body, p.author_user_id AS authorId
     FROM recommendation_events e JOIN posts p ON p.id = e.post_id
     WHERE e.user_id = ? AND e.event_type IN ('open', 'like', 'dislike', 'comment')
@@ -54,7 +66,7 @@ export async function rankFeed<T extends FeedCandidate>(env: Env, viewerId: stri
       likeCount: post.likeCount,
       commentCount: post.commentCount,
       authorAffinity: (authorAffinity.get(post.authorId) ?? 0) / 3,
-      topicAffinity: 0,
+      topicAffinity: calculateTopicAffinity(post.body, selectedTopics),
       similarContentDislikes: authorDislikes.get(post.authorId) ?? 0,
       exploration: randomExploration(),
     }).total,
@@ -70,6 +82,7 @@ export async function rankFeed<T extends FeedCandidate>(env: Env, viewerId: stri
   const contentHash = await sha256(JSON.stringify({
     candidates: aiCandidates.map((post) => [post.id, post.updatedAt]).sort(([left], [right]) => String(left).localeCompare(String(right))),
     signals,
+    preferredTopicLabels,
   }));
   try {
     const nowIso = new Date().toISOString();
@@ -84,6 +97,7 @@ export async function rankFeed<T extends FeedCandidate>(env: Env, viewerId: stri
       const ranking = await createAiProviders(env).recommendation.rank({
         candidates: aiCandidates.map((post) => ({ id: post.id, text: post.body.slice(0, 2000) })),
         signals,
+        preferredTopics: preferredTopicLabels,
       });
       orderedIds = ranking.orderedPostIds;
       const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();

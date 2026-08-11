@@ -13,6 +13,7 @@ export interface AiRecommendationSignal {
 export interface RecommendationRankingInput {
   candidates: AiRecommendationCandidate[];
   signals: AiRecommendationSignal[];
+  preferredTopics: string[];
 }
 
 export interface RecommendationRankingResult {

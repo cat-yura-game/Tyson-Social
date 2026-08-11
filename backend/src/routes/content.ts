@@ -56,13 +56,14 @@ const POST_SELECT = `SELECT p.id, p.body, p.like_count AS likeCount, p.comment_c
 
 contentRoutes.get('/feed', async (c) => {
   const viewerId = c.get('authUser')?.id ?? '';
+  const view = c.req.query('view') === 'fresh' ? 'fresh' : 'for-you';
   const topic = c.req.query('topic')?.trim().slice(0, 40);
   const topicFilter = topic ? ' AND instr(lower(p.body), lower(?)) > 0' : '';
   const statement = c.env.DB.prepare(`${POST_SELECT} WHERE p.status = 'published'${topicFilter} ORDER BY p.published_at DESC LIMIT 50`);
   const rows = topic ? await statement.bind(viewerId, topic).all() : await statement.bind(viewerId).all();
   let posts = rows.results as unknown as FeedCandidate[];
   let strategy: 'recent' | 'scoring' | 'gemini' = 'recent';
-  if (viewerId) {
+  if (viewerId && view === 'for-you') {
     try {
       const ranked = await rankFeed(c.env, viewerId, posts);
       posts = ranked.posts;
@@ -71,12 +72,12 @@ contentRoutes.get('/feed', async (c) => {
       console.error(JSON.stringify({ event: 'recommendation_provider_failed', error: error instanceof Error ? error.message : 'unknown' }));
       strategy = 'scoring';
     }
+  }
+  if (viewerId) {
     const now = new Date().toISOString();
-    if (posts.length) {
-      await c.env.DB.batch(posts.slice(0, 20).map((post) => c.env.DB.prepare(`INSERT INTO recommendation_events
-        (id, user_id, post_id, event_type, context_json, created_at) VALUES (?, ?, ?, 'impression', ?, ?)`)
-        .bind(crypto.randomUUID(), viewerId, post.id, JSON.stringify({ strategy }), now)));
-    }
+    if (posts.length) await c.env.DB.batch(posts.slice(0, 20).map((post) => c.env.DB.prepare(`INSERT INTO recommendation_events
+      (id, user_id, post_id, event_type, context_json, created_at) VALUES (?, ?, ?, 'impression', ?, ?)`)
+      .bind(crypto.randomUUID(), viewerId, post.id, JSON.stringify({ strategy, view }), now)));
   }
   return ok(c, { posts, recommendation: { strategy } });
 });

@@ -12,6 +12,7 @@ describe('Gemini recommendation provider', () => {
     const result = await provider.rank({
       candidates: [{ id: 'post-a', text: 'A' }, { id: 'post-b', text: 'B' }],
       signals: [{ type: 'like', text: 'B' }],
+      preferredTopics: ['Технологии'],
     });
     expect(result.orderedPostIds).toEqual(['post-b', 'post-a']);
   });
