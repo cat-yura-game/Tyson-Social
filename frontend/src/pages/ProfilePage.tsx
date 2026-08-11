@@ -1,4 +1,4 @@
-import { BadgeCheck, CalendarDays, MessageCircle } from 'lucide-react';
+import { BadgeCheck, CalendarDays, MessageCircle, UserCheck, UserPlus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
@@ -6,7 +6,11 @@ import { useAuth, type AuthUser } from '../auth/AuthProvider';
 import { PostCard } from '../components/PostCard';
 import type { Post } from '../types/content';
 
-type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarKey' | 'bio' | 'verified' | 'createdAt'>;
+type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarKey' | 'bio' | 'verified' | 'createdAt'> & {
+  followerCount: number;
+  followingCount: number;
+  viewerFollowing: boolean;
+};
 
 export function ProfilePage() {
   const { username = '' } = useParams();
@@ -17,6 +21,8 @@ export function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
   const [openingChat, setOpeningChat] = useState(false);
+  const [followPending, setFollowPending] = useState(false);
+  const [followError, setFollowError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true); setMissing(false);
@@ -45,13 +51,28 @@ export function ProfilePage() {
       setOpeningChat(false);
     }
   };
+  const toggleFollow = async () => {
+    setFollowPending(true);
+    setFollowError(null);
+    try {
+      const result = await apiRequest<{ following: boolean; followerCount: number }>(`/users/${encodeURIComponent(profile.username)}/follow`, {
+        method: profile.viewerFollowing ? 'DELETE' : 'PUT',
+      });
+      setProfile({ ...profile, viewerFollowing: result.following, followerCount: result.followerCount });
+    } catch {
+      setFollowError('Не удалось изменить подписку. Попробуйте ещё раз.');
+    } finally {
+      setFollowPending(false);
+    }
+  };
   return <section className="profile-page">
     <div className="profile-cover" />
     <header className="profile-header">
       {avatar ? <img className="profile-avatar profile-avatar-image" src={avatar} alt="" /> : <div className="avatar profile-avatar">{profile.displayName.slice(0, 1).toUpperCase()}</div>}
-      <div className="profile-controls">{isOwner && <Link className="secondary-button" to="/settings">Редактировать профиль</Link>}{user && !isOwner && <button className="secondary-button message-profile-button" type="button" disabled={openingChat} onClick={() => void openChat()}><MessageCircle size={17} />{openingChat ? 'Открываем…' : 'Написать'}</button>}</div>
+      <div className="profile-controls">{isOwner && <Link className="secondary-button" to="/settings">Редактировать профиль</Link>}{user && !isOwner && <><button className={profile.viewerFollowing ? 'secondary-button follow-button following' : 'secondary-button follow-button'} type="button" disabled={followPending} onClick={() => void toggleFollow()}>{profile.viewerFollowing ? <UserCheck size={17} /> : <UserPlus size={17} />}{followPending ? 'Подождите…' : profile.viewerFollowing ? 'Вы подписаны' : 'Подписаться'}</button><button className="secondary-button message-profile-button" type="button" disabled={openingChat} onClick={() => void openChat()}><MessageCircle size={17} />{openingChat ? 'Открываем…' : 'Написать'}</button></>}</div>
+      {followError && <p className="profile-follow-error form-error" role="alert">{followError}</p>}
       <div className="profile-copy"><h1>{profile.displayName}{profile.verified && <BadgeCheck className="verified" size={21} aria-label="Подтверждённый аккаунт" />}</h1><p>@{profile.username}</p><p className="profile-bio">{profile.bio || 'Пользователь пока ничего о себе не рассказал.'}</p><span><CalendarDays size={16} />В Tyson с {joined}</span>{isOwner && !user.emailVerified && <span className="unverified-badge">Email пока не подтверждён</span>}</div>
-      <div className="profile-stats"><span><strong>{posts.length}</strong> публикаций</span></div>
+      <div className="profile-stats"><span><strong>{posts.length}</strong> публикаций</span><span><strong>{profile.followerCount}</strong> подписчиков</span><span><strong>{profile.followingCount}</strong> подписок</span></div>
     </header>
     <div className="section-label">Публикации</div>
     <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div>

@@ -93,11 +93,16 @@ const POST_SELECT = `SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.
 
 contentRoutes.get('/feed', async (c) => {
   const viewerId = c.get('authUser')?.id ?? '';
-  const view = c.req.query('view') === 'fresh' ? 'fresh' : 'for-you';
+  const requestedView = c.req.query('view');
+  const view: 'for-you' | 'fresh' | 'following' = requestedView === 'fresh' || requestedView === 'following' ? requestedView : 'for-you';
+  if (view === 'following' && !viewerId) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
   const topic = c.req.query('topic')?.trim().slice(0, 40);
   const topicFilter = topic ? ' AND instr(lower(p.body), lower(?)) > 0' : '';
-  const statement = c.env.DB.prepare(`${POST_SELECT} WHERE p.status = 'published'${topicFilter} ORDER BY p.published_at DESC LIMIT 50`);
-  const rows = topic ? await statement.bind(viewerId, topic).all() : await statement.bind(viewerId).all();
+  const followingFilter = view === 'following' ? ` AND EXISTS (SELECT 1 FROM user_follows f
+    WHERE f.follower_user_id = ? AND f.followed_user_id = p.author_user_id)` : '';
+  const statement = c.env.DB.prepare(`${POST_SELECT} WHERE p.status = 'published'${followingFilter}${topicFilter} ORDER BY p.published_at DESC LIMIT 50`);
+  const bindings = [viewerId, ...(view === 'following' ? [viewerId] : []), ...(topic ? [topic] : [])];
+  const rows = await statement.bind(...bindings).all();
   let posts = rows.results as unknown as FeedCandidate[];
   let strategy: 'recent' | 'scoring' | 'gemini' = 'recent';
   if (viewerId && view === 'for-you') {

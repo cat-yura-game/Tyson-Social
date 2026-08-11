@@ -123,9 +123,46 @@ userRoutes.get('/:username/posts', async (c) => {
   return ok(c, { posts: rows.results });
 });
 
+userRoutes.put('/:username/follow', async (c) => {
+  const viewer = c.get('authUser');
+  if (!viewer) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const username = c.req.param('username').trim().toLowerCase();
+  const target = await findUserByUsername(c.env.DB, username);
+  if (!target) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
+  if (target.id === viewer.id) return fail(c, 422, 'SELF_FOLLOW', 'You cannot follow yourself.');
+  await c.env.DB.prepare(`INSERT INTO user_follows (follower_user_id, followed_user_id, created_at)
+    VALUES (?, ?, ?) ON CONFLICT(follower_user_id, followed_user_id) DO NOTHING`)
+    .bind(viewer.id, target.id, new Date().toISOString()).run();
+  const count = await c.env.DB.prepare('SELECT COUNT(*) AS followerCount FROM user_follows WHERE followed_user_id = ?')
+    .bind(target.id).first<{ followerCount: number }>();
+  return ok(c, { following: true, followerCount: count?.followerCount ?? 0 });
+});
+
+userRoutes.delete('/:username/follow', async (c) => {
+  const viewer = c.get('authUser');
+  if (!viewer) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const username = c.req.param('username').trim().toLowerCase();
+  const target = await findUserByUsername(c.env.DB, username);
+  if (!target) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
+  if (target.id === viewer.id) return fail(c, 422, 'SELF_FOLLOW', 'You cannot follow yourself.');
+  await c.env.DB.prepare('DELETE FROM user_follows WHERE follower_user_id = ? AND followed_user_id = ?')
+    .bind(viewer.id, target.id).run();
+  const count = await c.env.DB.prepare('SELECT COUNT(*) AS followerCount FROM user_follows WHERE followed_user_id = ?')
+    .bind(target.id).first<{ followerCount: number }>();
+  return ok(c, { following: false, followerCount: count?.followerCount ?? 0 });
+});
+
 userRoutes.get('/:username', async (c) => {
   const username = c.req.param('username').trim().toLowerCase();
   if (!/^[a-z0-9_]{3,30}$/u.test(username)) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
   const user = await findUserByUsername(c.env.DB, username);
-  return user ? ok(c, { user: publicProfile(user) }) : fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
+  if (!user) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
+  const viewerId = c.get('authUser')?.id ?? '';
+  const stats = await c.env.DB.prepare(`SELECT
+    (SELECT COUNT(*) FROM user_follows WHERE followed_user_id = ?) AS followerCount,
+    (SELECT COUNT(*) FROM user_follows WHERE follower_user_id = ?) AS followingCount,
+    EXISTS(SELECT 1 FROM user_follows WHERE follower_user_id = ? AND followed_user_id = ?) AS viewerFollowing`)
+    .bind(user.id, user.id, viewerId, user.id).first<{ followerCount: number; followingCount: number; viewerFollowing: number }>();
+  return ok(c, { user: { ...publicProfile(user), followerCount: stats?.followerCount ?? 0,
+    followingCount: stats?.followingCount ?? 0, viewerFollowing: stats?.viewerFollowing === 1 } });
 });
