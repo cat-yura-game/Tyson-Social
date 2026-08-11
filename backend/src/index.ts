@@ -9,8 +9,15 @@ import type { AppVariables, Env } from './types';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
+const defaultSecurityHeaders = secureHeaders();
+const publicMediaSecurityHeaders = secureHeaders({ crossOriginResourcePolicy: 'cross-origin' });
+
 app.use('*', requestContext);
-app.use('*', secureHeaders());
+app.use('*', (c, next) => (
+  c.req.path.startsWith('/api/media/')
+    ? publicMediaSecurityHeaders(c, next)
+    : defaultSecurityHeaders(c, next)
+));
 app.use('/api/*', secureCors);
 app.use('/api/*', sessionContext);
 app.route('/api', api);
