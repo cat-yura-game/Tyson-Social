@@ -11,9 +11,34 @@ import {
 } from '../services/media-storage';
 import type { AppVariables, Env } from '../types';
 import { aiDailyRequestLimit } from '../ai/chat-quota';
+import { z } from 'zod';
 
 const IMAGE_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const MAX_MESSAGE_LENGTH = 8_000;
+const rewriteStyles = {
+  business: 'Businesslike: structured, direct and appropriate for professional communication.',
+  corporate: 'Corporate: polished, brand-safe, confident and suitable for an organization account.',
+  professional: 'Professional: precise, credible and well organized without sounding bureaucratic.',
+  friendly: 'Friendly: warm, natural, approachable and conversational.',
+  concise: 'Concise: remove repetition and make every sentence useful while preserving key facts.',
+  persuasive: 'Persuasive: strengthen the argument and call to action without manipulation or invented claims.',
+  expert: 'Expert: authoritative and informative, explain terms clearly and preserve nuance.',
+  storytelling: 'Storytelling: use a compelling narrative flow while keeping all original facts.',
+  energetic: 'Energetic: lively, dynamic and engaging without excessive hype.',
+  neutral: 'Neutral: calm, balanced, factual and free of emotional pressure.',
+} as const;
+const rewriteSchema = z.object({
+  title: z.string().max(200),
+  body: z.string().min(1).max(10_000),
+  style: z.enum(Object.keys(rewriteStyles) as [keyof typeof rewriteStyles, ...(keyof typeof rewriteStyles)[]]),
+  customInstruction: z.string().max(500).optional().default(''),
+}).strict();
+const rewriteResultSchema = z.object({ title: z.string().max(200), body: z.string().min(1).max(10_000) });
+const rewriteJsonSchema = {
+  type: 'object', additionalProperties: false,
+  properties: { title: { type: 'string' }, body: { type: 'string' } },
+  required: ['title', 'body'],
+};
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const aiChatRoutes = new Hono<App>();
@@ -38,6 +63,48 @@ aiChatRoutes.get('/quota', async (c) => {
   const auth = requireUser(c); if ('error' in auth) return auth.error;
   const quota = await quotaState(c.env.DB, auth.user.id);
   return ok(c, { ...quota, remaining: Math.max(0, quota.limit - quota.used) });
+});
+
+aiChatRoutes.post('/rewrite-post', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  let input: z.infer<typeof rewriteSchema>;
+  try { input = rewriteSchema.parse(await c.req.json()); }
+  catch { return fail(c, 422, 'VALIDATION_ERROR', 'Invalid post rewrite request.'); }
+
+  const quota = await quotaState(c.env.DB, auth.user.id);
+  if (quota.used >= quota.limit) return fail(c, 429, 'AI_DAILY_LIMIT_REACHED', `Daily AI limit of ${quota.limit} requests has been reached.`);
+  const consumed = await c.env.DB.prepare(`INSERT INTO ai_daily_usage (user_id, usage_date, request_count, updated_at)
+    VALUES (?, ?, 1, ?) ON CONFLICT(user_id, usage_date) DO UPDATE SET
+      request_count = request_count + 1, updated_at = excluded.updated_at
+    WHERE request_count < ? RETURNING request_count AS used`)
+    .bind(auth.user.id, quota.date, new Date().toISOString(), quota.limit).first<{ used: number }>();
+  if (!consumed) return fail(c, 429, 'AI_DAILY_LIMIT_REACHED', `Daily AI limit of ${quota.limit} requests has been reached.`);
+
+  try {
+    if (!c.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured.');
+    const result = await new GeminiClient(c.env.GEMINI_API_KEY, c.env.GEMINI_CHAT_MODEL).generate({
+      systemInstruction: [
+        'Rewrite a draft social-network post. Preserve its meaning, facts, names, uncertainty and language.',
+        'Never invent details, links, statistics, quotes or claims. Preserve useful Markdown paragraphs and **bold** formatting.',
+        `Requested style: ${rewriteStyles[input.style]}`,
+        input.customInstruction ? `Additional user instruction: ${input.customInstruction}` : '',
+        'Return JSON only. The title may remain empty. The body must remain suitable for publication.',
+      ].filter(Boolean).join(' '),
+      parts: [{ text: JSON.stringify({ title: input.title, body: input.body }) }],
+      responseJsonSchema: rewriteJsonSchema,
+      maxOutputTokens: 3_500,
+    });
+    const rewritten = rewriteResultSchema.parse(JSON.parse(result.text));
+    return ok(c, {
+      ...rewritten,
+      modelVersion: result.modelVersion,
+      quota: { limit: quota.limit, used: consumed.used, remaining: Math.max(0, quota.limit - consumed.used), telegramLinked: quota.telegramLinked },
+    });
+  } catch (error) {
+    if (error instanceof GeminiBlockedError) return fail(c, 422, 'AI_CONTENT_BLOCKED', 'Gemini could not rewrite this draft because of safety rules.');
+    console.error(JSON.stringify({ event: 'post_rewrite_failed', error: error instanceof Error ? error.message : 'unknown' }));
+    return fail(c, 502, 'AI_PROVIDER_UNAVAILABLE', 'Gemini is temporarily unavailable. Try again later.');
+  }
 });
 
 aiChatRoutes.get('/conversations', async (c) => {

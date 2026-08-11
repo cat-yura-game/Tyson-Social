@@ -152,6 +152,24 @@ button { color: inherit; }
 .formatting-toolbar { display: flex; gap: 7px; padding-top: 12px; }
 .formatting-toolbar button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--ink); font-size: 11px; font-weight: 750; cursor: pointer; }
 .formatting-toolbar button:hover { border-color: #9caf9f; background: var(--soft-green); color: var(--green); }
+.formatting-toolbar .ai-rewrite-trigger { margin-left: auto; border-color: #b8c9ba; color: var(--green); }
+.ai-rewrite-panel { display: grid; gap: 15px; margin: 0 0 18px; padding: 18px; border: 1px solid #dce8dc; border-radius: 17px; background: #f6f9f3; }
+.ai-rewrite-panel > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; }
+.ai-rewrite-panel > header > div { display: flex; flex-direction: column; gap: 3px; }
+.ai-rewrite-panel > header small, .ai-rewrite-panel > header > span { color: var(--muted); font-size: 10px; }
+.ai-rewrite-panel > header > span { flex: 0 0 auto; padding: 5px 8px; border-radius: 8px; background: var(--paper); }
+.rewrite-style-options { display: flex; flex-wrap: wrap; gap: 7px; }
+.rewrite-style-options button { padding: 8px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--muted); font-size: 10px; font-weight: 750; cursor: pointer; }
+.rewrite-style-options button.selected { border-color: var(--green); background: var(--soft-green); color: var(--green); }
+.custom-rewrite-instruction { display: grid; gap: 6px; }
+.custom-rewrite-instruction > span, .rewrite-result > span { color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .6px; }
+.custom-rewrite-instruction textarea { min-height: 68px !important; padding: 10px !important; resize: vertical; border: 1px solid var(--line) !important; border-radius: 11px !important; background: var(--paper) !important; font-size: 12px !important; }
+.ai-rewrite-panel .rewrite-generate { width: fit-content; }
+.rewrite-result { padding: 15px; border: 1px solid var(--line); border-radius: 13px; background: var(--paper); }
+.rewrite-result h3 { margin: 8px 0 5px; font-size: 17px; }
+.rewrite-result p { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.58; }
+.rewrite-result footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--line); }
+.rewrite-result footer .primary-button { width: auto; padding: 10px 13px; }
 .composer-author { display: flex; align-items: center; gap: 11px; }
 .composer-author > span:last-child { display: flex; flex-direction: column; font-size: 12px; }
 .composer-author small { color: var(--muted); }
@@ -376,6 +394,11 @@ button { color: inherit; }
   .post-visual span { font-size: 34px; }
   .post-actions { gap: 3px; }
   .post-actions .ai-action span { display: none; }
+  .formatting-toolbar { flex-wrap: wrap; }
+  .formatting-toolbar .ai-rewrite-trigger { margin-left: 0; }
+  .ai-rewrite-panel { padding: 14px; }
+  .ai-rewrite-panel > header { display: grid; }
+  .rewrite-result footer { display: grid; grid-template-columns: 1fr 1fr; }
   .surface-page { padding: 25px 19px; }
   .profile-page { border-radius: 18px; }
   .profile-stats { gap: 15px; flex-wrap: wrap; }
@@ -498,6 +521,11 @@ html[data-theme='dark'] .share-post-bar,
 html[data-theme='dark'] .theme-settings { background: #131a16; }
 html[data-theme='dark'] .message:not(.mine) .shared-post-message { background: #2b362f; color: var(--green); }
 html[data-theme='dark'] .moderation-note { background: #202822; color: var(--muted); }
+html[data-theme='dark'] .ai-rewrite-panel { border-color: var(--line); background: #121914; }
+html[data-theme='dark'] .custom-rewrite-instruction textarea,
+html[data-theme='dark'] .rewrite-style-options button,
+html[data-theme='dark'] .rewrite-result,
+html[data-theme='dark'] .ai-rewrite-panel > header > span { background: var(--paper) !important; color: var(--ink); }
 html[data-theme='dark'] .settings-form input:disabled { background: #202722; }
 html[data-theme='dark'] .form-error,
 html[data-theme='dark'] .messages-error { background: #3b1f20; color: #ffaaa6 !important; }
