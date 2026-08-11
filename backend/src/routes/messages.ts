@@ -1,0 +1,126 @@
+import { Hono } from 'hono';
+import { ZodError } from 'zod';
+import { fail, ok } from '../lib/responses';
+import { conversationSchema, deviceSchema, messageBatchSchema } from '../schemas/messages';
+import type { AppVariables, AuthUser, Env } from '../types';
+
+type App = { Bindings: Env; Variables: AppVariables };
+export const messageRoutes = new Hono<App>();
+
+function requireUser(c: Parameters<typeof fail>[0]): AuthUser | Response {
+  return c.get('authUser') ?? fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+}
+
+async function parse<T>(c: Parameters<typeof fail>[0], schema: { parse(value: unknown): T }): Promise<T | Response> {
+  try {
+    if (!c.req.header('content-type')?.includes('application/json')) return fail(c, 400, 'JSON_REQUIRED', 'JSON is required.');
+    return schema.parse(await c.req.json());
+  } catch (error) {
+    return fail(c, 422, 'VALIDATION_ERROR', 'Invalid messaging request.', error instanceof ZodError ? error.flatten() : undefined);
+  }
+}
+
+async function isMember(db: D1Database, conversationId: string, userId: string): Promise<boolean> {
+  return Boolean(await db.prepare(`SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL`).bind(conversationId, userId).first());
+}
+
+messageRoutes.post('/devices', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const input = await parse(c, deviceSchema); if (input instanceof Response) return input;
+  const existing = await c.env.DB.prepare('SELECT user_id AS userId FROM devices WHERE id = ?').bind(input.deviceId).first<{ userId: string }>();
+  if (existing && existing.userId !== user.id) return fail(c, 409, 'DEVICE_ID_TAKEN', 'Device identifier is already registered.');
+  const now = new Date().toISOString();
+  await c.env.DB.prepare(`INSERT INTO devices (id, user_id, name, identity_public_key, key_algorithm, key_version, created_at, last_seen_at)
+    VALUES (?, ?, ?, ?, 'libsodium-sealed-box-v1', 1, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET name = excluded.name, identity_public_key = excluded.identity_public_key,
+      last_seen_at = excluded.last_seen_at, revoked_at = NULL`)
+    .bind(input.deviceId, user.id, input.name, input.publicKey, now, now).run();
+  return ok(c, { deviceId: input.deviceId }, 201);
+});
+
+messageRoutes.get('/users/:username/devices', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const username = c.req.param('username').trim().toLowerCase();
+  const rows = await c.env.DB.prepare(`SELECT d.id AS deviceId, d.name, d.identity_public_key AS publicKey
+    FROM devices d JOIN users u ON u.id = d.user_id
+    WHERE u.username = ? COLLATE NOCASE AND d.revoked_at IS NULL ORDER BY d.created_at`)
+    .bind(username).all();
+  return ok(c, { devices: rows.results });
+});
+
+messageRoutes.post('/conversations', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const input = await parse(c, conversationSchema); if (input instanceof Response) return input;
+  const recipient = await c.env.DB.prepare(`SELECT id, username, display_name AS displayName, avatar_key AS avatarKey
+    FROM users WHERE username = ? COLLATE NOCASE AND status NOT IN ('suspended','deleted')`).bind(input.recipientUsername)
+    .first<{ id: string; username: string; displayName: string; avatarKey: string | null }>();
+  if (!recipient) return fail(c, 404, 'USER_NOT_FOUND', 'Recipient not found.');
+  if (recipient.id === user.id) return fail(c, 422, 'SELF_CONVERSATION', 'You cannot start a conversation with yourself.');
+  const existing = await c.env.DB.prepare(`SELECT c.id FROM conversations c
+    JOIN conversation_members a ON a.conversation_id = c.id AND a.user_id = ? AND a.left_at IS NULL
+    JOIN conversation_members b ON b.conversation_id = c.id AND b.user_id = ? AND b.left_at IS NULL
+    WHERE c.kind = 'direct' AND (SELECT COUNT(*) FROM conversation_members m WHERE m.conversation_id = c.id AND m.left_at IS NULL) = 2
+    LIMIT 1`).bind(user.id, recipient.id).first<{ id: string }>();
+  const conversationId = existing?.id ?? crypto.randomUUID();
+  if (!existing) {
+    const now = new Date().toISOString();
+    await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT INTO conversations (id, kind, created_by_user_id, created_at, updated_at) VALUES (?, 'direct', ?, ?, ?)`).bind(conversationId, user.id, now, now),
+      c.env.DB.prepare(`INSERT INTO conversation_members (conversation_id, user_id, joined_at) VALUES (?, ?, ?)`).bind(conversationId, user.id, now),
+      c.env.DB.prepare(`INSERT INTO conversation_members (conversation_id, user_id, joined_at) VALUES (?, ?, ?)`).bind(conversationId, recipient.id, now),
+    ]);
+  }
+  return ok(c, { conversation: { id: conversationId, otherUser: recipient } }, existing ? 200 : 201);
+});
+
+messageRoutes.get('/conversations', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const rows = await c.env.DB.prepare(`SELECT c.id, c.updated_at AS updatedAt, u.id AS otherUserId,
+    u.username AS otherUsername, u.display_name AS otherDisplayName, u.avatar_key AS otherAvatarKey,
+    u.is_verified AS otherVerified
+    FROM conversations c
+    JOIN conversation_members mine ON mine.conversation_id = c.id AND mine.user_id = ? AND mine.left_at IS NULL
+    JOIN conversation_members theirs ON theirs.conversation_id = c.id AND theirs.user_id != ? AND theirs.left_at IS NULL
+    JOIN users u ON u.id = theirs.user_id
+    WHERE c.kind = 'direct' ORDER BY c.updated_at DESC LIMIT 100`).bind(user.id, user.id).all();
+  return ok(c, { conversations: rows.results });
+});
+
+messageRoutes.get('/conversations/:id/messages', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  if (!await isMember(c.env.DB, c.req.param('id'), user.id)) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  const deviceId = c.req.query('deviceId');
+  if (!deviceId) return fail(c, 422, 'DEVICE_REQUIRED', 'Device identifier is required.');
+  const device = await c.env.DB.prepare(`SELECT 1 FROM devices WHERE id = ? AND user_id = ? AND revoked_at IS NULL`).bind(deviceId, user.id).first();
+  if (!device) return fail(c, 403, 'DEVICE_FORBIDDEN', 'Device does not belong to this account.');
+  const rows = await c.env.DB.prepare(`SELECT m.id, m.sender_user_id AS senderUserId, m.sender_device_id AS senderDeviceId,
+    m.ciphertext, m.sent_at AS sentAt, m.created_at AS createdAt
+    FROM encrypted_messages m WHERE m.conversation_id = ? AND m.recipient_device_id = ?
+    ORDER BY m.created_at ASC LIMIT 500`).bind(c.req.param('id'), deviceId).all();
+  return ok(c, { messages: rows.results });
+});
+
+messageRoutes.post('/conversations/:id/messages', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const conversationId = c.req.param('id');
+  if (!await isMember(c.env.DB, conversationId, user.id)) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  const input = await parse(c, messageBatchSchema); if (input instanceof Response) return input;
+  const senderDevice = await c.env.DB.prepare(`SELECT 1 FROM devices WHERE id = ? AND user_id = ? AND revoked_at IS NULL`).bind(input.senderDeviceId, user.id).first();
+  if (!senderDevice) return fail(c, 403, 'DEVICE_FORBIDDEN', 'Sender device does not belong to this account.');
+  const recent = await c.env.DB.prepare(`SELECT COUNT(*) AS count FROM encrypted_messages WHERE sender_user_id = ? AND created_at > datetime('now', '-1 minute')`).bind(user.id).first<{ count: number }>();
+  if ((recent?.count ?? 0) + input.envelopes.length > 100) return fail(c, 429, 'MESSAGE_RATE_LIMITED', 'Too many messages. Try again shortly.');
+  const recipientIds = [...new Set(input.envelopes.map((envelope) => envelope.recipientDeviceId))];
+  const placeholders = recipientIds.map(() => '?').join(',');
+  const allowedDevices = await c.env.DB.prepare(`SELECT d.id FROM devices d JOIN conversation_members m ON m.user_id = d.user_id
+    WHERE m.conversation_id = ? AND m.left_at IS NULL AND d.revoked_at IS NULL AND d.id IN (${placeholders})`)
+    .bind(conversationId, ...recipientIds).all<{ id: string }>();
+  if (allowedDevices.results.length !== recipientIds.length) return fail(c, 403, 'RECIPIENT_DEVICE_FORBIDDEN', 'A recipient device is not part of this conversation.');
+  const now = new Date().toISOString();
+  const statements = input.envelopes.map((envelope) => c.env.DB.prepare(`INSERT INTO encrypted_messages
+    (id, conversation_id, sender_user_id, sender_device_id, recipient_device_id, ciphertext, envelope_version, client_message_id, sent_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`).bind(crypto.randomUUID(), conversationId, user.id, input.senderDeviceId,
+      envelope.recipientDeviceId, envelope.ciphertext, envelope.clientMessageId, now, now));
+  statements.push(c.env.DB.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').bind(now, conversationId));
+  await c.env.DB.batch(statements);
+  return ok(c, { sent: true, sentAt: now }, 201);
+});

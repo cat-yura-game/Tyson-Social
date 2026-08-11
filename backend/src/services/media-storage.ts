@@ -21,7 +21,7 @@ export interface StoredMedia {
 }
 
 export interface MediaStorage {
-  put(key: string, body: ReadableStream, metadata: MediaMetadata): Promise<void>;
+  put(key: string, body: ReadableStream | ArrayBuffer, metadata: MediaMetadata): Promise<void>;
   get(key: string): Promise<StoredMedia | null>;
   delete(key: string): Promise<void>;
 }
@@ -33,6 +33,17 @@ export function assertValidMedia(contentType: string, byteSize: number): asserts
   }
 }
 
+export function assertImageSignature(contentType: AllowedImageType, bytes: Uint8Array): void {
+  const matches = contentType === 'image/jpeg'
+    ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+    : contentType === 'image/png'
+      ? bytes.slice(0, 8).every((value, index) => value === [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][index])
+      : contentType === 'image/webp'
+        ? new TextDecoder().decode(bytes.slice(0, 4)) === 'RIFF' && new TextDecoder().decode(bytes.slice(8, 12)) === 'WEBP'
+        : new TextDecoder().decode(bytes.slice(4, 12)).includes('ftypavif');
+  if (!matches) throw new Error('Image content does not match its MIME type.');
+}
+
 export function createMediaKey(ownerUserId: string, contentType: AllowedImageType): string {
   if (!/^[0-9a-f-]{36}$/i.test(ownerUserId)) throw new Error('Invalid owner ID.');
   return `media/${ownerUserId}/${crypto.randomUUID()}.${ALLOWED_IMAGE_TYPES[contentType]}`;
@@ -41,7 +52,7 @@ export function createMediaKey(ownerUserId: string, contentType: AllowedImageTyp
 export class KvMediaStorage implements MediaStorage {
   constructor(private readonly namespace: KVNamespace) {}
 
-  async put(key: string, body: ReadableStream, metadata: MediaMetadata): Promise<void> {
+  async put(key: string, body: ReadableStream | ArrayBuffer, metadata: MediaMetadata): Promise<void> {
     assertValidMedia(metadata.contentType, metadata.byteSize);
     await this.namespace.put(key, body, { metadata });
   }

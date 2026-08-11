@@ -12,6 +12,7 @@ export interface AuthUser {
   status: 'pending_email' | 'active' | 'limited';
   emailVerified: boolean;
   verified: boolean;
+  usernameChangeAvailable: boolean;
   createdAt: string;
 }
 

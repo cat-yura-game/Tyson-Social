@@ -2,6 +2,7 @@ import { Bell, Building2, Home, LogIn, LogOut, MessageCircle, Plus, Search, Sett
 import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
+import { mediaUrl } from '../api/client';
 import { Brand } from './Brand';
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -32,7 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <NavLink className="create-button" to={user ? '/create' : '/login'}><Plus size={20} />Создать пост</NavLink>
         {user ? (
           <div className="sidebar-profile">
-            <span className="avatar avatar-small">{user.displayName.slice(0, 1).toUpperCase()}</span>
+            <span className="avatar avatar-small">{user.avatarKey ? <img className="avatar-image" src={mediaUrl(user.avatarKey) ?? ''} alt="" /> : user.displayName.slice(0, 1).toUpperCase()}</span>
             <span><strong>{user.displayName}</strong><small>@{user.username}</small></span>
             <button className="icon-button logout-button" type="button" aria-label="Выйти" title="Выйти" onClick={() => void handleLogout()}><LogOut size={17} /></button>
           </div>

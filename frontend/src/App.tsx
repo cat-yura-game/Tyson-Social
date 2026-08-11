@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/AuthProvider';
 import { AppShell } from './components/AppShell';
@@ -8,6 +8,9 @@ import { FeedPage } from './pages/FeedPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { PostPage } from './pages/PostPage';
+import { SettingsPage } from './pages/SettingsPage';
+
+const MessagesPage = lazy(() => import('./pages/MessagesPage').then((module) => ({ default: module.MessagesPage })));
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -23,8 +26,8 @@ function ProductRoutes() {
         <Route path="/profile/:username" element={<ProfilePage />} />
         <Route path="/post/:id" element={<PostPage />} />
         <Route path="/create" element={<RequireAuth><CreatePage /></RequireAuth>} />
-        <Route path="/messages" element={<RequireAuth><PlaceholderPage kind="messages" /></RequireAuth>} />
-        <Route path="/settings" element={<RequireAuth><PlaceholderPage kind="settings" /></RequireAuth>} />
+        <Route path="/messages" element={<RequireAuth><Suspense fallback={<div className="app-loading">Подготовка защищённого мессенджера…</div>}><MessagesPage /></Suspense></RequireAuth>} />
+        <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
         <Route path="/company" element={<RequireAuth><PlaceholderPage kind="company" /></RequireAuth>} />
         <Route path="/admin" element={<RequireAuth><PlaceholderPage kind="admin" /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />

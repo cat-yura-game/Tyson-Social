@@ -103,6 +103,7 @@ authRoutes.post('/register', async (c) => {
     status: 'pending_email',
     emailVerified: false,
     verified: false,
+    usernameChangeAvailable: true,
     createdAt: now.toISOString(),
   };
 
@@ -179,6 +180,7 @@ authRoutes.post('/login', async (c) => {
     status: user.status,
     emailVerified: user.emailVerified,
     verified: user.verified,
+    usernameChangeAvailable: user.usernameChangeAvailable,
     createdAt: user.createdAt,
   };
   const now = new Date();
