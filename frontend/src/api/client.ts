@@ -42,3 +42,16 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   if (!payload || !('data' in payload)) throw new ApiError('Сервер вернул некорректный ответ.', 502, 'INVALID_RESPONSE');
   return payload.data as T;
 }
+
+export async function apiRawRequest(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const accessToken = getAccessToken();
+  if (accessToken && !headers.has('authorization')) headers.set('authorization', `Bearer ${accessToken}`);
+  const response = await fetch(`${API_URL}/api${path}`, { ...init, headers, credentials: 'include' });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as ApiErrorPayload | null;
+    if (response.status === 401) setAccessToken(null);
+    throw new ApiError(payload?.error?.message ?? 'Не удалось выполнить запрос.', response.status, payload?.error?.code ?? 'REQUEST_FAILED', payload?.error?.details);
+  }
+  return response;
+}

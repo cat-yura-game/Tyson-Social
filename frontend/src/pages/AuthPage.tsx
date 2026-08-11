@@ -66,8 +66,8 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           {!registerMode && <Link className="forgot-link" to="/forgot-password">Забыли пароль?</Link>}
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="primary-button" type="submit" disabled={pending}>{pending ? 'Подождите…' : registerMode ? 'Создать аккаунт' : 'Войти'}<ArrowRight size={18} /></button>
-          {!registerMode && <><div className="auth-separator"><span>или</span></div><button className="telegram-login-button" type="button" disabled={telegramPending} onClick={() => void loginWithTelegram()}><Send size={18} />{telegramPending ? 'Открываем Telegram…' : 'Войти через Telegram'}</button></>}
-          {registerMode && <p className="verification-note">Письма пока отключены. Аккаунт будет создан со статусом «email не подтверждён».</p>}
+          <div className="auth-separator"><span>или</span></div><button className="telegram-login-button" type="button" disabled={telegramPending} onClick={() => void loginWithTelegram()}><Send size={18} />{telegramPending ? 'Открываем Telegram…' : registerMode ? 'Зарегистрироваться через Telegram' : 'Войти через Telegram'}</button>
+          {registerMode && <p className="verification-note">Telegram передаст Tyson ваше отображаемое имя и username. Пароль и доступ к сообщениям Telegram не передаются.</p>}
           <p className="auth-switch">{registerMode ? 'Уже есть аккаунт?' : 'Впервые в Tyson?'} <Link to={registerMode ? '/login' : '/register'}>{registerMode ? 'Войти' : 'Зарегистрироваться'}</Link></p>
         </form>
       </section>

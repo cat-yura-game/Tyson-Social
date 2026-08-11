@@ -1,4 +1,4 @@
-import { BadgeCheck, Heart, MessageCircle, MoreHorizontal, Sparkles, ThumbsDown } from 'lucide-react';
+import { BadgeCheck, Heart, MessageCircle, MoreHorizontal, Share2, Sparkles, ThumbsDown } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
@@ -40,6 +40,7 @@ export function PostCard({ post }: { post: Post }) {
         <button className={reaction === 'like' ? 'reaction-active' : ''} disabled={pending} type="button" aria-label="Нравится" onClick={() => void react('like')}><Heart size={19} /><span>{likes}</span></button>
         <button className={reaction === 'dislike' ? 'reaction-active' : ''} disabled={pending} type="button" aria-label="Не показывать похожее" onClick={() => void react('dislike')}><ThumbsDown size={19} /></button>
         <Link to={`/post/${post.id}`} aria-label={`${post.commentCount} комментариев`}><MessageCircle size={19} /><span>{post.commentCount}</span></Link>
+        <button type="button" aria-label="Отправить публикацию в Messenger" onClick={() => navigate(user ? `/messages?sharePost=${post.id}` : '/login')}><Share2 size={19} /></button>
         {post.body.length > 500 && <button className="ai-action" type="button"><Sparkles size={17} /><span>Коротко с AI</span></button>}
       </footer>
     </article>

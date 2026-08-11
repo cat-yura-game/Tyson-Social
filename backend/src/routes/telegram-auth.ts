@@ -7,6 +7,7 @@ import { base64UrlEncode, utf8 } from '../security/encoding';
 import { keyedHash, randomToken, sha256 } from '../security/tokens';
 import { createTelegramAuthorizationUrl, exchangeTelegramCode } from '../services/telegram-oidc';
 import type { AppVariables, Env } from '../types';
+import { hashPassword } from '../security/passwords';
 
 const STATE_TTL_MS = 10 * 60_000;
 const TICKET_TTL_MS = 2 * 60_000;
@@ -34,6 +35,19 @@ function frontendUrl(env: Env, path: string, parameters: Record<string, string>)
 
 function clientIp(c: Parameters<typeof fail>[0]): string {
   return c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+}
+
+async function availableTelegramUsername(db: D1Database, preferred: string | null, subject: string): Promise<string> {
+  const cleaned = (preferred ?? '').toLowerCase().replace(/[^a-z0-9_]/gu, '').slice(0, 30);
+  const seed = (await sha256(subject)).slice(0, 10);
+  const base = cleaned.length >= 3 ? cleaned : `telegram_${seed}`;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const suffix = attempt === 0 ? '' : `_${seed.slice(0, Math.min(8, 3 + attempt))}`;
+    const candidate = `${base.slice(0, 30 - suffix.length)}${suffix}`;
+    const exists = await db.prepare('SELECT 1 FROM users WHERE username = ? COLLATE NOCASE').bind(candidate).first();
+    if (!exists) return candidate;
+  }
+  return `tg_${crypto.randomUUID().replaceAll('-', '').slice(0, 20)}`;
 }
 
 telegramAuthRoutes.post('/start', async (c) => {
@@ -133,14 +147,29 @@ telegramAuthRoutes.get('/callback', async (c) => {
     const linked = await c.env.DB.prepare(`SELECT ti.user_id AS userId FROM telegram_identities ti
       JOIN users u ON u.id = ti.user_id WHERE ti.subject = ? AND u.status NOT IN ('suspended', 'deleted')`)
       .bind(identity.subject).first<{ userId: string }>();
-    if (!linked) return c.redirect(frontendUrl(c.env, '/auth/telegram/callback', { error: 'not_linked' }));
+    let userId = linked?.userId;
+    if (!userId) {
+      userId = crypto.randomUUID();
+      const username = await availableTelegramUsername(c.env.DB, identity.username, identity.subject);
+      const displayName = identity.displayName?.trim().slice(0, 80) || username;
+      const syntheticEmail = `telegram+${(await sha256(identity.subject)).slice(0, 32)}@accounts.tyson.invalid`;
+      await c.env.DB.batch([
+        c.env.DB.prepare(`INSERT INTO users
+          (id, email, username, display_name, password_hash, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`).bind(userId, syntheticEmail, username, displayName, await hashPassword(randomToken(48)), now, now),
+        c.env.DB.prepare(`INSERT INTO user_settings (user_id) VALUES (?)`).bind(userId),
+        c.env.DB.prepare(`INSERT INTO telegram_identities
+          (user_id, subject, telegram_user_id, display_name, username, picture_url, linked_at, last_login_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(userId, identity.subject, identity.telegramUserId,
+          identity.displayName, identity.username, identity.pictureUrl, now, now),
+      ]);
+    } else {
+      await c.env.DB.prepare(`UPDATE telegram_identities SET display_name = ?, username = ?, picture_url = ?, last_login_at = ?
+        WHERE user_id = ?`).bind(identity.displayName, identity.username, identity.pictureUrl, now, userId).run();
+    }
     const ticket = randomToken();
-    await c.env.DB.batch([
-      c.env.DB.prepare(`UPDATE telegram_identities SET display_name = ?, username = ?, picture_url = ?, last_login_at = ?
-        WHERE user_id = ?`).bind(identity.displayName, identity.username, identity.pictureUrl, now, linked.userId),
-      c.env.DB.prepare(`INSERT INTO telegram_login_tickets (token_hash, user_id, expires_at, created_at)
-        VALUES (?, ?, ?, ?)`).bind(await sha256(ticket), linked.userId, new Date(Date.now() + TICKET_TTL_MS).toISOString(), now),
-    ]);
+    await c.env.DB.prepare(`INSERT INTO telegram_login_tickets (token_hash, user_id, expires_at, created_at)
+      VALUES (?, ?, ?, ?)`).bind(await sha256(ticket), userId, new Date(Date.now() + TICKET_TTL_MS).toISOString(), now).run();
     return c.redirect(frontendUrl(c.env, '/auth/telegram/callback', { ticket }));
   } catch (error) {
     console.error(JSON.stringify({ event: 'telegram_oidc_callback_failed', error: error instanceof Error ? error.message : 'unknown' }));

@@ -6,6 +6,7 @@ import type { AppVariables, AuthUser, Env } from '../types';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const messageRoutes = new Hono<App>();
+const MAX_ENCRYPTED_ATTACHMENT_BYTES = 5 * 1024 * 1024 + 64;
 
 function requireUser(c: Parameters<typeof fail>[0]): AuthUser | Response {
   return c.get('authUser') ?? fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
@@ -22,6 +23,30 @@ async function parse<T>(c: Parameters<typeof fail>[0], schema: { parse(value: un
 
 async function isMember(db: D1Database, conversationId: string, userId: string): Promise<boolean> {
   return Boolean(await db.prepare(`SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL`).bind(conversationId, userId).first());
+}
+
+async function ensureSavedConversation(db: D1Database, user: AuthUser): Promise<string> {
+  const existing = await db.prepare('SELECT conversation_id AS conversationId FROM saved_conversations WHERE user_id = ?')
+    .bind(user.id).first<{ conversationId: string }>();
+  if (existing) return existing.conversationId;
+  const conversationId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  try {
+    await db.batch([
+      db.prepare(`INSERT INTO conversations (id, kind, created_by_user_id, created_at, updated_at) VALUES (?, 'direct', ?, ?, ?)`)
+        .bind(conversationId, user.id, now, now),
+      db.prepare(`INSERT INTO conversation_members (conversation_id, user_id, joined_at) VALUES (?, ?, ?)`)
+        .bind(conversationId, user.id, now),
+      db.prepare(`INSERT INTO saved_conversations (user_id, conversation_id, created_at) VALUES (?, ?, ?)`)
+        .bind(user.id, conversationId, now),
+    ]);
+    return conversationId;
+  } catch {
+    const raced = await db.prepare('SELECT conversation_id AS conversationId FROM saved_conversations WHERE user_id = ?')
+      .bind(user.id).first<{ conversationId: string }>();
+    if (!raced) throw new Error('Unable to create Saved Messages conversation.');
+    return raced.conversationId;
+  }
 }
 
 messageRoutes.post('/devices', async (c) => {
@@ -75,6 +100,7 @@ messageRoutes.post('/conversations', async (c) => {
 
 messageRoutes.get('/conversations', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
+  const savedId = await ensureSavedConversation(c.env.DB, user);
   const rows = await c.env.DB.prepare(`SELECT c.id, c.updated_at AS updatedAt, u.id AS otherUserId,
     u.username AS otherUsername, u.display_name AS otherDisplayName, u.avatar_key AS otherAvatarKey,
     u.is_verified AS otherVerified
@@ -83,7 +109,61 @@ messageRoutes.get('/conversations', async (c) => {
     JOIN conversation_members theirs ON theirs.conversation_id = c.id AND theirs.user_id != ? AND theirs.left_at IS NULL
     JOIN users u ON u.id = theirs.user_id
     WHERE c.kind = 'direct' ORDER BY c.updated_at DESC LIMIT 100`).bind(user.id, user.id).all();
-  return ok(c, { conversations: rows.results });
+  return ok(c, { conversations: [{
+    id: savedId,
+    updatedAt: new Date().toISOString(),
+    otherUserId: user.id,
+    otherUsername: user.username,
+    otherDisplayName: 'Избранное',
+    otherAvatarKey: null,
+    otherVerified: false,
+    isSaved: true,
+  }, ...rows.results.map((row) => ({ ...row, isSaved: false }))] });
+});
+
+messageRoutes.post('/conversations/:id/attachments', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const conversationId = c.req.param('id');
+  if (!await isMember(c.env.DB, conversationId, user.id)) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  if (c.req.header('content-type')?.split(';')[0]?.trim() !== 'application/octet-stream') {
+    return fail(c, 400, 'BINARY_REQUIRED', 'Encrypted attachment bytes are required.');
+  }
+  const declaredLength = Number(c.req.header('content-length') ?? 0);
+  if (declaredLength > MAX_ENCRYPTED_ATTACHMENT_BYTES) return fail(c, 413, 'ATTACHMENT_TOO_LARGE', 'Encrypted attachment must not exceed 5 MiB.');
+  const bytes = await c.req.arrayBuffer();
+  if (!bytes.byteLength || bytes.byteLength > MAX_ENCRYPTED_ATTACHMENT_BYTES) return fail(c, 413, 'ATTACHMENT_TOO_LARGE', 'Encrypted attachment must not exceed 5 MiB.');
+  const recent = await c.env.DB.prepare(`SELECT COUNT(*) AS count FROM encrypted_message_attachments
+    WHERE uploader_user_id = ? AND created_at > datetime('now', '-1 hour')`).bind(user.id).first<{ count: number }>();
+  if ((recent?.count ?? 0) >= 30) return fail(c, 429, 'ATTACHMENT_RATE_LIMITED', 'Too many attachments. Try again later.');
+  const id = crypto.randomUUID();
+  const storageKey = `encrypted-attachments/${user.id}/${id}.bin`;
+  const now = new Date().toISOString();
+  await c.env.MEDIA.put(storageKey, bytes, { metadata: { ownerUserId: user.id, byteSize: bytes.byteLength } });
+  try {
+    await c.env.DB.prepare(`INSERT INTO encrypted_message_attachments
+      (id, conversation_id, uploader_user_id, storage_key, byte_size, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .bind(id, conversationId, user.id, storageKey, bytes.byteLength, now).run();
+  } catch (error) {
+    await c.env.MEDIA.delete(storageKey);
+    throw error;
+  }
+  return ok(c, { attachmentId: id }, 201);
+});
+
+messageRoutes.get('/attachments/:id', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const attachment = await c.env.DB.prepare(`SELECT a.storage_key AS storageKey, a.conversation_id AS conversationId
+    FROM encrypted_message_attachments a JOIN conversation_members m ON m.conversation_id = a.conversation_id
+    WHERE a.id = ? AND m.user_id = ? AND m.left_at IS NULL`).bind(c.req.param('id'), user.id)
+    .first<{ storageKey: string; conversationId: string }>();
+  if (!attachment) return fail(c, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found.');
+  const stored = await c.env.MEDIA.get(attachment.storageKey, 'arrayBuffer');
+  if (!stored) return fail(c, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found.');
+  return new Response(stored, { headers: {
+    'content-type': 'application/octet-stream',
+    'cache-control': 'private, no-store',
+    'x-content-type-options': 'nosniff',
+  } });
 });
 
 messageRoutes.get('/conversations/:id/messages', async (c) => {

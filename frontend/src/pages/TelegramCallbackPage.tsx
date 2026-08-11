@@ -8,7 +8,6 @@ import { Brand } from '../components/Brand';
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_callback: 'Telegram вернул некорректный ответ.',
   expired_state: 'Время авторизации истекло. Попробуйте войти снова.',
-  not_linked: 'Этот Telegram ещё не подключён ни к одному аккаунту Tyson.',
   provider_failed: 'Telegram не завершил авторизацию. Попробуйте ещё раз.',
 };
 

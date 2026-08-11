@@ -70,3 +70,32 @@ export async function decryptForDevice(ciphertext: string, identity: DeviceIdent
   if (!plaintext) throw new Error('Unable to decrypt this message on the current device.');
   return sodium.to_string(plaintext);
 }
+
+export interface EncryptedAttachment {
+  ciphertext: Uint8Array<ArrayBuffer>;
+  key: string;
+  nonce: string;
+}
+
+export async function encryptAttachment(plaintext: Uint8Array<ArrayBuffer>): Promise<EncryptedAttachment> {
+  await sodium.ready;
+  const key = sodium.randombytes_buf(sodium.crypto_secretbox_KEYBYTES);
+  const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
+  const ciphertext = sodium.crypto_secretbox_easy(plaintext, nonce, key);
+  return {
+    ciphertext: new Uint8Array(ciphertext),
+    key: sodium.to_base64(key, sodium.base64_variants.ORIGINAL),
+    nonce: sodium.to_base64(nonce, sodium.base64_variants.ORIGINAL),
+  };
+}
+
+export async function decryptAttachment(ciphertext: Uint8Array<ArrayBuffer>, key: string, nonce: string): Promise<Uint8Array<ArrayBuffer>> {
+  await sodium.ready;
+  const plaintext = sodium.crypto_secretbox_open_easy(
+    ciphertext,
+    sodium.from_base64(nonce, sodium.base64_variants.ORIGINAL),
+    sodium.from_base64(key, sodium.base64_variants.ORIGINAL),
+  );
+  if (!plaintext) throw new Error('Unable to decrypt attachment.');
+  return new Uint8Array(plaintext);
+}
