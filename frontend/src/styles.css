@@ -202,6 +202,11 @@ button { color: inherit; }
 .settings-form input:focus, .settings-form textarea:focus { border-color: #879c8d; box-shadow: 0 0 0 3px rgb(23 61 43 / 7%); }
 .settings-form input:disabled { background: #f0f1ed; color: var(--muted); }
 .settings-form small { color: var(--muted); }
+.theme-settings { display: grid; gap: 14px; margin-bottom: 28px; padding: 18px; border: 1px solid var(--line); border-radius: 17px; background: #f7f8f4; }
+.theme-settings h2 { margin: 5px 0 0; font-size: 18px; }
+.theme-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.theme-options button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 43px; padding: 9px; border: 1px solid var(--line); border-radius: 12px; background: white; font-size: 11px; font-weight: 750; cursor: pointer; }
+.theme-options button.selected { border-color: var(--green); background: var(--soft-green); color: var(--green); box-shadow: 0 0 0 2px rgb(23 61 43 / 7%); }
 .telegram-settings { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 18px; margin-top: 30px; padding-top: 25px; border-top: 1px solid var(--line); }
 .telegram-settings-copy { display: flex; align-items: center; gap: 13px; min-width: 0; }
 .telegram-mark { display: grid; place-items: center; flex: 0 0 auto; width: 44px; height: 44px; border-radius: 14px; background: #e5f5fd; color: #229ed9; }
@@ -327,4 +332,71 @@ button { color: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+  color: #edf3ef;
+  background: #0d120f;
+  --ink: #edf3ef;
+  --muted: #a0aaa3;
+  --line: #2c3730;
+  --paper: #171e1a;
+  --green: #65c98b;
+  --soft-green: #20382a;
+}
+html[data-theme='dark'] body { background: #0d120f; }
+html[data-theme='dark'] .sidebar-profile,
+html[data-theme='dark'] .search-box,
+html[data-theme='dark'] .rail-card { background: rgb(23 30 26 / 82%); }
+html[data-theme='dark'] .search-box:focus-within,
+html[data-theme='dark'] .filter-button,
+html[data-theme='dark'] .secondary-button,
+html[data-theme='dark'] .feed-tabs button.active,
+html[data-theme='dark'] .preferences-dialog,
+html[data-theme='dark'] .topic-option,
+html[data-theme='dark'] .comments-panel,
+html[data-theme='dark'] .surface-page,
+html[data-theme='dark'] .formatting-toolbar button,
+html[data-theme='dark'] .profile-page,
+html[data-theme='dark'] .auth-page,
+html[data-theme='dark'] .sidebar-login,
+html[data-theme='dark'] .settings-form input,
+html[data-theme='dark'] .settings-form textarea,
+html[data-theme='dark'] .messages-page,
+html[data-theme='dark'] .sticker-picker,
+html[data-theme='dark'] .composer-area,
+html[data-theme='dark'] .theme-options button { background: var(--paper); color: var(--ink); }
+html[data-theme='dark'] .nav-link { color: var(--muted); }
+html[data-theme='dark'] .nav-link:hover,
+html[data-theme='dark'] .icon-button:hover,
+html[data-theme='dark'] .dialog-close,
+html[data-theme='dark'] .mobile-chat-back,
+html[data-theme='dark'] .message-composer .sticker-trigger,
+html[data-theme='dark'] .message-composer .image-message-trigger { background: #222c26; color: var(--ink); }
+html[data-theme='dark'] .create-button,
+html[data-theme='dark'] .primary-button { background: #2d7650; color: white; }
+html[data-theme='dark'] .feed-tabs { background: #202923; }
+html[data-theme='dark'] .avatar { background: #28332c; color: #d5ded8; }
+html[data-theme='dark'] .post-actions { border-color: var(--line); }
+html[data-theme='dark'] .post-media,
+html[data-theme='dark'] .composer-image-preview,
+html[data-theme='dark'] .message { background: #232d27; }
+html[data-theme='dark'] .message.mine { background: #2b6f4b; color: white; }
+html[data-theme='dark'] .message.sticker-message,
+html[data-theme='dark'] .message.sticker-message.mine { background: transparent; }
+html[data-theme='dark'] .sticker-picker button,
+html[data-theme='dark'] .share-post-bar,
+html[data-theme='dark'] .theme-settings { background: #131a16; }
+html[data-theme='dark'] .message:not(.mine) .shared-post-message { background: #2b362f; color: var(--green); }
+html[data-theme='dark'] .moderation-note { background: #202822; color: var(--muted); }
+html[data-theme='dark'] .settings-form input:disabled { background: #202722; }
+html[data-theme='dark'] .form-error,
+html[data-theme='dark'] .messages-error { background: #3b1f20; color: #ffaaa6 !important; }
+html[data-theme='dark'] .form-success { background: #193524; color: #92e2ad; }
+html[data-theme='dark'] .mobile-header { background: rgb(13 18 15 / 92%); }
+
+@media (max-width: 520px) {
+  .theme-options { grid-template-columns: 1fr; }
+  .theme-options button { justify-content: flex-start; padding-inline: 14px; }
 }

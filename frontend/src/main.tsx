@@ -4,6 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { AuthProvider } from './auth/AuthProvider';
 import './styles.css';
+import { applyTheme, getThemePreference, watchSystemTheme } from './theme';
+
+applyTheme(getThemePreference());
+watchSystemTheme();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

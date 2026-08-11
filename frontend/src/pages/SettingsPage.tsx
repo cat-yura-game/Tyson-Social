@@ -1,9 +1,10 @@
-import { Camera, Save, Send, Unlink } from 'lucide-react';
+import { Camera, Monitor, Moon, Save, Send, Sun, Unlink } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest, mediaUrl } from '../api/client';
 import { useAuth, type AuthUser } from '../auth/AuthProvider';
 import { cropAvatarToSquare } from '../images/crop-square';
+import { getThemePreference, setThemePreference, type ThemePreference } from '../theme';
 
 export function SettingsPage() {
   const { user, refresh } = useAuth();
@@ -16,6 +17,7 @@ export function SettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [telegramPending, setTelegramPending] = useState(false);
+  const [theme, setTheme] = useState<ThemePreference>(() => getThemePreference());
   const [telegramError, setTelegramError] = useState<string | null>(null);
   const [telegramStatus, setTelegramStatus] = useState<{ linked: boolean; identity: { displayName: string | null; username: string | null; linkedAt: string } | null } | null>(null);
   const telegramResult = searchParams.get('telegram');
@@ -63,6 +65,11 @@ export function SettingsPage() {
 
   const avatar = mediaUrl(user.avatarKey);
 
+  const chooseTheme = (preference: ThemePreference) => {
+    setTheme(preference);
+    setThemePreference(preference);
+  };
+
   const connectTelegram = async () => {
     setTelegramPending(true); setTelegramError(null);
     try {
@@ -90,6 +97,7 @@ export function SettingsPage() {
 
   return <section className="surface-page narrow-page settings-page">
     <header className="page-heading"><div><p className="eyebrow">Ваш аккаунт</p><h1>Настройки профиля</h1></div></header>
+    <section className="theme-settings" aria-labelledby="theme-settings-title"><div><p className="eyebrow">Оформление</p><h2 id="theme-settings-title">Тема Tyson</h2></div><div className="theme-options" role="radiogroup" aria-label="Тема интерфейса"><button type="button" role="radio" aria-checked={theme === 'system'} className={theme === 'system' ? 'selected' : ''} onClick={() => chooseTheme('system')}><Monitor size={18} />Как в системе</button><button type="button" role="radio" aria-checked={theme === 'light'} className={theme === 'light' ? 'selected' : ''} onClick={() => chooseTheme('light')}><Sun size={18} />Светлая</button><button type="button" role="radio" aria-checked={theme === 'dark'} className={theme === 'dark' ? 'selected' : ''} onClick={() => chooseTheme('dark')}><Moon size={18} />Тёмная</button></div></section>
     <div className="avatar-editor">{avatar ? <img src={avatar} alt="Фотография профиля" /> : <span className="avatar profile-avatar">{user.displayName.slice(0, 1).toUpperCase()}</span>}<label className="secondary-button"><Camera size={17} />Изменить фото<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden onChange={(event) => void uploadAvatar(event.target.files?.[0])} /></label></div>
     <form className="settings-form" onSubmit={(event) => void save(event)}>
       <label><span>Отображаемое имя</span><input required maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
