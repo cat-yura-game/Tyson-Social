@@ -6,6 +6,8 @@ describe('Gemini Worker client', () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(init?.headers).toMatchObject({ 'x-goog-api-key': 'secret-key' });
       expect(String(_input)).not.toContain('secret-key');
+      const requestBody = JSON.parse(String(init?.body)) as { generationConfig: Record<string, unknown> };
+      expect(requestBody.generationConfig).not.toHaveProperty('thinkingConfig');
       return new Response(JSON.stringify({
         candidates: [{ content: { parts: [{ text: '{"decision":"allow"}' }] }, finishReason: 'STOP' }],
         modelVersion: 'gemini-test',

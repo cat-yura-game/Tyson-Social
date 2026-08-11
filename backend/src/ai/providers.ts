@@ -4,10 +4,13 @@ import { DevelopmentSummaryProvider, type SummaryProvider } from './summary';
 import { GeminiClient } from './gemini-client';
 import { GeminiModerationProvider } from './gemini-moderation';
 import { GeminiSummaryProvider } from './gemini-summary';
+import { DevelopmentRecommendationProvider, type RecommendationProvider } from '../recommendations/provider';
+import { GeminiRecommendationProvider } from '../recommendations/gemini-recommendation';
 
 export interface AiProviders {
   moderation: ModerationProvider;
   summary: SummaryProvider;
+  recommendation: RecommendationProvider;
 }
 
 export const ALLOWED_GEMINI_MODELS = [
@@ -25,22 +28,28 @@ function parseModel(value: string): AllowedGeminiModel {
   return value as AllowedGeminiModel;
 }
 
-export function resolveGeminiModels(env: Pick<Env, 'GEMINI_MODERATION_MODEL' | 'GEMINI_SUMMARY_MODEL'>) {
+export function resolveGeminiModels(env: Pick<Env, 'GEMINI_MODERATION_MODEL' | 'GEMINI_SUMMARY_MODEL' | 'GEMINI_RECOMMENDATION_MODEL'>) {
   return {
     moderation: parseModel(env.GEMINI_MODERATION_MODEL),
     summary: parseModel(env.GEMINI_SUMMARY_MODEL),
+    recommendation: parseModel(env.GEMINI_RECOMMENDATION_MODEL),
   };
 }
 
 export function createAiProviders(env: Env): AiProviders {
   if (!env.GEMINI_API_KEY) {
     if (env.APP_ENV === 'production') throw new Error('GEMINI_API_KEY is required in production.');
-    return { moderation: new DevelopmentModerationProvider(), summary: new DevelopmentSummaryProvider() };
+    return {
+      moderation: new DevelopmentModerationProvider(),
+      summary: new DevelopmentSummaryProvider(),
+      recommendation: new DevelopmentRecommendationProvider(),
+    };
   }
 
   const models = resolveGeminiModels(env);
   return {
     moderation: new GeminiModerationProvider(new GeminiClient(env.GEMINI_API_KEY, models.moderation)),
     summary: new GeminiSummaryProvider(new GeminiClient(env.GEMINI_API_KEY, models.summary)),
+    recommendation: new GeminiRecommendationProvider(new GeminiClient(env.GEMINI_API_KEY, models.recommendation)),
   };
 }

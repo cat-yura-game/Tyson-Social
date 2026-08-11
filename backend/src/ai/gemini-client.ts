@@ -35,8 +35,8 @@ export class GeminiBlockedError extends Error {
 }
 
 export class GeminiApiError extends Error {
-  constructor(readonly status: number) {
-    super(`Gemini API returned HTTP ${status}`);
+  constructor(readonly status: number, readonly providerMessage?: string) {
+    super(`Gemini API returned HTTP ${status}${providerMessage ? `: ${providerMessage}` : ''}`);
     this.name = 'GeminiApiError';
   }
 }
@@ -56,14 +56,14 @@ export class GeminiClient {
   async generate(options: GeminiGenerateOptions): Promise<GeminiTextResult> {
     const generationConfig: Record<string, unknown> = {
       maxOutputTokens: options.maxOutputTokens,
-      thinkingConfig: { thinkingLevel: 'minimal' },
     };
     if (options.responseJsonSchema) {
       generationConfig.responseMimeType = 'application/json';
       generationConfig.responseJsonSchema = options.responseJsonSchema;
     }
 
-    const response = await this.fetcher(this.endpoint, {
+    const fetcher = this.fetcher;
+    const response = await fetcher(this.endpoint, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -77,7 +77,10 @@ export class GeminiClient {
       signal: AbortSignal.timeout(20_000),
     });
 
-    if (!response.ok) throw new GeminiApiError(response.status);
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      throw new GeminiApiError(response.status, errorPayload?.error?.message?.slice(0, 500));
+    }
     const parsed = responseSchema.parse(await response.json());
     const blockReason = parsed.promptFeedback?.blockReason;
     const candidate = parsed.candidates?.[0];

@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest, mediaUrl } from '../api/client';
 import { useAuth, type AuthUser } from '../auth/AuthProvider';
+import { cropAvatarToSquare } from '../images/crop-square';
 
 export function SettingsPage() {
   const { user, refresh } = useAuth();
@@ -34,7 +35,8 @@ export function SettingsPage() {
     if (!file) return;
     setPending(true); setError(null); setMessage(null);
     try {
-      await apiRequest('/users/me/avatar', { method: 'POST', headers: { 'content-type': file.type }, body: file });
+      const squareAvatar = await cropAvatarToSquare(file);
+      await apiRequest('/users/me/avatar', { method: 'POST', headers: { 'content-type': squareAvatar.type }, body: squareAvatar });
       await refresh(); setMessage('Фотография профиля обновлена.');
     } catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось загрузить фотографию.'); }
     finally { setPending(false); }

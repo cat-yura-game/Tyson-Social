@@ -6,6 +6,7 @@ import { commentBodySchema, extractLinks, postBodySchema, reactionSchema } from 
 import { sha256 } from '../security/tokens';
 import type { AppVariables, Env } from '../types';
 import type { ModerationResult } from '../ai/moderation';
+import { rankFeed, type FeedCandidate } from '../recommendations/feed-ranking';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const contentRoutes = new Hono<App>();
@@ -31,8 +32,9 @@ async function moderate(env: Env, body: string): Promise<ModerationResult> {
   try {
     return await createAiProviders(env).moderation.moderate({ text: body, links: extractLinks(body), media: [] });
   } catch (error) {
-    console.error(JSON.stringify({ event: 'moderation_provider_failed', error: error instanceof Error ? error.message : 'unknown' }));
-    return { decision: 'review', riskScore: 0.5, categories: ['provider_unavailable'], reason: 'Moderation provider was unavailable; queued for human review.', provider: 'tyson-fallback', modelVersion: 'fallback-v1' };
+    const providerError = error instanceof Error ? error.message.slice(0, 500) : 'unknown';
+    console.error(JSON.stringify({ event: 'moderation_provider_failed', error: providerError }));
+    return { decision: 'review', riskScore: 0.5, categories: ['provider_unavailable'], reason: `Moderation provider was unavailable; queued for human review. ${providerError}`, provider: 'tyson-fallback', modelVersion: 'fallback-v1' };
   }
 }
 
@@ -54,12 +56,36 @@ const POST_SELECT = `SELECT p.id, p.body, p.like_count AS likeCount, p.comment_c
 contentRoutes.get('/feed', async (c) => {
   const viewerId = c.get('authUser')?.id ?? '';
   const rows = await c.env.DB.prepare(`${POST_SELECT} WHERE p.status = 'published' ORDER BY p.published_at DESC LIMIT 50`).bind(viewerId).all();
-  return ok(c, { posts: rows.results });
+  let posts = rows.results as unknown as FeedCandidate[];
+  let strategy: 'recent' | 'scoring' | 'gemini' = 'recent';
+  if (viewerId) {
+    try {
+      const ranked = await rankFeed(c.env, viewerId, posts);
+      posts = ranked.posts;
+      strategy = ranked.strategy;
+    } catch (error) {
+      console.error(JSON.stringify({ event: 'recommendation_provider_failed', error: error instanceof Error ? error.message : 'unknown' }));
+      strategy = 'scoring';
+    }
+    const now = new Date().toISOString();
+    if (posts.length) {
+      await c.env.DB.batch(posts.slice(0, 20).map((post) => c.env.DB.prepare(`INSERT INTO recommendation_events
+        (id, user_id, post_id, event_type, context_json, created_at) VALUES (?, ?, ?, 'impression', ?, ?)`)
+        .bind(crypto.randomUUID(), viewerId, post.id, JSON.stringify({ strategy }), now)));
+    }
+  }
+  return ok(c, { posts, recommendation: { strategy } });
 });
 
 contentRoutes.get('/posts/:id', async (c) => {
-  const row = await c.env.DB.prepare(`${POST_SELECT} WHERE p.id = ? AND p.status = 'published'`).bind(c.get('authUser')?.id ?? '', c.req.param('id')).first();
-  return row ? ok(c, { post: row }) : fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
+  const viewerId = c.get('authUser')?.id ?? '';
+  const row = await c.env.DB.prepare(`${POST_SELECT} WHERE p.id = ? AND p.status = 'published'`).bind(viewerId, c.req.param('id')).first();
+  if (!row) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
+  if (viewerId) {
+    await c.env.DB.prepare(`INSERT INTO recommendation_events (id, user_id, post_id, event_type, created_at)
+      VALUES (?, ?, ?, 'open', ?)`).bind(crypto.randomUUID(), viewerId, c.req.param('id'), new Date().toISOString()).run();
+  }
+  return ok(c, { post: row });
 });
 
 contentRoutes.post('/posts', async (c) => {
@@ -132,6 +158,7 @@ contentRoutes.post('/posts/:id/comments', async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO comments (id, post_id, author_user_id, body, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(id, c.req.param('id'), auth.user.id, input.body, status, now, now),
     c.env.DB.prepare(`UPDATE posts SET comment_count = comment_count + ? WHERE id = ?`).bind(status === 'published' ? 1 : 0, c.req.param('id')),
+    c.env.DB.prepare(`INSERT INTO recommendation_events (id, user_id, post_id, event_type, created_at) VALUES (?, ?, ?, 'comment', ?)`).bind(crypto.randomUUID(), auth.user.id, c.req.param('id'), now),
   ]);
   return ok(c, { id, status }, 201);
 });

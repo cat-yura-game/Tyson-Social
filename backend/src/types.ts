@@ -10,6 +10,7 @@ export interface Env {
   GEMINI_API_KEY?: string;
   GEMINI_MODERATION_MODEL: string;
   GEMINI_SUMMARY_MODEL: string;
+  GEMINI_RECOMMENDATION_MODEL: string;
 }
 
 export interface AppVariables {
