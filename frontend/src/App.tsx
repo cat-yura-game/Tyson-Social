@@ -9,6 +9,7 @@ import { PlaceholderPage } from './pages/PlaceholderPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { PostPage } from './pages/PostPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { TelegramCallbackPage } from './pages/TelegramCallbackPage';
 
 const MessagesPage = lazy(() => import('./pages/MessagesPage').then((module) => ({ default: module.MessagesPage })));
 
@@ -41,5 +42,6 @@ export function App() {
   if (pathname === '/login') return <AuthPage mode="login" />;
   if (pathname === '/register') return <AuthPage mode="register" />;
   if (pathname === '/forgot-password') return <AuthPage mode="login" />;
+  if (pathname === '/auth/telegram/callback') return <TelegramCallbackPage />;
   return <ProductRoutes />;
 }

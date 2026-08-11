@@ -29,7 +29,7 @@ The deployed development API is `https://tyson-api.clickerscatom.workers.dev`. I
 4. Put the returned D1 database and KV namespace IDs in `backend/wrangler.jsonc`.
 5. Apply migrations locally: `pnpm --filter @tyson/backend db:migrate:local`.
 6. Apply them in production: `pnpm --filter @tyson/backend db:migrate:remote`.
-7. Add secrets: `pnpm exec wrangler secret put SESSION_SECRET --config backend/wrangler.jsonc` and `pnpm exec wrangler secret put GEMINI_API_KEY --config backend/wrangler.jsonc`.
+7. Add secrets: `pnpm exec wrangler secret put SESSION_SECRET --config backend/wrangler.jsonc`, `pnpm exec wrangler secret put GEMINI_API_KEY --config backend/wrangler.jsonc` and `pnpm exec wrangler secret put TELEGRAM_OIDC_CLIENT_SECRET --config backend/wrangler.jsonc`.
 8. Deploy with `pnpm --filter @tyson/backend deploy`.
 
 Set `GEMINI_MODERATION_MODEL`, `GEMINI_SUMMARY_MODEL` and `GEMINI_RECOMMENDATION_MODEL` as non-secret Wrangler variables. The free-MVP default for all three tasks is `gemini-3.5-flash-lite`. The variables remain separate so each task can be migrated independently later. For local AI calls, copy `backend/.dev.vars.example` to `backend/.dev.vars`. Never commit `.dev.vars`, `.env.local`, API keys or credentials.

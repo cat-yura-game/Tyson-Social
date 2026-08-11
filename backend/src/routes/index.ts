@@ -6,10 +6,12 @@ import { userRoutes } from './users';
 import { contentRoutes } from './content';
 import { mediaRoutes } from './media';
 import { messageRoutes } from './messages';
+import { telegramAuthRoutes } from './telegram-auth';
 
 export const api = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 api.route('/health', healthRoutes);
+api.route('/auth/telegram', telegramAuthRoutes);
 api.route('/auth', authRoutes);
 api.route('/users', userRoutes);
 api.route('/', contentRoutes);

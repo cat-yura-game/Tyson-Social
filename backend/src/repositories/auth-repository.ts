@@ -52,6 +52,11 @@ export async function findUserByUsername(db: D1Database, username: string): Prom
   return row ? projectUser(row) : null;
 }
 
+export async function findUserById(db: D1Database, userId: string): Promise<AuthUser | null> {
+  const row = await db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ? LIMIT 1`).bind(userId).first<UserRow>();
+  return row ? projectUser(row) : null;
+}
+
 export async function findUserBySessionHash(db: D1Database, tokenHash: string, now: string): Promise<(AuthUser & { sessionId: string }) | null> {
   const row = await db.prepare(`SELECT ${USER_COLUMNS.replaceAll(/\b(id|email|username|display_name|avatar_key|bio|role|status|email_verified_at|created_at)\b/g, 'u.$1')}, s.id AS session_id
     FROM sessions s JOIN users u ON u.id = s.user_id

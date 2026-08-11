@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { ArrowRight, LockKeyhole, Mail, UserRound } from 'lucide-react';
+import { ArrowRight, LockKeyhole, Mail, Send, UserRound } from 'lucide-react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { ApiError } from '../api/client';
+import { ApiError, apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { Brand } from '../components/Brand';
 
@@ -11,6 +11,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const { user, login, register } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [telegramPending, setTelegramPending] = useState(false);
   if (user) return <Navigate to="/" replace />;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -34,6 +35,19 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  const loginWithTelegram = async () => {
+    setTelegramPending(true); setError(null);
+    try {
+      const result = await apiRequest<{ authorizationUrl: string }>('/auth/telegram/start', {
+        method: 'POST', body: JSON.stringify({ action: 'login' }),
+      });
+      window.location.assign(result.authorizationUrl);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : 'Не удалось открыть вход через Telegram.');
+      setTelegramPending(false);
+    }
+  };
+
   return (
     <main className="auth-page">
       <section className="auth-story">
@@ -52,6 +66,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           {!registerMode && <Link className="forgot-link" to="/forgot-password">Забыли пароль?</Link>}
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="primary-button" type="submit" disabled={pending}>{pending ? 'Подождите…' : registerMode ? 'Создать аккаунт' : 'Войти'}<ArrowRight size={18} /></button>
+          {!registerMode && <><div className="auth-separator"><span>или</span></div><button className="telegram-login-button" type="button" disabled={telegramPending} onClick={() => void loginWithTelegram()}><Send size={18} />{telegramPending ? 'Открываем Telegram…' : 'Войти через Telegram'}</button></>}
           {registerMode && <p className="verification-note">Письма пока отключены. Аккаунт будет создан со статусом «email не подтверждён».</p>}
           <p className="auth-switch">{registerMode ? 'Уже есть аккаунт?' : 'Впервые в Tyson?'} <Link to={registerMode ? '/login' : '/register'}>{registerMode ? 'Войти' : 'Зарегистрироваться'}</Link></p>
         </form>

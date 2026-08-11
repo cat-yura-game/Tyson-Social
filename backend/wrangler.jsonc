@@ -11,7 +11,10 @@
     "MODERATION_MODE": "gemini",
     "GEMINI_MODERATION_MODEL": "gemini-3.5-flash-lite",
     "GEMINI_SUMMARY_MODEL": "gemini-3.5-flash-lite",
-    "GEMINI_RECOMMENDATION_MODEL": "gemini-3.5-flash-lite"
+    "GEMINI_RECOMMENDATION_MODEL": "gemini-3.5-flash-lite",
+    "TELEGRAM_OIDC_CLIENT_ID": "8890017118",
+    "TELEGRAM_OIDC_REDIRECT_URI": "https://tyson-api.clickerscatom.workers.dev/api/auth/telegram/callback",
+    "FRONTEND_URL": "https://368240.lol"
   },
   "d1_databases": [
     {
@@ -37,7 +40,10 @@
         "MODERATION_MODE": "gemini",
         "GEMINI_MODERATION_MODEL": "gemini-3.5-flash-lite",
         "GEMINI_SUMMARY_MODEL": "gemini-3.5-flash-lite",
-        "GEMINI_RECOMMENDATION_MODEL": "gemini-3.5-flash-lite"
+        "GEMINI_RECOMMENDATION_MODEL": "gemini-3.5-flash-lite",
+        "TELEGRAM_OIDC_CLIENT_ID": "8890017118",
+        "TELEGRAM_OIDC_REDIRECT_URI": "https://tyson-api.clickerscatom.workers.dev/api/auth/telegram/callback",
+        "FRONTEND_URL": "https://368240.lol"
       },
       "d1_databases": [
         {

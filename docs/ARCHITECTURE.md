@@ -60,6 +60,8 @@ Passwords will be hashed behind a `PasswordHasher` interface with a reviewed Wor
 
 Registration, login, password recovery and email verification use one-time random tokens whose digests—not plaintext—are stored in D1. Login rotates the session, password changes revoke other sessions, and sensitive endpoints use per-IP plus per-account rate limits. State-changing cookie-authenticated requests require an allowed `Origin`; CORS never uses `*` with credentials.
 
+Telegram account linking and login use Telegram's OIDC Authorization Code flow with PKCE. Short-lived hashed state values prevent CSRF, a nonce prevents ID-token replay, and `jose` verifies the RS256 signature through Telegram JWKS together with issuer, audience and expiry claims. The Worker keeps the Telegram client secret; the static frontend receives only an authorization URL and later exchanges a two-minute single-use login ticket. Linking Telegram activates a pending account without falsely marking its email address as verified.
+
 User content is rendered as text, not raw HTML. The API applies request size limits, schema validation, authorization and ownership checks. Admin routes load the current user from the session and verify the persisted role and account status on every request.
 
 ## Recommendations
