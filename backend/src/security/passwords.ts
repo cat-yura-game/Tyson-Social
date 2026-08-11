@@ -2,7 +2,9 @@ import { base64UrlDecode, base64UrlEncode, constantTimeEqual, utf8 } from './enc
 
 const ALGORITHM = 'PBKDF2';
 const DIGEST = 'SHA-256';
-const ITERATIONS = 210_000;
+// Free-tier Workers have a strict CPU budget. Keep this at the minimum accepted
+// by verifyPassword; increase it when the Worker CPU limit is raised.
+const ITERATIONS = 100_000;
 const KEY_BYTES = 32;
 const SALT_BYTES = 16;
 const PREFIX = 'pbkdf2_sha256';

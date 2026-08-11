@@ -24,7 +24,6 @@ export class GeminiSummaryProvider implements SummaryProvider {
       parts: [{ text }],
       responseJsonSchema: summaryJsonSchema,
       maxOutputTokens: 700,
-      temperature: 0.1,
     });
     const output = outputSchema.parse(JSON.parse(result.text));
     return { summary: output.summary, provider: 'gemini', modelVersion: result.modelVersion };

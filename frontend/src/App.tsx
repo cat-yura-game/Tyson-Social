@@ -7,6 +7,7 @@ import { CreatePage } from './pages/CreatePage';
 import { FeedPage } from './pages/FeedPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { PostPage } from './pages/PostPage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -20,7 +21,7 @@ function ProductRoutes() {
       <Routes>
         <Route path="/" element={<FeedPage />} />
         <Route path="/profile/:username" element={<ProfilePage />} />
-        <Route path="/post/:id" element={<PlaceholderPage kind="post" />} />
+        <Route path="/post/:id" element={<PostPage />} />
         <Route path="/create" element={<RequireAuth><CreatePage /></RequireAuth>} />
         <Route path="/messages" element={<RequireAuth><PlaceholderPage kind="messages" /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><PlaceholderPage kind="settings" /></RequireAuth>} />

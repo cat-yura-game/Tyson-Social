@@ -1,38 +1,44 @@
-import { BadgeCheck, Bookmark, Heart, MessageCircle, MoreHorizontal, Share2, Sparkles, ThumbsDown } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Heart, MessageCircle, MoreHorizontal, Sparkles, ThumbsDown } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { apiRequest } from '../api/client';
+import { useAuth } from '../auth/AuthProvider';
+import type { Post } from '../types/content';
 
-interface PostCardProps {
-  id: string;
-  author: string;
-  username: string;
-  time: string;
-  body: string;
-  likes: number;
-  comments: number;
-  verified?: boolean;
-  accent?: boolean;
-}
+export function PostCard({ post }: { post: Post }) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [reaction, setReaction] = useState<Post['viewerReaction']>(post.viewerReaction);
+  const [likes, setLikes] = useState(post.likeCount);
+  const [pending, setPending] = useState(false);
+  const time = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' });
+  const minutes = Math.round((new Date(post.publishedAt).getTime() - Date.now()) / 60_000);
 
-export function PostCard({ id, author, username, time, body, likes, comments, verified, accent }: PostCardProps) {
+  const react = async (next: 'like' | 'dislike') => {
+    if (!user) { navigate('/login'); return; }
+    if (pending) return;
+    setPending(true);
+    try {
+      const value = reaction === next ? null : next;
+      const result = await apiRequest<{ reaction: Post['viewerReaction'] | null; likeCount: number }>(`/posts/${post.id}/reaction`, { method: 'PUT', body: JSON.stringify({ reaction: value }) });
+      setReaction(result.reaction ?? '');
+      setLikes(result.likeCount);
+    } finally { setPending(false); }
+  };
+
   return (
     <article className="post-card">
       <header className="post-header">
-        <Link to={`/profile/${username}`} className={`avatar ${accent ? 'avatar-accent' : ''}`}>{author.slice(0, 1)}</Link>
-        <div className="post-author">
-          <Link to={`/profile/${username}`}><strong>{author}</strong>{verified && <BadgeCheck className="verified" size={17} aria-label="Подтверждённая компания" />}</Link>
-          <span>@{username} · {time}</span>
-        </div>
+        <Link to={`/profile/${post.username}`} className="avatar">{post.displayName.slice(0, 1).toUpperCase()}</Link>
+        <div className="post-author"><Link to={`/profile/${post.username}`}><strong>{post.displayName}</strong></Link><span>@{post.username} · {Math.abs(minutes) < 60 ? time.format(minutes, 'minute') : new Date(post.publishedAt).toLocaleDateString('ru-RU')}</span></div>
         <button className="icon-button" type="button" aria-label="Действия с публикацией"><MoreHorizontal size={20} /></button>
       </header>
-      <Link className="post-body" to={`/post/${id}`}>{body}</Link>
-      {accent && <div className="post-visual"><span>Город<br />слышит<br />тебя.</span><small>Tyson / Идеи рядом</small></div>}
+      <Link className="post-body" to={`/post/${post.id}`}>{post.body}</Link>
       <footer className="post-actions">
-        <button type="button" aria-label="Нравится"><Heart size={19} /><span>{likes}</span></button>
-        <button type="button" aria-label="Не показывать похожее"><ThumbsDown size={19} /></button>
-        <Link to={`/post/${id}`} aria-label={`${comments} комментариев`}><MessageCircle size={19} /><span>{comments}</span></Link>
-        <button className="ai-action" type="button"><Sparkles size={17} /><span>Коротко с AI</span></button>
-        <button type="button" aria-label="Поделиться"><Share2 size={18} /></button>
-        <button type="button" aria-label="Сохранить"><Bookmark size={19} /></button>
+        <button className={reaction === 'like' ? 'reaction-active' : ''} disabled={pending} type="button" aria-label="Нравится" onClick={() => void react('like')}><Heart size={19} /><span>{likes}</span></button>
+        <button className={reaction === 'dislike' ? 'reaction-active' : ''} disabled={pending} type="button" aria-label="Не показывать похожее" onClick={() => void react('dislike')}><ThumbsDown size={19} /></button>
+        <Link to={`/post/${post.id}`} aria-label={`${post.commentCount} комментариев`}><MessageCircle size={19} /><span>{post.commentCount}</span></Link>
+        {post.body.length > 500 && <button className="ai-action" type="button"><Sparkles size={17} /><span>Коротко с AI</span></button>}
       </footer>
     </article>
   );

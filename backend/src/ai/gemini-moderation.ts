@@ -45,7 +45,6 @@ export class GeminiModerationProvider implements ModerationProvider {
         ],
         responseJsonSchema: moderationJsonSchema,
         maxOutputTokens: 600,
-        temperature: 0,
       });
       const output = moderationOutput.parse(JSON.parse(result.text));
       return { ...output, provider: 'gemini', modelVersion: result.modelVersion };

@@ -20,7 +20,6 @@ export interface GeminiGenerateOptions {
   parts: GeminiPart[];
   responseJsonSchema?: Record<string, unknown>;
   maxOutputTokens: number;
-  temperature?: number;
 }
 
 export interface GeminiTextResult {
@@ -57,8 +56,7 @@ export class GeminiClient {
   async generate(options: GeminiGenerateOptions): Promise<GeminiTextResult> {
     const generationConfig: Record<string, unknown> = {
       maxOutputTokens: options.maxOutputTokens,
-      temperature: options.temperature ?? 0,
-      thinkingConfig: { thinkingLevel: 'low' },
+      thinkingConfig: { thinkingLevel: 'minimal' },
     };
     if (options.responseJsonSchema) {
       generationConfig.responseMimeType = 'application/json';

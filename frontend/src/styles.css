@@ -79,6 +79,15 @@ button { color: inherit; }
 .post-actions button, .post-actions a { display: inline-flex; align-items: center; gap: 6px; padding: 7px; border: 0; border-radius: 9px; background: transparent; color: #6d746e; font-size: 11px; cursor: pointer; }
 .post-actions button:hover, .post-actions a:hover { color: var(--green); background: var(--soft-green); }
 .post-actions .ai-action { margin-left: auto; color: #446453; }
+.post-actions .reaction-active { color: var(--green); background: var(--soft-green); }
+.feed-empty { display: flex; flex-direction: column; gap: 6px; padding: 45px; color: var(--muted); text-align: center; }
+.comments-panel { margin-top: 14px; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); background: white; }
+.comments-panel h2 { margin-top: 0; font-size: 19px; }
+.comment-form { display: flex; gap: 8px; margin-bottom: 20px; }
+.comment-form input { flex: 1; min-width: 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: 11px; outline: none; }
+.comment { padding: 14px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.comment small { color: var(--muted); font-weight: 500; }
+.comment p { margin: 7px 0 0; line-height: 1.55; white-space: pre-wrap; }
 .surface-page { min-height: 520px; padding: 40px; border: 1px solid var(--line); border-radius: var(--radius); background: white; }
 .narrow-page { max-width: 620px; }
 .composer-card textarea { display: block; width: 100%; min-height: 210px; padding: 22px 0; resize: vertical; border: 0; border-bottom: 1px solid var(--line); outline: 0; font-size: 20px; line-height: 1.5; }
