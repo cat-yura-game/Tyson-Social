@@ -112,7 +112,7 @@ userRoutes.get('/:username/posts', async (c) => {
   const username = c.req.param('username').trim().toLowerCase();
   if (!/^[a-z0-9_]{3,30}$/u.test(username)) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
   const viewerId = c.get('authUser')?.id ?? '';
-  const rows = await c.env.DB.prepare(`SELECT p.id, p.body, p.like_count AS likeCount, p.comment_count AS commentCount,
+  const rows = await c.env.DB.prepare(`SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.comment_count AS commentCount,
     p.published_at AS publishedAt, p.updated_at AS updatedAt, u.id AS authorId, u.username,
     u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
     (SELECT pm.storage_key FROM post_media pm WHERE pm.post_id = p.id ORDER BY pm.sort_order LIMIT 1) AS mediaKey,

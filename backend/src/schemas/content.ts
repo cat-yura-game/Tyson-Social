@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
-export const postBodySchema = z.object({ body: z.string().trim().min(1).max(10_000) }).strict();
+export const postBodySchema = z.object({
+  title: z.string().trim().max(200).optional().default(''),
+  body: z.string().trim().min(1).max(10_000),
+}).strict();
 export const commentBodySchema = z.object({ body: z.string().trim().min(1).max(2_000) }).strict();
 export const reactionSchema = z.object({ reaction: z.enum(['like', 'dislike']).nullable() }).strict();
 

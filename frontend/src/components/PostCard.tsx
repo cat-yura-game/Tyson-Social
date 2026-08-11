@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import type { Post } from '../types/content';
+import { RichPostText } from './RichPostText';
 
 export function PostCard({ post }: { post: Post }) {
   const { user } = useAuth();
@@ -33,7 +34,7 @@ export function PostCard({ post }: { post: Post }) {
         <div className="post-author"><Link to={`/profile/${post.username}`}><strong>{post.displayName}</strong>{post.verified && <BadgeCheck className="verified" size={17} aria-label="Подтверждённый аккаунт" />}</Link><span>@{post.username} · {Math.abs(minutes) < 60 ? time.format(minutes, 'minute') : new Date(post.publishedAt).toLocaleDateString('ru-RU')}</span></div>
         <button className="icon-button" type="button" aria-label="Действия с публикацией"><MoreHorizontal size={20} /></button>
       </header>
-      <Link className="post-body" to={`/post/${post.id}`}>{post.body}</Link>
+      <Link className="post-body" to={`/post/${post.id}`}>{post.title && <h2 className="post-title">{post.title}</h2>}<RichPostText text={post.body} /></Link>
       {post.mediaKey && <Link className="post-media" to={`/post/${post.id}`}><img loading="lazy" src={mediaUrl(post.mediaKey) ?? ''} alt="Изображение публикации" /></Link>}
       <footer className="post-actions">
         <button className={reaction === 'like' ? 'reaction-active' : ''} disabled={pending} type="button" aria-label="Нравится" onClick={() => void react('like')}><Heart size={19} /><span>{likes}</span></button>

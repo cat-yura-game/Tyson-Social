@@ -46,11 +46,11 @@ interface CreatePostImage {
   contentType: AllowedImageType;
 }
 
-async function createPostInput(c: Parameters<typeof fail>[0]): Promise<{ body: string; image: CreatePostImage | null } | Response> {
+async function createPostInput(c: Parameters<typeof fail>[0]): Promise<{ title: string; body: string; image: CreatePostImage | null } | Response> {
   const contentType = c.req.header('content-type')?.toLowerCase() ?? '';
   if (!contentType.includes('multipart/form-data')) {
     const input = await json(c, postBodySchema);
-    return input instanceof Response ? input : { body: input.body, image: null };
+    return input instanceof Response ? input : { title: input.title, body: input.body, image: null };
   }
 
   const declaredLength = Number(c.req.header('content-length') ?? 0);
@@ -59,16 +59,16 @@ async function createPostInput(c: Parameters<typeof fail>[0]): Promise<{ body: s
   }
   try {
     const form = await c.req.formData();
-    const input = postBodySchema.parse({ body: form.get('body') });
+    const input = postBodySchema.parse({ title: form.get('title') ?? '', body: form.get('body') });
     const uploaded = form.get('image');
-    if (uploaded === null) return { body: input.body, image: null };
+    if (uploaded === null) return { title: input.title, body: input.body, image: null };
     if (!(uploaded instanceof File)) return fail(c, 422, 'INVALID_IMAGE', 'A valid image file is required.');
     const imageContentType = uploaded.type.toLowerCase();
     const bytes = await uploaded.arrayBuffer();
     assertValidMedia(imageContentType, bytes.byteLength);
     if (imageContentType === 'image/avif') throw new Error('Post images must be JPEG, PNG or WebP.');
     assertImageSignature(imageContentType, new Uint8Array(bytes));
-    return { body: input.body, image: { bytes, contentType: imageContentType } };
+    return { title: input.title, body: input.body, image: { bytes, contentType: imageContentType } };
   } catch (error) {
     if (error instanceof Response) return error;
     return fail(c, 422, 'INVALID_POST', error instanceof ZodError ? 'The submitted post is invalid.' : error instanceof Error ? error.message : 'Invalid post data.', error instanceof ZodError ? error.flatten() : undefined);
@@ -84,7 +84,7 @@ async function json<T>(c: Parameters<typeof fail>[0], schema: { parse(value: unk
   }
 }
 
-const POST_SELECT = `SELECT p.id, p.body, p.like_count AS likeCount, p.comment_count AS commentCount,
+const POST_SELECT = `SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.comment_count AS commentCount,
   p.published_at AS publishedAt, p.updated_at AS updatedAt,
   u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
   (SELECT pm.storage_key FROM post_media pm WHERE pm.post_id = p.id ORDER BY pm.sort_order LIMIT 1) AS mediaKey,
@@ -142,15 +142,16 @@ contentRoutes.post('/posts', async (c) => {
   const auth = requireUser(c); if ('error' in auth) return auth.error;
   const input = await createPostInput(c); if (input instanceof Response) return input;
   const imageBase64 = input.image ? base64Encode(new Uint8Array(input.image.bytes)) : null;
-  const result = await moderate(c.env, input.body, input.image && imageBase64 ? [{ mimeType: input.image.contentType, objectKey: 'pending-upload', base64Data: imageBase64 }] : []);
+  const moderationText = input.title ? `${input.title}\n\n${input.body}` : input.body;
+  const result = await moderate(c.env, moderationText, input.image && imageBase64 ? [{ mimeType: input.image.contentType, objectKey: 'pending-upload', base64Data: imageBase64 }] : []);
   const postId = crypto.randomUUID();
   const now = new Date().toISOString();
   const status = result.decision === 'allow' ? 'published' : result.decision === 'block' ? 'blocked' : 'review';
   const storage = new KvMediaStorage(c.env.MEDIA);
   const mediaKey = input.image && result.decision !== 'block' ? createMediaKey(auth.user.id, input.image.contentType) : null;
   const statements = [
-    c.env.DB.prepare(`INSERT INTO posts (id, author_user_id, body, status, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(postId, auth.user.id, input.body, status, status === 'published' ? now : null, now, now),
-    c.env.DB.prepare(`INSERT INTO moderation_results (id, subject_type, subject_id, decision, risk_score, categories_json, reason, provider, model_version, input_hash, created_at) VALUES (?, 'post', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), postId, result.decision, result.riskScore, JSON.stringify(result.categories), result.reason, result.provider, result.modelVersion, await sha256(`${input.body}:${imageBase64 ? await sha256(imageBase64) : ''}`), now),
+    c.env.DB.prepare(`INSERT INTO posts (id, author_user_id, title, body, status, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(postId, auth.user.id, input.title, input.body, status, status === 'published' ? now : null, now, now),
+    c.env.DB.prepare(`INSERT INTO moderation_results (id, subject_type, subject_id, decision, risk_score, categories_json, reason, provider, model_version, input_hash, created_at) VALUES (?, 'post', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), postId, result.decision, result.riskScore, JSON.stringify(result.categories), result.reason, result.provider, result.modelVersion, await sha256(`${moderationText}:${imageBase64 ? await sha256(imageBase64) : ''}`), now),
   ];
   if (input.image && mediaKey) {
     statements.push(c.env.DB.prepare(`INSERT INTO post_media (id, post_id, storage_key, media_type, mime_type, byte_size, sort_order, created_at)
@@ -172,11 +173,12 @@ contentRoutes.patch('/posts/:id', async (c) => {
   const input = await json(c, postBodySchema); if (input instanceof Response) return input;
   const owned = await c.env.DB.prepare(`SELECT id FROM posts WHERE id = ? AND author_user_id = ? AND status != 'deleted'`).bind(c.req.param('id'), auth.user.id).first();
   if (!owned) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
-  const result = await moderate(c.env, input.body);
+  const moderationText = input.title ? `${input.title}\n\n${input.body}` : input.body;
+  const result = await moderate(c.env, moderationText);
   if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Publication was blocked by safety checks.');
   const now = new Date().toISOString();
   await c.env.DB.batch([
-    c.env.DB.prepare(`UPDATE posts SET body = ?, status = ?, published_at = CASE WHEN ? = 'published' THEN COALESCE(published_at, ?) ELSE published_at END, updated_at = ? WHERE id = ?`).bind(input.body, result.decision === 'allow' ? 'published' : 'review', result.decision === 'allow' ? 'published' : 'review', now, now, c.req.param('id')),
+    c.env.DB.prepare(`UPDATE posts SET title = ?, body = ?, status = ?, published_at = CASE WHEN ? = 'published' THEN COALESCE(published_at, ?) ELSE published_at END, updated_at = ? WHERE id = ?`).bind(input.title, input.body, result.decision === 'allow' ? 'published' : 'review', result.decision === 'allow' ? 'published' : 'review', now, now, c.req.param('id')),
     c.env.DB.prepare(`DELETE FROM ai_summaries WHERE post_id = ?`).bind(c.req.param('id')),
   ]);
   return ok(c, { updated: true, status: result.decision === 'allow' ? 'published' : 'review' });
