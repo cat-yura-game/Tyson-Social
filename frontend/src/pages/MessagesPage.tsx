@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEv
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRawRequest, apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
-import { decryptForDevice, encryptAttachment, encryptForDevice, getOrCreateIdentity, type DeviceIdentity } from '../messaging/crypto';
+import { attachmentDigest, decryptForDevice, encryptAttachment, encryptForDevice, getOrCreateIdentity, type DeviceIdentity } from '../messaging/crypto';
 import { parseMessageContent, type EncryptedMessagePayload, type MessageContent } from '../messaging/message-content';
 import { getSticker, STICKERS, type StickerId } from '../messaging/stickers';
 import { EncryptedMessageImage } from '../components/EncryptedMessageImage';
@@ -172,7 +172,7 @@ export function MessagesPage() {
       const response = await apiRawRequest(`/messages/conversations/${active.id}/attachments`, {
         method: 'POST',
         headers: { 'content-type': 'application/octet-stream' },
-        body: encrypted.ciphertext,
+        body: encrypted.ciphertext.slice().buffer,
       });
       const payload = await response.json() as { data: { attachmentId: string } };
       await sendContent({
@@ -180,6 +180,7 @@ export function MessagesPage() {
         attachmentId: payload.data.attachmentId,
         key: encrypted.key,
         nonce: encrypted.nonce,
+        digest: await attachmentDigest(encrypted.ciphertext),
         mimeType: file.type as 'image/jpeg' | 'image/png' | 'image/webp',
       });
     } catch (caught) {
@@ -215,7 +216,7 @@ export function MessagesPage() {
           {message.content.type === 'text' ? <p>{message.content.text}</p>
             : sticker ? <img className="message-sticker" src={sticker.src} alt={sticker.accessibleLabel} />
               : message.content.type === 'post' ? <Link className="shared-post-message" to={`/post/${message.content.postId}`}><strong>Публикация Tyson</strong><span>Открыть публикацию</span></Link>
-                : message.content.type === 'image' ? <EncryptedMessageImage attachmentId={message.content.attachmentId} encryptionKey={message.content.key} nonce={message.content.nonce} mimeType={message.content.mimeType} /> : null}
+                : message.content.type === 'image' ? <EncryptedMessageImage attachmentId={message.content.attachmentId} encryptionKey={message.content.key} nonce={message.content.nonce} digest={message.content.digest} mimeType={message.content.mimeType} /> : null}
           <small>{new Date(message.sentAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small>
         </article>;
       })}{!messages.length && <div className="chat-empty"><LockKeyhole /><p>Сообщения и выбранные стикеры шифруются на вашем устройстве.</p></div>}<div ref={messageEnd} aria-hidden="true" /></div>

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { apiRawRequest } from '../api/client';
-import { decryptAttachment } from '../messaging/crypto';
+import { attachmentDigest, decryptAttachment } from '../messaging/crypto';
 
-export function EncryptedMessageImage({ attachmentId, encryptionKey, nonce, mimeType }: {
+export function EncryptedMessageImage({ attachmentId, encryptionKey, nonce, digest, mimeType }: {
   attachmentId: string;
   encryptionKey: string;
   nonce: string;
+  digest?: string;
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
 }) {
   const [source, setSource] = useState<string | null>(null);
@@ -14,15 +15,19 @@ export function EncryptedMessageImage({ attachmentId, encryptionKey, nonce, mime
   useEffect(() => {
     let active = true;
     let objectUrl: string | null = null;
-    void apiRawRequest(`/messages/attachments/${attachmentId}`).then((response) => response.arrayBuffer())
-      .then((buffer) => decryptAttachment(new Uint8Array(buffer), encryptionKey, nonce))
+    void apiRawRequest(`/messages/attachments/${attachmentId}`, { cache: 'no-store' }).then((response) => response.arrayBuffer())
+      .then(async (buffer) => {
+        const ciphertext = new Uint8Array(buffer);
+        if (digest && await attachmentDigest(ciphertext) !== digest) throw new Error('Encrypted attachment integrity check failed.');
+        return decryptAttachment(ciphertext, encryptionKey, nonce);
+      })
       .then((plaintext) => {
         if (!active) return;
         objectUrl = URL.createObjectURL(new Blob([plaintext], { type: mimeType }));
         setSource(objectUrl);
       }).catch(() => { if (active) setFailed(true); });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [attachmentId, encryptionKey, mimeType, nonce]);
+  }, [attachmentId, digest, encryptionKey, mimeType, nonce]);
 
   if (failed) return <p className="encrypted-image-state">Не удалось расшифровать изображение.</p>;
   if (!source) return <div className="encrypted-image-loading" aria-label="Расшифровываем изображение" />;

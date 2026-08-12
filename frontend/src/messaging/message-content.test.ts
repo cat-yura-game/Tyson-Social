@@ -16,5 +16,7 @@ describe('parseMessageContent', () => {
     expect(parseMessageContent({ type: 'post', postId: id })).toEqual({ type: 'post', postId: id });
     expect(() => parseMessageContent({ type: 'post', postId: '../admin' })).toThrow();
     expect(parseMessageContent({ type: 'image', attachmentId: id, key: 'A'.repeat(44), nonce: 'B'.repeat(32), mimeType: 'image/png' })).toMatchObject({ type: 'image', attachmentId: id });
+    expect(parseMessageContent({ type: 'image', attachmentId: id, key: 'A'.repeat(44), nonce: 'B'.repeat(32), digest: 'C'.repeat(44), mimeType: 'image/png' })).toMatchObject({ type: 'image', digest: 'C'.repeat(44) });
+    expect(() => parseMessageContent({ type: 'image', attachmentId: id, key: 'A'.repeat(44), nonce: 'B'.repeat(32), digest: 'bad', mimeType: 'image/png' })).toThrow();
   });
 });

@@ -1,13 +1,15 @@
 import { Hono } from 'hono';
 import { fail, ok } from '../lib/responses';
 import { findUserByUsername, updateProfile } from '../repositories/auth-repository';
-import { parseJsonBody, updateProfileSchema } from '../schemas/auth';
+import { parseJsonBody, registerSchema, updateProfileSchema } from '../schemas/auth';
 import type { AppVariables, AuthUser, Env } from '../types';
 import { assertImageSignature, assertValidMedia, createMediaKey, KvMediaStorage } from '../services/media-storage';
 import { feedPreferencesSchema } from '../schemas/preferences';
 import { FEED_TOPICS, type FeedTopicId } from '../recommendations/topics';
 import { base64Encode } from '../security/encoding';
 import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
+import { hashPassword } from '../security/passwords';
+import { randomToken, sha256 } from '../security/tokens';
 
 export const userRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -27,6 +29,50 @@ function publicProfile(user: AuthUser) {
 userRoutes.get('/me', (c) => {
   const user = c.get('authUser');
   return user ? ok(c, { user }) : fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+});
+
+userRoutes.get('/me/verified-accounts', async (c) => {
+  const user = c.get('authUser');
+  if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const isLinkedChild = Boolean(await c.env.DB.prepare('SELECT 1 FROM verified_account_links WHERE child_user_id = ?').bind(user.id).first());
+  const rows = await c.env.DB.prepare(`SELECT u.id, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.created_at AS createdAt
+    FROM verified_account_links l JOIN users u ON u.id = l.child_user_id WHERE l.parent_user_id = ? ORDER BY l.created_at DESC`)
+    .bind(user.id).all();
+  return ok(c, { canCreate: user.verified && !isLinkedChild, accounts: rows.results });
+});
+
+userRoutes.post('/me/verified-accounts', async (c) => {
+  const parent = c.get('authUser');
+  if (!parent) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  if (!parent.verified) return fail(c, 403, 'VERIFICATION_REQUIRED', 'Only verified accounts can create linked accounts.');
+  if (await c.env.DB.prepare('SELECT 1 FROM verified_account_links WHERE child_user_id = ?').bind(parent.id).first()) {
+    return fail(c, 403, 'LINKED_ACCOUNT_RESTRICTED', 'Linked verified accounts cannot create more linked accounts.');
+  }
+  try {
+    const input = registerSchema.parse(await parseJsonBody(c.req.raw));
+    const existingCount = await c.env.DB.prepare('SELECT COUNT(*) AS count FROM verified_account_links WHERE parent_user_id = ?')
+      .bind(parent.id).first<{ count: number }>();
+    if ((existingCount?.count ?? 0) >= 10) return fail(c, 429, 'LINKED_ACCOUNT_LIMIT', 'A verified account can have at most 10 linked accounts.');
+    const userId = crypto.randomUUID();
+    const moderation = await moderatePublicContent(c.env, input.displayName);
+    await saveModerationResult(c.env.DB, 'display_name', userId, moderation, input.displayName);
+    if (moderation.decision !== 'allow') return fail(c, 422, 'DISPLAY_NAME_REJECTED', 'This display name could not be approved by safety checks.');
+    const now = new Date().toISOString();
+    await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT INTO users (id, email, username, display_name, password_hash, status, is_verified, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?)`)
+        .bind(userId, input.email, input.username, input.displayName, await hashPassword(input.password), now, now),
+      c.env.DB.prepare('INSERT INTO user_settings (user_id) VALUES (?)').bind(userId),
+      c.env.DB.prepare('INSERT INTO email_verifications (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)')
+        .bind(crypto.randomUUID(), userId, await sha256(randomToken()), new Date(Date.now() + 86_400_000).toISOString()),
+      c.env.DB.prepare('INSERT INTO verified_account_links (parent_user_id, child_user_id, created_at) VALUES (?, ?, ?)')
+        .bind(parent.id, userId, now),
+    ]);
+    return ok(c, { account: { id: userId, username: input.username, displayName: input.displayName, verified: true } }, 201);
+  } catch (error) {
+    if (error instanceof Error && /unique|constraint/i.test(error.message)) return fail(c, 409, 'ACCOUNT_EXISTS', 'An account with this email or username already exists.');
+    return fail(c, 422, 'VALIDATION_ERROR', 'The linked account details are invalid.');
+  }
 });
 
 userRoutes.get('/me/feed-preferences', async (c) => {

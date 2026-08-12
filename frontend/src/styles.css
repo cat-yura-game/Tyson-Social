@@ -312,6 +312,16 @@ button { color: inherit; }
 .telegram-settings small { color: #1877a8; font-size: 11px; font-weight: 800; }
 .telegram-connect-button { display: inline-flex; align-items: center; gap: 7px; padding: 10px 13px; border: 0; border-radius: 12px; background: #229ed9; color: white; font-size: 12px; font-weight: 800; cursor: pointer; }
 .telegram-settings > .form-error, .telegram-settings > .form-success { flex-basis: 100%; }
+.linked-accounts-settings { display: grid; gap: 14px; margin-top: 30px; padding-top: 25px; border-top: 1px solid var(--line); }
+.linked-accounts-settings h2 { display: flex; align-items: center; gap: 7px; margin: 5px 0; font-size: 17px; }
+.linked-accounts-settings h2 svg, .linked-account-list svg { color: #1684d3; }
+.linked-accounts-settings > div > p:last-child { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.linked-account-form { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.linked-account-form input { min-width: 0; padding: 11px 12px; border: 1px solid var(--line); border-radius: 11px; background: white; }
+.linked-account-form .form-error, .linked-account-form button { grid-column: 1 / -1; width: fit-content; }
+.linked-account-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.linked-account-list span { display: inline-flex; align-items: center; gap: 4px; padding: 8px 10px; border-radius: 10px; background: var(--soft-green); color: var(--green); font-size: 12px; font-weight: 800; }
+.linked-account-list small { font-weight: 600; opacity: .7; }
 .form-success { padding: 11px 13px; border-radius: 10px; background: #e8f5eb; color: #24623b; }
 .messages-page { height: calc(100vh - 76px); min-height: 600px; display: grid; grid-template-columns: 240px minmax(0, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: white; }
 .conversation-list { padding: 18px 12px; border-right: 1px solid var(--line); overflow-y: auto; }
@@ -345,9 +355,9 @@ button { color: inherit; }
 .sticker-picker button { aspect-ratio: 1; overflow: hidden; padding: 4px; border: 0; border-radius: 13px; background: #f3f4f0; cursor: pointer; transition: transform .18s ease, background .18s ease; }
 .sticker-picker button:hover { transform: translateY(-2px); background: var(--soft-green); }
 .sticker-picker img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.message.sticker-message { padding: 4px; background: transparent; color: var(--muted); }
+.message.sticker-message { width: fit-content; max-width: 100%; padding: 0; overflow: visible; background: transparent; color: var(--muted); }
 .message.sticker-message.mine { background: transparent; color: var(--muted); }
-.message-sticker { display: block; width: min(230px, 46vw); max-height: 260px; object-fit: contain; }
+.message-sticker { display: block; width: min(230px, 100%); height: auto; max-height: none; object-fit: contain; }
 .message-image { display: block; width: min(360px, 60vw); max-height: 420px; border-radius: 12px; object-fit: contain; }
 .encrypted-image-loading { width: min(280px, 55vw); aspect-ratio: 4 / 3; border-radius: 12px; background: linear-gradient(100deg, #e8ebe6 30%, #f5f6f2 50%, #e8ebe6 70%); background-size: 220% 100%; animation: attachment-loading 1.2s infinite linear; }
 .encrypted-image-state { color: var(--muted); }
@@ -457,7 +467,8 @@ button { color: inherit; }
   .message-composer button { flex-basis: 42px; }
   .message-composer .sticker-trigger, .message-composer .image-message-trigger { flex-basis: 38px; }
   .sticker-picker { left: 8px; right: 8px; bottom: 67px; grid-template-columns: repeat(3, minmax(0, 1fr)); max-height: min(390px, 52dvh); }
-  .message-sticker { width: min(210px, 60vw); max-height: 230px; }
+  .message.sticker-message { max-width: calc(100vw - 48px); }
+  .message-sticker { width: min(230px, calc(100vw - 70px)); height: auto; max-height: none; }
   .message-image { width: min(300px, 72vw); max-height: 360px; }
   .messages-error { bottom: 70px; }
 }
@@ -566,4 +577,5 @@ html[data-theme='dark'] .mobile-header { background: rgb(13 18 15 / 92%); }
 @media (max-width: 520px) {
   .theme-options { grid-template-columns: 1fr; }
   .theme-options button { justify-content: flex-start; padding-inline: 14px; }
+  .linked-account-form { grid-template-columns: 1fr; }
 }
