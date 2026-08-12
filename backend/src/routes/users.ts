@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
+import { setCookie } from 'hono/cookie';
 import { fail, ok } from '../lib/responses';
-import { findUserByUsername, updateProfile } from '../repositories/auth-repository';
+import { createSession, findUserById, findUserByUsername, updateProfile } from '../repositories/auth-repository';
 import { parseJsonBody, registerSchema, updateProfileSchema } from '../schemas/auth';
 import type { AppVariables, AuthUser, Env } from '../types';
 import { assertImageSignature, assertValidMedia, createMediaKey, KvMediaStorage } from '../services/media-storage';
@@ -9,7 +10,8 @@ import { FEED_TOPICS, type FeedTopicId } from '../recommendations/topics';
 import { base64Encode } from '../security/encoding';
 import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
 import { hashPassword } from '../security/passwords';
-import { randomToken, sha256 } from '../security/tokens';
+import { keyedHash, randomToken, sha256 } from '../security/tokens';
+import { SESSION_COOKIE } from '../middleware/auth';
 
 export const userRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -31,14 +33,46 @@ userRoutes.get('/me', (c) => {
   return user ? ok(c, { user }) : fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
 });
 
+function setSwitchedSessionCookie(c: Parameters<typeof ok>[0], token: string): void {
+  const secure = new URL(c.req.url).protocol === 'https:';
+  setCookie(c, SESSION_COOKIE, token, { httpOnly: true, secure, sameSite: secure ? 'None' : 'Lax', path: '/', maxAge: 60 * 60 * 24 * 30 });
+}
+
 userRoutes.get('/me/verified-accounts', async (c) => {
   const user = c.get('authUser');
   if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
-  const isLinkedChild = Boolean(await c.env.DB.prepare('SELECT 1 FROM verified_account_links WHERE child_user_id = ?').bind(user.id).first());
+  const parentLink = await c.env.DB.prepare('SELECT parent_user_id AS parentUserId FROM verified_account_links WHERE child_user_id = ?').bind(user.id)
+    .first<{ parentUserId: string }>();
+  if (parentLink) {
+    const parent = await findUserById(c.env.DB, parentLink.parentUserId);
+    return ok(c, { canCreate: false, accounts: parent ? [{ id: parent.id, username: parent.username, displayName: parent.displayName, avatarKey: parent.avatarKey, createdAt: parent.createdAt }] : [] });
+  }
   const rows = await c.env.DB.prepare(`SELECT u.id, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.created_at AS createdAt
     FROM verified_account_links l JOIN users u ON u.id = l.child_user_id WHERE l.parent_user_id = ? ORDER BY l.created_at DESC`)
     .bind(user.id).all();
-  return ok(c, { canCreate: user.verified && !isLinkedChild, accounts: rows.results });
+  return ok(c, { canCreate: user.verified, accounts: rows.results });
+});
+
+userRoutes.post('/me/verified-accounts/:id/switch', async (c) => {
+  const user = c.get('authUser');
+  if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const targetId = c.req.param('id');
+  const parentLink = await c.env.DB.prepare('SELECT parent_user_id AS parentUserId FROM verified_account_links WHERE child_user_id = ?').bind(user.id)
+    .first<{ parentUserId: string }>();
+  const allowed = parentLink
+    ? targetId === parentLink.parentUserId
+    : Boolean(await c.env.DB.prepare('SELECT 1 FROM verified_account_links WHERE parent_user_id = ? AND child_user_id = ?').bind(user.id, targetId).first());
+  if (!allowed) return fail(c, 403, 'ACCOUNT_SWITCH_FORBIDDEN', 'This account is not linked to the current profile.');
+  const target = await findUserById(c.env.DB, targetId);
+  if (!target || target.status === 'suspended' || target.status === 'deleted') return fail(c, 404, 'ACCOUNT_NOT_AVAILABLE', 'This account is not available.');
+  const token = randomToken();
+  const now = new Date();
+  const ip = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ipHash = c.env.SESSION_SECRET ? await keyedHash(c.env.SESSION_SECRET, ip) : await sha256(ip);
+  await createSession(c.env.DB, { id: crypto.randomUUID(), userId: target.id, tokenHash: await sha256(token),
+    userAgent: c.req.header('user-agent')?.slice(0, 512) ?? null, ipHash, expiresAt: new Date(now.getTime() + 2_592_000_000).toISOString(), now: now.toISOString() });
+  setSwitchedSessionCookie(c, token);
+  return ok(c, { user: target, accessToken: token });
 });
 
 userRoutes.post('/me/verified-accounts', async (c) => {

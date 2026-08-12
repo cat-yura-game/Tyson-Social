@@ -320,8 +320,10 @@ button { color: inherit; }
 .linked-account-form input { min-width: 0; padding: 11px 12px; border: 1px solid var(--line); border-radius: 11px; background: white; }
 .linked-account-form .form-error, .linked-account-form button { grid-column: 1 / -1; width: fit-content; }
 .linked-account-list { display: flex; flex-wrap: wrap; gap: 8px; }
-.linked-account-list span { display: inline-flex; align-items: center; gap: 4px; padding: 8px 10px; border-radius: 10px; background: var(--soft-green); color: var(--green); font-size: 12px; font-weight: 800; }
+.linked-account-list button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border: 0; border-radius: 10px; background: var(--soft-green); color: var(--green); font-size: 12px; font-weight: 800; cursor: pointer; }
+.linked-account-list button:disabled { cursor: wait; opacity: .6; }
 .linked-account-list small { font-weight: 600; opacity: .7; }
+.linked-account-switch { margin-left: 4px; padding-left: 7px; border-left: 1px solid currentColor; font-size: 10px; }
 .form-success { padding: 11px 13px; border-radius: 10px; background: #e8f5eb; color: #24623b; }
 .messages-page { height: calc(100vh - 76px); min-height: 600px; display: grid; grid-template-columns: 240px minmax(0, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: white; }
 .conversation-list { padding: 18px 12px; border-right: 1px solid var(--line); overflow-y: auto; }

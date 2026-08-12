@@ -33,6 +33,7 @@ interface AuthContextValue {
   register(input: Registration): Promise<void>;
   logout(): Promise<void>;
   refresh(): Promise<void>;
+  switchAccount(accountId: string): Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -77,7 +78,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const value = useMemo(() => ({ user, loading, login, register, logout, refresh }), [user, loading, login, register, logout, refresh]);
+  const switchAccount = useCallback(async (accountId: string) => {
+    const session = await apiRequest<{ user: AuthUser; accessToken: string }>(`/users/me/verified-accounts/${encodeURIComponent(accountId)}/switch`, { method: 'POST' });
+    setAccessToken(session.accessToken);
+    setUser(session.user);
+  }, []);
+
+  const value = useMemo(() => ({ user, loading, login, register, logout, refresh, switchAccount }), [user, loading, login, register, logout, refresh, switchAccount]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
