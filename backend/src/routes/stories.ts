@@ -23,10 +23,11 @@ storyRoutes.get('/', async (c) => {
     u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified
     FROM stories s JOIN users u ON u.id = s.author_user_id
     WHERE s.expires_at > ? AND u.status IN ('active', 'pending_email')
-    ORDER BY CASE WHEN u.id = ? THEN 0
-      WHEN EXISTS (SELECT 1 FROM user_follows f WHERE f.follower_user_id = ? AND f.followed_user_id = u.id) THEN 1
-      ELSE 2 END, s.created_at ASC LIMIT 200`)
-    .bind(now, viewerId, viewerId).all();
+      AND (u.id = ? OR EXISTS (
+        SELECT 1 FROM user_follows f WHERE f.follower_user_id = ? AND f.followed_user_id = u.id
+      ))
+    ORDER BY CASE WHEN u.id = ? THEN 0 ELSE 1 END, s.created_at ASC LIMIT 200`)
+    .bind(now, viewerId, viewerId, viewerId).all();
   return ok(c, { stories: rows.results });
 });
 
