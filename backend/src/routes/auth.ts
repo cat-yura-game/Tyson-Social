@@ -65,7 +65,7 @@ function validationFailure(c: Parameters<typeof fail>[0], error: unknown): Respo
 }
 
 function sessionPayload(user: AuthUser, accessToken: string) {
-  return { user, accessToken, emailDelivery: 'disabled' as const };
+  return { user, accessToken };
 }
 
 authRoutes.post('/register', async (c) => {
@@ -214,7 +214,4 @@ authRoutes.post('/logout', async (c) => {
   return ok(c, { loggedOut: true });
 });
 
-authRoutes.get('/session', (c) => ok(c, {
-  user: c.get('authUser'),
-  emailDelivery: c.env.EMAIL_DELIVERY_MODE,
-}));
+authRoutes.get('/session', (c) => ok(c, { user: c.get('authUser') }));
