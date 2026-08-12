@@ -3,6 +3,10 @@ export type RecommendationSignalType = 'open' | 'like' | 'dislike' | 'comment';
 export interface AiRecommendationCandidate {
   id: string;
   text: string;
+  isFromFollowedAuthor?: boolean;
+  likeCount?: number;
+  commentCount?: number;
+  ageHours?: number;
 }
 
 export interface AiRecommendationSignal {

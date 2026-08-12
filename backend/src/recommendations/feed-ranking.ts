@@ -27,6 +27,21 @@ export interface RankedFeed<T> {
   strategy: 'gemini' | 'scoring';
 }
 
+export function interleaveAuthors<T extends FeedCandidate>(posts: T[]): T[] {
+  const remaining = [...posts];
+  const result: T[] = [];
+  let previousAuthorId: string | null = null;
+  while (remaining.length) {
+    const alternativeIndex = remaining.findIndex((post) => post.authorId !== previousAuthorId);
+    const index = alternativeIndex === -1 ? 0 : alternativeIndex;
+    const [next] = remaining.splice(index, 1);
+    if (!next) break;
+    result.push(next);
+    previousAuthorId = next.authorId;
+  }
+  return result;
+}
+
 function randomExploration(): number {
   const value = new Uint32Array(1);
   crypto.getRandomValues(value);
@@ -45,6 +60,9 @@ export async function rankFeed<T extends FeedCandidate>(env: Env, viewerId: stri
     selectedTopics = [];
   }
   const preferredTopicLabels = FEED_TOPICS.filter((topic) => selectedTopics.includes(topic.id)).map((topic) => topic.label);
+  const followedRows = await env.DB.prepare('SELECT followed_user_id AS authorId FROM user_follows WHERE follower_user_id = ?')
+    .bind(viewerId).all<{ authorId: string }>();
+  const followedAuthorIds = new Set(followedRows.results.map((row) => row.authorId));
   const historyResult = await env.DB.prepare(`SELECT e.event_type AS eventType, p.body, p.author_user_id AS authorId
     FROM recommendation_events e JOIN posts p ON p.id = e.post_id
     WHERE e.user_id = ? AND e.event_type IN ('open', 'like', 'dislike', 'comment')
@@ -72,7 +90,7 @@ export async function rankFeed<T extends FeedCandidate>(env: Env, viewerId: stri
     }).total,
   })).sort((left, right) => right.score - left.score).map(({ post }) => post);
 
-  if (baseline.length < 2) return { posts: baseline, strategy: 'scoring' };
+  if (baseline.length < 2) return { posts: interleaveAuthors(baseline), strategy: 'scoring' };
 
   const aiCandidates = baseline.slice(0, 40);
   const signals = history.slice(0, 20).map((signal) => ({
@@ -80,27 +98,34 @@ export async function rankFeed<T extends FeedCandidate>(env: Env, viewerId: stri
     text: signal.body.slice(0, 1000),
   }));
   const contentHash = await sha256(JSON.stringify({
-    candidates: aiCandidates.map((post) => [post.id, post.updatedAt]).sort(([left], [right]) => String(left).localeCompare(String(right))),
+    candidates: aiCandidates.map((post) => [post.id, post.updatedAt, followedAuthorIds.has(post.authorId)]).sort(([left], [right]) => String(left).localeCompare(String(right))),
     signals,
     preferredTopicLabels,
   }));
   try {
     const nowIso = new Date().toISOString();
     const cached = await env.DB.prepare(`SELECT ordered_post_ids_json AS orderedPostIdsJson
-      FROM ai_recommendation_cache WHERE user_id = ? AND content_hash = ? AND expires_at > ?`)
-      .bind(viewerId, contentHash, nowIso).first<{ orderedPostIdsJson: string }>();
+      FROM ai_recommendation_cache WHERE user_id = ? AND expires_at > ?`)
+      .bind(viewerId, nowIso).first<{ orderedPostIdsJson: string }>();
 
     let orderedIds: string[];
     if (cached) {
       orderedIds = JSON.parse(cached.orderedPostIdsJson) as string[];
     } else {
       const ranking = await createAiProviders(env).recommendation.rank({
-        candidates: aiCandidates.map((post) => ({ id: post.id, text: post.body.slice(0, 2000) })),
+        candidates: aiCandidates.map((post) => ({
+          id: post.id,
+          text: post.body.slice(0, 2000),
+          isFromFollowedAuthor: followedAuthorIds.has(post.authorId),
+          likeCount: post.likeCount,
+          commentCount: post.commentCount,
+          ageHours: Math.max(0, Math.round((now - Date.parse(post.publishedAt)) / 3_600_000)),
+        })),
         signals,
         preferredTopics: preferredTopicLabels,
       });
       orderedIds = ranking.orderedPostIds;
-      const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+      const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
       await env.DB.prepare(`INSERT INTO ai_recommendation_cache
         (user_id, content_hash, ordered_post_ids_json, provider, model_version, expires_at, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -113,9 +138,9 @@ export async function rankFeed<T extends FeedCandidate>(env: Env, viewerId: stri
     const positions = new Map(orderedIds.map((id, index) => [id, index]));
     const aiRanked = [...aiCandidates].sort((left, right) =>
       (positions.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (positions.get(right.id) ?? Number.MAX_SAFE_INTEGER));
-    return { posts: [...aiRanked, ...baseline.slice(aiCandidates.length)], strategy: 'gemini' };
+    return { posts: interleaveAuthors([...aiRanked, ...baseline.slice(aiCandidates.length)]), strategy: 'gemini' };
   } catch (error) {
     console.error(JSON.stringify({ event: 'ai_reranking_failed', error: error instanceof Error ? error.message : 'unknown' }));
-    return { posts: baseline, strategy: 'scoring' };
+    return { posts: interleaveAuthors(baseline), strategy: 'scoring' };
   }
 }
