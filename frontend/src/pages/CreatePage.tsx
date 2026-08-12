@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const POST_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const REWRITE_STYLES = [
   { id: 'business', label: 'Деловой' },
@@ -55,7 +55,7 @@ export function CreatePage() {
       return;
     }
     if (selected.size > MAX_IMAGE_BYTES) {
-      setError('Изображение должно быть не больше 5 МиБ.');
+      setError('Изображение должно быть не больше 10 МиБ для Telegram-аккаунтов.');
       event.target.value = '';
       return;
     }

@@ -10,6 +10,7 @@ import {
 import type { AppVariables, Env } from '../types';
 import { base64Encode } from '../security/encoding';
 import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
+import { uploadLimitForUser } from '../services/upload-limits';
 
 const STORY_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
@@ -39,10 +40,11 @@ storyRoutes.post('/', async (c) => {
   if ((activeCount?.count ?? 0) >= 20) return fail(c, 429, 'STORY_LIMIT_REACHED', 'You can have up to 20 active stories.');
   const contentType = c.req.header('content-type')?.split(';')[0]?.trim().toLowerCase() ?? '';
   const declaredLength = Number(c.req.header('content-length') ?? 0);
-  if (declaredLength > 5 * 1024 * 1024) return fail(c, 413, 'STORY_TOO_LARGE', 'Story media must not exceed 5 MiB.');
+  const maxUploadBytes = await uploadLimitForUser(c.env.DB, user.id);
+  if (declaredLength > maxUploadBytes) return fail(c, 413, 'STORY_TOO_LARGE', `Story media must not exceed ${Math.round(maxUploadBytes / 1024 / 1024)} MiB.`);
   const body = await c.req.arrayBuffer();
   try {
-    assertValidStoryMedia(contentType, body.byteLength);
+    assertValidStoryMedia(contentType, body.byteLength, maxUploadBytes);
     assertStoryMediaSignature(contentType, new Uint8Array(body));
   } catch (error) {
     return fail(c, 422, 'INVALID_STORY_MEDIA', error instanceof Error ? error.message : 'Invalid story media.');

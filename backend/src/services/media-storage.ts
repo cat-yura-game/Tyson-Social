@@ -35,17 +35,17 @@ export interface MediaStorage {
   delete(key: string): Promise<void>;
 }
 
-export function assertValidMedia(contentType: string, byteSize: number): asserts contentType is AllowedImageType {
+export function assertValidMedia(contentType: string, byteSize: number, maxBytes = MAX_MEDIA_BYTES): asserts contentType is AllowedImageType {
   if (!(contentType in ALLOWED_IMAGE_TYPES)) throw new Error('Unsupported image type.');
-  if (!Number.isSafeInteger(byteSize) || byteSize <= 0 || byteSize > MAX_MEDIA_BYTES) {
-    throw new Error('Image size must be between 1 byte and 5 MiB.');
+  if (!Number.isSafeInteger(byteSize) || byteSize <= 0 || byteSize > maxBytes) {
+    throw new Error(`Image size must be between 1 byte and ${Math.round(maxBytes / 1024 / 1024)} MiB.`);
   }
 }
 
-export function assertValidStoryMedia(contentType: string, byteSize: number): asserts contentType is AllowedMediaType {
+export function assertValidStoryMedia(contentType: string, byteSize: number, maxBytes = MAX_MEDIA_BYTES): asserts contentType is AllowedMediaType {
   if (!(contentType in ALLOWED_IMAGE_TYPES) && !(contentType in ALLOWED_VIDEO_TYPES)) throw new Error('Unsupported story media type.');
-  if (!Number.isSafeInteger(byteSize) || byteSize <= 0 || byteSize > MAX_MEDIA_BYTES) {
-    throw new Error('Story media size must be between 1 byte and 5 MiB.');
+  if (!Number.isSafeInteger(byteSize) || byteSize <= 0 || byteSize > maxBytes) {
+    throw new Error(`Story media size must be between 1 byte and ${Math.round(maxBytes / 1024 / 1024)} MiB.`);
   }
 }
 

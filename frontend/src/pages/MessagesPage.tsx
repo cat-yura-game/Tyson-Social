@@ -188,8 +188,8 @@ export function MessagesPage() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || !active) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
-      setError('Можно отправить JPEG, PNG или WebP размером до 5 МиБ.');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      setError('Можно отправить JPEG, PNG или WebP размером до 10 МиБ для Telegram-аккаунтов.');
       return;
     }
     setUploading(true);

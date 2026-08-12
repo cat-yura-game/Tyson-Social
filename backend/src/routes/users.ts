@@ -10,6 +10,7 @@ import { FEED_TOPICS, type FeedTopicId } from '../recommendations/topics';
 import { base64Encode } from '../security/encoding';
 import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
 import { hashPassword } from '../security/passwords';
+import { uploadLimitForUser } from '../services/upload-limits';
 import { keyedHash, randomToken, sha256 } from '../security/tokens';
 import { SESSION_COOKIE } from '../middleware/auth';
 
@@ -193,10 +194,11 @@ userRoutes.post('/me/avatar', async (c) => {
   if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
   const contentType = c.req.header('content-type')?.split(';')[0]?.trim() ?? '';
   const declaredLength = Number(c.req.header('content-length') ?? 0);
-  if (declaredLength > 5 * 1024 * 1024) return fail(c, 413, 'IMAGE_TOO_LARGE', 'Avatar must not exceed 5 MiB.');
+  const maxUploadBytes = await uploadLimitForUser(c.env.DB, user.id);
+  if (declaredLength > maxUploadBytes) return fail(c, 413, 'IMAGE_TOO_LARGE', `Avatar must not exceed ${Math.round(maxUploadBytes / 1024 / 1024)} MiB.`);
   const body = await c.req.arrayBuffer();
   try {
-    assertValidMedia(contentType, body.byteLength);
+    assertValidMedia(contentType, body.byteLength, maxUploadBytes);
     assertImageSignature(contentType, new Uint8Array(body));
   } catch (error) {
     return fail(c, 422, 'INVALID_IMAGE', error instanceof Error ? error.message : 'Invalid image.');

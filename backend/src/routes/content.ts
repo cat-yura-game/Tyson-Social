@@ -7,9 +7,10 @@ import { sha256 } from '../security/tokens';
 import type { AppVariables, Env } from '../types';
 import { rankFeed, type FeedCandidate } from '../recommendations/feed-ranking';
 import { extractTrends, type TrendSourcePost } from '../trends/extract-trends';
-import { assertImageSignature, assertValidMedia, createMediaKey, KvMediaStorage, MAX_MEDIA_BYTES, type AllowedImageType } from '../services/media-storage';
+import { assertImageSignature, assertValidMedia, createMediaKey, KvMediaStorage, type AllowedImageType } from '../services/media-storage';
 import { base64Encode } from '../security/encoding';
 import { moderatePublicContent } from '../services/moderation-service';
+import { uploadLimitForUser } from '../services/upload-limits';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const contentRoutes = new Hono<App>();
@@ -26,7 +27,7 @@ interface CreatePostImage {
   contentType: AllowedImageType;
 }
 
-async function createPostInput(c: Parameters<typeof fail>[0]): Promise<{ title: string; body: string; image: CreatePostImage | null } | Response> {
+async function createPostInput(c: Parameters<typeof fail>[0], maxUploadBytes: number): Promise<{ title: string; body: string; image: CreatePostImage | null } | Response> {
   const contentType = c.req.header('content-type')?.toLowerCase() ?? '';
   if (!contentType.includes('multipart/form-data')) {
     const input = await json(c, postBodySchema);
@@ -34,8 +35,8 @@ async function createPostInput(c: Parameters<typeof fail>[0]): Promise<{ title: 
   }
 
   const declaredLength = Number(c.req.header('content-length') ?? 0);
-  if (declaredLength > MAX_MEDIA_BYTES + 256 * 1024) {
-    return fail(c, 413, 'IMAGE_TOO_LARGE', 'Post image must not exceed 5 MiB.');
+  if (declaredLength > maxUploadBytes + 256 * 1024) {
+    return fail(c, 413, 'IMAGE_TOO_LARGE', `Post image must not exceed ${Math.round(maxUploadBytes / 1024 / 1024)} MiB.`);
   }
   try {
     const form = await c.req.formData();
@@ -45,7 +46,7 @@ async function createPostInput(c: Parameters<typeof fail>[0]): Promise<{ title: 
     if (!(uploaded instanceof File)) return fail(c, 422, 'INVALID_IMAGE', 'A valid image file is required.');
     const imageContentType = uploaded.type.toLowerCase();
     const bytes = await uploaded.arrayBuffer();
-    assertValidMedia(imageContentType, bytes.byteLength);
+    assertValidMedia(imageContentType, bytes.byteLength, maxUploadBytes);
     if (imageContentType === 'image/avif') throw new Error('Post images must be JPEG, PNG or WebP.');
     assertImageSignature(imageContentType, new Uint8Array(bytes));
     return { title: input.title, body: input.body, image: { bytes, contentType: imageContentType } };
@@ -125,7 +126,7 @@ contentRoutes.get('/posts/:id', async (c) => {
 
 contentRoutes.post('/posts', async (c) => {
   const auth = requireUser(c); if ('error' in auth) return auth.error;
-  const input = await createPostInput(c); if (input instanceof Response) return input;
+  const input = await createPostInput(c, await uploadLimitForUser(c.env.DB, auth.user.id)); if (input instanceof Response) return input;
   const imageBase64 = input.image ? base64Encode(new Uint8Array(input.image.bytes)) : null;
   const moderationText = input.title ? `${input.title}\n\n${input.body}` : input.body;
   const result = await moderatePublicContent(c.env, moderationText, input.image && imageBase64 ? [{ mimeType: input.image.contentType, objectKey: 'pending-upload', base64Data: imageBase64 }] : [], extractLinks(moderationText));

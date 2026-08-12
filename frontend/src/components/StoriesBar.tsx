@@ -25,7 +25,7 @@ interface StoryGroup {
   stories: Story[];
 }
 
-const MAX_STORY_BYTES = 5 * 1024 * 1024;
+const MAX_STORY_BYTES = 10 * 1024 * 1024;
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'video/mp4', 'video/webm', 'video/quicktime'];
 
 export function StoriesBar() {
@@ -76,7 +76,7 @@ export function StoriesBar() {
     if (!file) return;
     setError(null);
     if (!ACCEPTED_TYPES.includes(file.type)) { setError('Выберите изображение, MP4, WebM или MOV.'); return; }
-    if (file.size > MAX_STORY_BYTES) { setError('Файл сторис должен быть не больше 5 МиБ.'); return; }
+    if (file.size > MAX_STORY_BYTES) { setError('Файл сторис должен быть не больше 10 МиБ для Telegram-аккаунтов.'); return; }
     setUploading(true);
     try {
       await apiRawRequest('/stories', { method: 'POST', headers: { 'content-type': file.type }, body: file });

@@ -4,10 +4,11 @@ import { fail, ok } from '../lib/responses';
 import { cloudMessageSchema, conversationSchema, deviceSchema, messageBatchSchema } from '../schemas/messages';
 import type { AppVariables, AuthUser, Env } from '../types';
 import { decryptCloudMessage, encryptCloudMessage } from '../services/cloud-message-crypto';
+import { uploadLimitForUser } from '../services/upload-limits';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const messageRoutes = new Hono<App>();
-const MAX_ENCRYPTED_ATTACHMENT_BYTES = 5 * 1024 * 1024 + 64;
+const ENCRYPTED_ATTACHMENT_OVERHEAD = 64;
 
 function requireUser(c: Parameters<typeof fail>[0]): AuthUser | Response {
   return c.get('authUser') ?? fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
@@ -132,13 +133,14 @@ messageRoutes.post('/conversations/:id/attachments', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const conversationId = c.req.param('id');
   if (!await isMember(c.env.DB, conversationId, user.id)) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  const maxAttachmentBytes = await uploadLimitForUser(c.env.DB, user.id) + ENCRYPTED_ATTACHMENT_OVERHEAD;
   if (c.req.header('content-type')?.split(';')[0]?.trim() !== 'application/octet-stream') {
     return fail(c, 400, 'BINARY_REQUIRED', 'Encrypted attachment bytes are required.');
   }
   const declaredLength = Number(c.req.header('content-length') ?? 0);
-  if (declaredLength > MAX_ENCRYPTED_ATTACHMENT_BYTES) return fail(c, 413, 'ATTACHMENT_TOO_LARGE', 'Encrypted attachment must not exceed 5 MiB.');
+  if (declaredLength > maxAttachmentBytes) return fail(c, 413, 'ATTACHMENT_TOO_LARGE', 'Encrypted attachment is too large.');
   const bytes = await c.req.arrayBuffer();
-  if (!bytes.byteLength || bytes.byteLength > MAX_ENCRYPTED_ATTACHMENT_BYTES) return fail(c, 413, 'ATTACHMENT_TOO_LARGE', 'Encrypted attachment must not exceed 5 MiB.');
+  if (!bytes.byteLength || bytes.byteLength > maxAttachmentBytes) return fail(c, 413, 'ATTACHMENT_TOO_LARGE', 'Encrypted attachment is too large.');
   const recent = await c.env.DB.prepare(`SELECT COUNT(*) AS count FROM encrypted_message_attachments
     WHERE uploader_user_id = ? AND created_at > datetime('now', '-1 hour')`).bind(user.id).first<{ count: number }>();
   if ((recent?.count ?? 0) >= 30) return fail(c, 429, 'ATTACHMENT_RATE_LIMITED', 'Too many attachments. Try again later.');

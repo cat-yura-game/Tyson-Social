@@ -7,8 +7,8 @@ import {
   assertValidMedia,
   createMediaKey,
   KvMediaStorage,
-  MAX_MEDIA_BYTES,
 } from '../services/media-storage';
+import { uploadLimitForUser } from '../services/upload-limits';
 import type { AppVariables, Env } from '../types';
 import { aiDailyRequestLimit } from '../ai/chat-quota';
 import { z } from 'zod';
@@ -162,7 +162,8 @@ aiChatRoutes.post('/conversations/:id/messages', async (c) => {
     return fail(c, 429, 'AI_DAILY_LIMIT_REACHED', `Daily AI limit of ${quota.limit} requests has been reached.`);
   }
   const declaredLength = Number(c.req.header('content-length') ?? 0);
-  if (declaredLength > MAX_MEDIA_BYTES + 64 * 1024) {
+  const maxUploadBytes = await uploadLimitForUser(c.env.DB, auth.user.id);
+  if (declaredLength > maxUploadBytes + 64 * 1024) {
     return fail(c, 413, 'AI_REQUEST_TOO_LARGE', 'AI request body is too large.');
   }
 
@@ -180,10 +181,10 @@ aiChatRoutes.post('/conversations/:id/messages', async (c) => {
   let imageExpiresAt: string | null = null;
   let imagePart: GeminiPart | null = null;
   if (image) {
-    if (image.size > MAX_MEDIA_BYTES) return fail(c, 413, 'IMAGE_TOO_LARGE', 'AI images must not exceed 5 MiB.');
+    if (image.size > maxUploadBytes) return fail(c, 413, 'IMAGE_TOO_LARGE', 'AI image is too large.');
     const bytes = new Uint8Array(await image.arrayBuffer());
     try {
-      assertValidMedia(image.type, bytes.byteLength);
+      assertValidMedia(image.type, bytes.byteLength, maxUploadBytes);
       assertImageSignature(image.type, bytes);
     } catch (error) {
       return fail(c, 422, 'INVALID_IMAGE', error instanceof Error ? error.message : 'Invalid image.');

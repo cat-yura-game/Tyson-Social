@@ -74,7 +74,7 @@ export function AiPage() {
     setError(null);
     if (!file) return;
     if (!['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) { setError('Поддерживаются JPEG, PNG, WebP и AVIF.'); return; }
-    if (file.size > 5 * 1024 * 1024) { setError('Изображение должно быть не больше 5 МиБ.'); return; }
+    if (file.size > 10 * 1024 * 1024) { setError('Изображение должно быть не больше 10 МиБ для Telegram-аккаунтов.'); return; }
     if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImage(file);
     setImagePreview(URL.createObjectURL(file));
