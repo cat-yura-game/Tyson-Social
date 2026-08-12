@@ -21,6 +21,7 @@ export interface GeminiGenerateOptions {
   contents?: Array<{ role: 'user' | 'model'; parts: GeminiPart[] }>;
   responseJsonSchema?: Record<string, unknown>;
   maxOutputTokens: number;
+  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
 }
 
 export interface GeminiTextResult {
@@ -58,6 +59,9 @@ export class GeminiClient {
     const generationConfig: Record<string, unknown> = {
       maxOutputTokens: options.maxOutputTokens,
     };
+    if (options.thinkingLevel) {
+      generationConfig.thinkingConfig = { thinkingLevel: options.thinkingLevel };
+    }
     if (options.responseJsonSchema) {
       generationConfig.responseMimeType = 'application/json';
       generationConfig.responseJsonSchema = options.responseJsonSchema;
