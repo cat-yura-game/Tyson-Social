@@ -1,4 +1,4 @@
-import { BadgeCheck, Camera, Monitor, Moon, Save, Send, Sun, Unlink, UserPlus } from 'lucide-react';
+import { BadgeCheck, Camera, LockKeyhole, Monitor, Moon, Save, Send, Sun, Unlink, UserPlus } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest, mediaUrl } from '../api/client';
@@ -24,6 +24,8 @@ export function SettingsPage() {
   const [linkedAccount, setLinkedAccount] = useState({ email: '', username: '', displayName: '', password: '' });
   const [linkedAccountPending, setLinkedAccountPending] = useState(false);
   const [linkedAccountError, setLinkedAccountError] = useState<string | null>(null);
+  const [secretChatEnabled, setSecretChatEnabled] = useState(false);
+  const [secretChatPending, setSecretChatPending] = useState(false);
   const telegramResult = searchParams.get('telegram');
   const telegramCallbackError = searchParams.get('telegram_error');
 
@@ -46,6 +48,7 @@ export function SettingsPage() {
   };
 
   useEffect(() => { if (user?.verified) void loadVerifiedAccounts().catch(() => setVerifiedAccounts(null)); }, [user?.id, user?.verified]);
+  useEffect(() => { if (user) void apiRequest<{ secretChatEnabled: boolean }>('/users/me/messaging-settings').then((value) => setSecretChatEnabled(value.secretChatEnabled)).catch(() => undefined); }, [user]);
 
   if (!user) return null;
 
@@ -125,6 +128,13 @@ export function SettingsPage() {
     finally { setLinkedAccountPending(false); }
   };
 
+  const changeSecretChat = async (enabled: boolean) => {
+    setSecretChatPending(true);
+    try { const result = await apiRequest<{ secretChatEnabled: boolean }>('/users/me/messaging-settings', { method: 'PUT', body: JSON.stringify({ secretChatEnabled: enabled }) }); setSecretChatEnabled(result.secretChatEnabled); }
+    catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось изменить настройку секретных чатов.'); }
+    finally { setSecretChatPending(false); }
+  };
+
   return <section className="surface-page narrow-page settings-page">
     <header className="page-heading"><div><p className="eyebrow">Ваш аккаунт</p><h1>Настройки профиля</h1></div></header>
     <section className="theme-settings" aria-labelledby="theme-settings-title"><div><p className="eyebrow">Оформление</p><h2 id="theme-settings-title">Тема Tyson</h2></div><div className="theme-options" role="radiogroup" aria-label="Тема интерфейса"><button type="button" role="radio" aria-checked={theme === 'system'} className={theme === 'system' ? 'selected' : ''} onClick={() => chooseTheme('system')}><Monitor size={18} />Как в системе</button><button type="button" role="radio" aria-checked={theme === 'light'} className={theme === 'light' ? 'selected' : ''} onClick={() => chooseTheme('light')}><Sun size={18} />Светлая</button><button type="button" role="radio" aria-checked={theme === 'dark'} className={theme === 'dark' ? 'selected' : ''} onClick={() => chooseTheme('dark')}><Moon size={18} />Тёмная</button></div></section>
@@ -142,6 +152,7 @@ export function SettingsPage() {
       {telegramResult === 'linked' && <p className="form-success">Telegram успешно подключён.</p>}
       {telegramError && <p className="form-error" role="alert">{telegramError}</p>}
     </section>
+    <section className="secret-chats-settings" aria-labelledby="secret-chats-title"><div><p className="eyebrow">Приватность</p><h2 id="secret-chats-title"><LockKeyhole size={18} />Секретные чаты</h2><p>Обычные сообщения синхронизируются по аккаунту и шифруются при хранении. Секретные чаты используют E2EE и доступны только на добавленных устройствах.</p></div><label className="settings-switch"><input type="checkbox" checked={secretChatEnabled} disabled={secretChatPending} onChange={(event) => void changeSecretChat(event.target.checked)} /><span aria-hidden="true" /><b>{secretChatEnabled ? 'Включены' : 'Выключены'}</b></label></section>
     {verifiedAccounts && (verifiedAccounts.canCreate || verifiedAccounts.accounts.length > 0) && <section className="linked-accounts-settings" aria-labelledby="linked-accounts-title">
       <div><p className="eyebrow">Подтверждённый аккаунт</p><h2 id="linked-accounts-title"><BadgeCheck size={18} />Дополнительные аккаунты</h2><p>Созданные здесь профили получат галочку и отдельные данные для входа. Создать можно до 10 аккаунтов.</p></div>
       {verifiedAccounts.canCreate && <form className="linked-account-form" onSubmit={(event) => void createLinkedAccount(event)}>

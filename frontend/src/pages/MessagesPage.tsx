@@ -17,11 +17,13 @@ interface Conversation {
   otherAvatarKey: string | null;
   otherVerified: number | boolean;
   isSaved: boolean;
+  securityMode: 'cloud' | 'secret';
 }
 
 interface PublicDevice { deviceId: string; name: string; publicKey: string }
 interface EncryptedMessage { id: string; senderUserId: string; senderDeviceId: string; ciphertext: string; sentAt: string }
 interface PlainMessage extends EncryptedMessage { content: MessageContent }
+interface CloudMessage { id: string; senderUserId: string; sentAt: string; content: unknown }
 
 export function MessagesPage() {
   const { user } = useAuth();
@@ -32,6 +34,8 @@ export function MessagesPage() {
   const [messages, setMessages] = useState<PlainMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [newUsername, setNewUsername] = useState('');
+  const [secretChatsEnabled, setSecretChatsEnabled] = useState(false);
+  const [startSecretChat, setStartSecretChat] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -67,12 +71,29 @@ export function MessagesPage() {
     }).catch((caught) => setError(caught instanceof Error ? caught.message : 'Не удалось подготовить защищённое устройство.'));
   }, [user, loadConversations]);
 
+  useEffect(() => {
+    if (!user) return;
+    void apiRequest<{ secretChatEnabled: boolean }>('/users/me/messaging-settings')
+      .then(({ secretChatEnabled }) => { setSecretChatsEnabled(secretChatEnabled); setStartSecretChat(false); })
+      .catch(() => setSecretChatsEnabled(false));
+  }, [user]);
+
   const loadMessages = useCallback(async () => {
     if (!activeId || !identity || busy.current) return;
     busy.current = true;
     try {
-      const result = await apiRequest<{ messages: EncryptedMessage[] }>(`/messages/conversations/${activeId}/messages?deviceId=${identity.deviceId}`);
-      const decrypted = await Promise.all(result.messages.map(async (message): Promise<PlainMessage> => {
+      const path = active?.securityMode === 'secret'
+        ? `/messages/conversations/${activeId}/messages?deviceId=${identity.deviceId}`
+        : `/messages/conversations/${activeId}/messages`;
+      const result = await apiRequest<{ securityMode: 'cloud' | 'secret'; messages: EncryptedMessage[] | CloudMessage[] }>(path);
+      if (result.securityMode === 'cloud') {
+        setMessages((result.messages as CloudMessage[]).map((message) => {
+          try { return { ...message, senderDeviceId: '', ciphertext: '', content: parseMessageContent(message.content) }; }
+          catch { return { ...message, senderDeviceId: '', ciphertext: '', content: { type: 'text', text: 'Не удалось прочитать сообщение.' } }; }
+        }));
+        return;
+      }
+      const decrypted = await Promise.all((result.messages as EncryptedMessage[]).map(async (message): Promise<PlainMessage> => {
         try {
           const payload = JSON.parse(await decryptForDevice(message.ciphertext, identity)) as unknown;
           return { ...message, content: parseMessageContent(payload) };
@@ -84,7 +105,7 @@ export function MessagesPage() {
     } finally {
       busy.current = false;
     }
-  }, [activeId, identity]);
+  }, [active?.securityMode, activeId, identity]);
 
   useEffect(() => {
     setShowStickers(false);
@@ -103,7 +124,7 @@ export function MessagesPage() {
     try {
       const result = await apiRequest<{ conversation: { id: string } }>('/messages/conversations', {
         method: 'POST',
-        body: JSON.stringify({ recipientUsername: newUsername }),
+        body: JSON.stringify({ recipientUsername: newUsername, securityMode: startSecretChat ? 'secret' : 'cloud' }),
       });
       setNewUsername('');
       await loadConversations();
@@ -119,6 +140,12 @@ export function MessagesPage() {
     setSending(true);
     setError(null);
     try {
+      if (active.securityMode === 'cloud') {
+        await apiRequest(`/messages/conversations/${active.id}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
+        await loadMessages();
+        await loadConversations();
+        return;
+      }
       const recipient = await apiRequest<{ devices: PublicDevice[] }>(`/messages/users/${encodeURIComponent(active.otherUsername)}/devices`);
       if (!recipient.devices.length) throw new Error('Получатель ещё не открыл защищённый мессенджер на своём устройстве.');
       const payload: EncryptedMessagePayload = { ...content, version: 1, sentAt: new Date().toISOString() };
@@ -204,12 +231,12 @@ export function MessagesPage() {
 
   return <section className={`messages-page${active ? ' mobile-chat-open' : ''}`}>
     <aside className="conversation-list">
-      <div className="messages-title"><div><p className="eyebrow">End-to-end encryption</p><h1>Сообщения</h1></div><LockKeyhole size={21} /></div>
-      <form className="new-conversation" onSubmit={(event) => void startConversation(event)}><input required value={newUsername} onChange={(event) => setNewUsername(event.target.value)} placeholder="username получателя" /><button type="submit" aria-label="Начать разговор"><Plus /></button></form>
+      <div className="messages-title"><div><p className="eyebrow">Синхронизация между устройствами</p><h1>Сообщения</h1></div><LockKeyhole size={21} /></div>
+      <form className="new-conversation" onSubmit={(event) => void startConversation(event)}><input required value={newUsername} onChange={(event) => setNewUsername(event.target.value)} placeholder="username получателя" /><button type="submit" aria-label="Начать разговор"><Plus /></button>{secretChatsEnabled && <label className="secret-chat-option"><input type="checkbox" checked={startSecretChat} onChange={(event) => setStartSecretChat(event.target.checked)} />Секретный чат</label>}</form>
       {conversations.map((conversation) => <button key={conversation.id} className={conversation.id === activeId ? 'conversation active' : 'conversation'} onClick={() => { setActiveId(conversation.id); setSearchParams(sharedPostId ? { conversation: conversation.id, sharePost: sharedPostId } : { conversation: conversation.id }); }}><span className={`avatar avatar-small${conversation.isSaved ? ' saved-avatar' : ''}`}>{conversation.isSaved ? <Bookmark size={20} /> : conversation.otherDisplayName.slice(0, 1).toUpperCase()}</span><span><strong>{conversation.otherDisplayName}</strong><small>{conversation.isSaved ? 'Личный защищённый архив' : `@${conversation.otherUsername}`}</small></span></button>)}
     </aside>
     <div className="chat-panel">{active ? <>
-      <header><button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={closeMobileChat}><ChevronLeft /></button><div><strong>{active.otherDisplayName}</strong><small>{active.isSaved ? 'Ваш личный архив' : `@${active.otherUsername}`}</small></div><span><LockKeyhole size={14} />E2EE</span></header>
+      <header><button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={closeMobileChat}><ChevronLeft /></button><div><strong>{active.otherDisplayName}</strong><small>{active.isSaved ? 'Ваш личный архив' : `@${active.otherUsername}`}</small></div><span><LockKeyhole size={14} />{active.securityMode === 'secret' ? 'E2EE' : 'Защищено'}</span></header>
       <div className="message-stream">{messages.map((message) => {
         const sticker = message.content.type === 'sticker' ? getSticker(message.content.stickerId) : null;
         return <article key={message.id} className={`${message.senderUserId === user?.id ? 'message mine' : 'message'}${sticker ? ' sticker-message' : ''}`}>
@@ -219,7 +246,7 @@ export function MessagesPage() {
                 : message.content.type === 'image' ? <EncryptedMessageImage attachmentId={message.content.attachmentId} encryptionKey={message.content.key} nonce={message.content.nonce} digest={message.content.digest} mimeType={message.content.mimeType} /> : null}
           <small>{new Date(message.sentAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small>
         </article>;
-      })}{!messages.length && <div className="chat-empty"><LockKeyhole /><p>Сообщения и выбранные стикеры шифруются на вашем устройстве.</p></div>}<div ref={messageEnd} aria-hidden="true" /></div>
+      })}{!messages.length && <div className="chat-empty"><LockKeyhole /><p>{active.securityMode === 'secret' ? 'Секретные сообщения шифруются только на устройствах участников.' : 'Сообщения синхронизируются со всеми вашими устройствами и шифруются при хранении.'}</p></div>}<div ref={messageEnd} aria-hidden="true" /></div>
       <div className="composer-area">
         {sharedPostId && <div className="share-post-bar"><div><strong>Отправить публикацию</strong><small>{active.isSaved ? 'Сохранить в Избранное' : `Поделиться с @${active.otherUsername}`}</small></div><button type="button" disabled={sending} onClick={() => void sendSharedPost()}><Send size={16} />Отправить</button></div>}
         {showStickers && <div className="sticker-picker" aria-label="Стикеры">{STICKERS.map((sticker) => <button key={sticker.id} type="button" disabled={sending} aria-label={sticker.accessibleLabel} onClick={() => void sendSticker(sticker.id)}><img src={sticker.src} alt="" /></button>)}</div>}

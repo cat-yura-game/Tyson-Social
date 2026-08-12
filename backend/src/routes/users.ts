@@ -127,6 +127,28 @@ userRoutes.get('/me/feed-preferences', async (c) => {
   });
 });
 
+userRoutes.get('/me/messaging-settings', async (c) => {
+  const user = c.get('authUser');
+  if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const row = await c.env.DB.prepare('SELECT secret_chat_enabled AS secretChatEnabled FROM user_settings WHERE user_id = ?')
+    .bind(user.id).first<{ secretChatEnabled: number }>();
+  return ok(c, { secretChatEnabled: row?.secretChatEnabled === 1 });
+});
+
+userRoutes.put('/me/messaging-settings', async (c) => {
+  const user = c.get('authUser');
+  if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  try {
+    const value = await parseJsonBody(c.req.raw) as { secretChatEnabled?: unknown };
+    if (typeof value.secretChatEnabled !== 'boolean') throw new Error('Invalid setting.');
+    await c.env.DB.prepare('UPDATE user_settings SET secret_chat_enabled = ?, updated_at = ? WHERE user_id = ?')
+      .bind(value.secretChatEnabled ? 1 : 0, new Date().toISOString(), user.id).run();
+    return ok(c, { secretChatEnabled: value.secretChatEnabled });
+  } catch {
+    return fail(c, 422, 'VALIDATION_ERROR', 'The messaging setting is invalid.');
+  }
+});
+
 userRoutes.put('/me/feed-preferences', async (c) => {
   const user = c.get('authUser');
   if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');

@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
 import { fail, ok } from '../lib/responses';
-import { conversationSchema, deviceSchema, messageBatchSchema } from '../schemas/messages';
+import { cloudMessageSchema, conversationSchema, deviceSchema, messageBatchSchema } from '../schemas/messages';
 import type { AppVariables, AuthUser, Env } from '../types';
+import { decryptCloudMessage, encryptCloudMessage } from '../services/cloud-message-crypto';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const messageRoutes = new Hono<App>();
@@ -81,27 +82,32 @@ messageRoutes.post('/conversations', async (c) => {
     .first<{ id: string; username: string; displayName: string; avatarKey: string | null }>();
   if (!recipient) return fail(c, 404, 'USER_NOT_FOUND', 'Recipient not found.');
   if (recipient.id === user.id) return fail(c, 422, 'SELF_CONVERSATION', 'You cannot start a conversation with yourself.');
+  if (input.securityMode === 'secret') {
+    const enabled = await c.env.DB.prepare('SELECT secret_chat_enabled AS enabled FROM user_settings WHERE user_id = ?')
+      .bind(user.id).first<{ enabled: number }>();
+    if (enabled?.enabled !== 1) return fail(c, 422, 'SECRET_CHATS_DISABLED', 'Enable Secret Chats in settings before starting one.');
+  }
   const existing = await c.env.DB.prepare(`SELECT c.id FROM conversations c
     JOIN conversation_members a ON a.conversation_id = c.id AND a.user_id = ? AND a.left_at IS NULL
     JOIN conversation_members b ON b.conversation_id = c.id AND b.user_id = ? AND b.left_at IS NULL
-    WHERE c.kind = 'direct' AND (SELECT COUNT(*) FROM conversation_members m WHERE m.conversation_id = c.id AND m.left_at IS NULL) = 2
-    LIMIT 1`).bind(user.id, recipient.id).first<{ id: string }>();
+    WHERE c.kind = 'direct' AND c.security_mode = ? AND (SELECT COUNT(*) FROM conversation_members m WHERE m.conversation_id = c.id AND m.left_at IS NULL) = 2
+    LIMIT 1`).bind(user.id, recipient.id, input.securityMode).first<{ id: string }>();
   const conversationId = existing?.id ?? crypto.randomUUID();
   if (!existing) {
     const now = new Date().toISOString();
     await c.env.DB.batch([
-      c.env.DB.prepare(`INSERT INTO conversations (id, kind, created_by_user_id, created_at, updated_at) VALUES (?, 'direct', ?, ?, ?)`).bind(conversationId, user.id, now, now),
+      c.env.DB.prepare(`INSERT INTO conversations (id, kind, security_mode, created_by_user_id, created_at, updated_at) VALUES (?, 'direct', ?, ?, ?, ?)`).bind(conversationId, input.securityMode, user.id, now, now),
       c.env.DB.prepare(`INSERT INTO conversation_members (conversation_id, user_id, joined_at) VALUES (?, ?, ?)`).bind(conversationId, user.id, now),
       c.env.DB.prepare(`INSERT INTO conversation_members (conversation_id, user_id, joined_at) VALUES (?, ?, ?)`).bind(conversationId, recipient.id, now),
     ]);
   }
-  return ok(c, { conversation: { id: conversationId, otherUser: recipient } }, existing ? 200 : 201);
+  return ok(c, { conversation: { id: conversationId, otherUser: recipient, securityMode: input.securityMode } }, existing ? 200 : 201);
 });
 
 messageRoutes.get('/conversations', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const savedId = await ensureSavedConversation(c.env.DB, user);
-  const rows = await c.env.DB.prepare(`SELECT c.id, c.updated_at AS updatedAt, u.id AS otherUserId,
+  const rows = await c.env.DB.prepare(`SELECT c.id, c.updated_at AS updatedAt, c.security_mode AS securityMode, u.id AS otherUserId,
     u.username AS otherUsername, u.display_name AS otherDisplayName, u.avatar_key AS otherAvatarKey,
     u.is_verified AS otherVerified
     FROM conversations c
@@ -118,6 +124,7 @@ messageRoutes.get('/conversations', async (c) => {
     otherAvatarKey: null,
     otherVerified: false,
     isSaved: true,
+    securityMode: 'cloud',
   }, ...rows.results.map((row) => ({ ...row, isSaved: false }))] });
 });
 
@@ -168,7 +175,21 @@ messageRoutes.get('/attachments/:id', async (c) => {
 
 messageRoutes.get('/conversations/:id/messages', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
-  if (!await isMember(c.env.DB, c.req.param('id'), user.id)) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  const conversationId = c.req.param('id');
+  if (!await isMember(c.env.DB, conversationId, user.id)) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  const conversation = await c.env.DB.prepare('SELECT security_mode AS securityMode FROM conversations WHERE id = ?').bind(conversationId)
+    .first<{ securityMode: 'cloud' | 'secret' }>();
+  if (!conversation) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  if (conversation.securityMode === 'cloud') {
+    const rows = await c.env.DB.prepare(`SELECT id, sender_user_id AS senderUserId, ciphertext, nonce, sent_at AS sentAt
+      FROM cloud_messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 500`).bind(conversationId)
+      .all<{ id: string; senderUserId: string; ciphertext: string; nonce: string; sentAt: string }>();
+    const messages = await Promise.all(rows.results.map(async (row) => ({
+      id: row.id, senderUserId: row.senderUserId, sentAt: row.sentAt,
+      content: await decryptCloudMessage<unknown>(c.env, row.ciphertext, row.nonce),
+    })));
+    return ok(c, { securityMode: 'cloud', messages });
+  }
   const deviceId = c.req.query('deviceId');
   if (!deviceId) return fail(c, 422, 'DEVICE_REQUIRED', 'Device identifier is required.');
   const device = await c.env.DB.prepare(`SELECT 1 FROM devices WHERE id = ? AND user_id = ? AND revoked_at IS NULL`).bind(deviceId, user.id).first();
@@ -176,14 +197,28 @@ messageRoutes.get('/conversations/:id/messages', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT m.id, m.sender_user_id AS senderUserId, m.sender_device_id AS senderDeviceId,
     m.ciphertext, m.sent_at AS sentAt, m.created_at AS createdAt
     FROM encrypted_messages m WHERE m.conversation_id = ? AND m.recipient_device_id = ?
-    ORDER BY m.created_at ASC LIMIT 500`).bind(c.req.param('id'), deviceId).all();
-  return ok(c, { messages: rows.results });
+    ORDER BY m.created_at ASC LIMIT 500`).bind(conversationId, deviceId).all();
+  return ok(c, { securityMode: 'secret', messages: rows.results });
 });
 
 messageRoutes.post('/conversations/:id/messages', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const conversationId = c.req.param('id');
   if (!await isMember(c.env.DB, conversationId, user.id)) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  const conversation = await c.env.DB.prepare('SELECT security_mode AS securityMode FROM conversations WHERE id = ?').bind(conversationId)
+    .first<{ securityMode: 'cloud' | 'secret' }>();
+  if (!conversation) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  if (conversation.securityMode === 'cloud') {
+    const input = await parse(c, cloudMessageSchema); if (input instanceof Response) return input;
+    const now = new Date().toISOString();
+    const encrypted = await encryptCloudMessage(c.env, input.content);
+    await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT INTO cloud_messages (id, conversation_id, sender_user_id, ciphertext, nonce, sent_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), conversationId, user.id, encrypted.ciphertext, encrypted.nonce, now, now),
+      c.env.DB.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').bind(now, conversationId),
+    ]);
+    return ok(c, { sent: true, sentAt: now }, 201);
+  }
   const input = await parse(c, messageBatchSchema); if (input instanceof Response) return input;
   const senderDevice = await c.env.DB.prepare(`SELECT 1 FROM devices WHERE id = ? AND user_id = ? AND revoked_at IS NULL`).bind(input.senderDeviceId, user.id).first();
   if (!senderDevice) return fail(c, 403, 'DEVICE_FORBIDDEN', 'Sender device does not belong to this account.');

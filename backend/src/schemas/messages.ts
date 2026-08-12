@@ -10,7 +10,21 @@ export const deviceSchema = z.object({
 
 export const conversationSchema = z.object({
   recipientUsername: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/u).transform((value) => value.toLowerCase()),
+  securityMode: z.enum(['cloud', 'secret']).default('cloud'),
 }).strict();
+
+const imageContent = z.object({
+  type: z.literal('image'), attachmentId: z.string().uuid(), key: z.string().min(32).max(256), nonce: z.string().min(16).max(256),
+  digest: z.string().min(32).max(256).optional(), mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+}).strict();
+const cloudContentSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string().trim().min(1).max(4000) }).strict(),
+  z.object({ type: z.literal('sticker'), stickerId: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/u) }).strict(),
+  z.object({ type: z.literal('post'), postId: z.string().uuid() }).strict(),
+  imageContent,
+]);
+
+export const cloudMessageSchema = z.object({ content: cloudContentSchema }).strict();
 
 export const messageBatchSchema = z.object({
   senderDeviceId: z.string().uuid(),
