@@ -49,12 +49,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
       <nav className="bottom-nav" aria-label="Мобильная навигация">
         {[
-          { to: '/', label: 'Главная', end: true },
-          { to: '/messages', label: 'Сообщения' },
-          { to: user ? '/create' : '/login', label: 'Создать' },
-          { to: '/ai', label: 'AI' },
-          { to: profilePath, label: user ? 'Профиль' : 'Войти' },
-        ].map(({ to, label, end }) => <NavLink key={`${to}-${label}`} to={to} end={end} aria-label={label} className={({ isActive }) => isActive ? 'active' : ''}><img className="mobile-nav-logo" src="/logo.png" alt="" /><span>{label}</span></NavLink>)}
+          { to: '/', label: 'Главная', icon: Home, end: true },
+          { to: '/messages', label: 'Сообщения', icon: MessageCircle },
+          { to: user ? '/create' : '/login', label: 'Создать', icon: Plus },
+          { to: '/ai', label: 'AI', icon: Sparkles },
+          { to: profilePath, label: user ? 'Профиль' : 'Войти', icon: user ? UserRound : LogIn },
+        ].map(({ to, label, icon: Icon, end }) => <NavLink key={`${to}-${label}`} to={to} end={end} aria-label={label} className={({ isActive }) => isActive ? 'active' : ''}><Icon className="mobile-nav-icon" /><span>{label}</span></NavLink>)}
       </nav>
     </div>
   );
