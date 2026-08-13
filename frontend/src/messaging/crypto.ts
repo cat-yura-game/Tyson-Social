@@ -78,6 +78,7 @@ export interface EncryptedAttachment {
 }
 
 export async function attachmentDigest(ciphertext: Uint8Array): Promise<string> {
+  await sodium.ready;
   const digest = await crypto.subtle.digest('SHA-256', ciphertext.slice().buffer);
   return sodium.to_base64(new Uint8Array(digest), sodium.base64_variants.ORIGINAL);
 }

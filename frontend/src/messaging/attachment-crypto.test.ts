@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { attachmentDigest, decryptAttachment, encryptAttachment } from './crypto';
 
 describe('encrypted Messenger attachments', () => {
+  it('can calculate integrity metadata before any other sodium operation', async () => {
+    await expect(attachmentDigest(new Uint8Array([1, 2, 3, 4]))).resolves.toMatch(/^[A-Za-z0-9+/]+={0,2}$/u);
+  });
+
   it('round-trips binary image data without changing bytes', async () => {
     const original = new Uint8Array(256 * 1024);
     crypto.getRandomValues(original.subarray(0, 65_536));
