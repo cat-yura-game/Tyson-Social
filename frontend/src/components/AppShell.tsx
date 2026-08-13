@@ -1,4 +1,4 @@
-import { Bell, Building2, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, Sparkles, UserRound } from 'lucide-react';
+import { Bell, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, Sparkles, UserRound } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -16,7 +16,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: '/', label: 'Главная', icon: Home, end: true },
     { to: '/messages', label: 'Сообщения', icon: MessageCircle },
     { to: '/ai', label: 'AI', icon: Sparkles },
-    { to: '/company', label: 'Для компаний', icon: Building2 },
     { to: profilePath, label: user ? 'Профиль' : 'Войти', icon: user ? UserRound : LogIn },
     { to: '/settings', label: 'Настройки', icon: Settings },
   ];
