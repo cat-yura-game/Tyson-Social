@@ -48,13 +48,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         <section className="rail-card quiet-card"><p className="eyebrow">Ваши рекомендации</p><p>Лента становится точнее с каждым лайком, открытием и скрытым дизлайком.</p></section>
       </aside>
       <nav className="bottom-nav" aria-label="Мобильная навигация">
-        {navItems.slice(0, 2).map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} aria-label={label} className={({ isActive }) => isActive ? 'active' : ''}><Icon /><span>{label}</span></NavLink>)}
-        <NavLink className="mobile-create" to={user ? '/create' : '/login'} aria-label="Создать пост"><Plus /><span>Создать</span></NavLink>
-        {[navItems[2], navItems[4]].map((item) => {
-          if (!item) return null;
-          const Icon = item.icon;
-          return <NavLink key={`${item.to}-${item.label}`} to={item.to} aria-label={item.label} className={({ isActive }) => isActive ? 'active' : ''}><Icon /><span>{item.label}</span></NavLink>;
-        })}
+        {[
+          { to: '/', label: 'Главная', end: true },
+          { to: '/messages', label: 'Сообщения' },
+          { to: user ? '/create' : '/login', label: 'Создать' },
+          { to: '/ai', label: 'AI' },
+          { to: profilePath, label: user ? 'Профиль' : 'Войти' },
+        ].map(({ to, label, end }) => <NavLink key={`${to}-${label}`} to={to} end={end} aria-label={label} className={({ isActive }) => isActive ? 'active' : ''}><img className="mobile-nav-logo" src="/logo.png" alt="" /><span>{label}</span></NavLink>)}
       </nav>
     </div>
   );
