@@ -356,6 +356,8 @@ button { color: inherit; }
 .conversation > span:last-child { display: flex; flex-direction: column; min-width: 0; }
 .conversation small { color: var(--muted); }
 .saved-avatar { background: var(--lime); color: var(--green); }
+.ai-conversation { margin-bottom: 7px; }
+.ai-conversation-avatar, .messenger-ai-avatar { background: linear-gradient(145deg, #50c8ff, #0878d1); color: white; }
 .chat-panel { position: relative; min-width: 0; display: flex; flex-direction: column; }
 .chat-panel > header { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; border-bottom: 1px solid var(--line); }
 .chat-panel > header > div { display: flex; flex-direction: column; }
@@ -406,6 +408,30 @@ button { color: inherit; }
 @keyframes voice-recording-pulse { 50% { opacity: .35; transform: scale(.8); } }
 .chat-empty { margin: auto; max-width: 320px; padding: 30px; color: var(--muted); text-align: center; }
 .messages-error { position: absolute; left: 12px; right: 12px; bottom: 70px; padding: 10px; border-radius: 10px; background: #fff0ef; color: #a32620; font-size: 12px; }
+.messenger-ai-chat { min-height: 0; height: 100%; display: flex; flex-direction: column; }
+.messenger-ai-chat > header { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+.messenger-ai-chat > header > div { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.messenger-ai-chat > header small { color: var(--muted); font-size: 10px; }
+.messenger-ai-avatar { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 40px; border-radius: 14px; }
+.messenger-ai-reset { display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 12px; background: #eef1eb; color: var(--muted); cursor: pointer; }
+.messenger-ai-reset:disabled { opacity: .45; }
+.messenger-ai-stream { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 9px; overflow-y: auto; padding: 18px; }
+.messenger-ai-welcome { max-width: 310px; margin: auto; color: var(--muted); text-align: center; }
+.messenger-ai-welcome > span { display: grid; place-items: center; width: 55px; height: 55px; margin: 0 auto 12px; border-radius: 18px; background: var(--soft-green); color: var(--green); }
+.messenger-ai-welcome p { font-size: 12px; line-height: 1.55; }
+.messenger-ai-message { align-self: flex-start; max-width: 82%; padding: 10px 12px; border-radius: 15px 15px 15px 5px; background: #f0f2ed; }
+.messenger-ai-message.user { align-self: flex-end; border-radius: 15px 15px 5px; background: var(--green); color: white; }
+.messenger-ai-message strong { font-size: 10px; }
+.messenger-ai-message p { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
+.messenger-ai-message small { display: block; margin-top: 4px; text-align: right; opacity: .6; font-size: 9px; }
+.messenger-ai-message.thinking { opacity: .7; }
+.messenger-ai-composer { display: grid; gap: 5px; padding: 9px 11px; border-top: 1px solid var(--line); }
+.messenger-ai-composer > div { display: flex; align-items: flex-end; gap: 7px; }
+.messenger-ai-composer textarea { min-width: 0; min-height: 42px; max-height: 100px; flex: 1; padding: 10px 13px; resize: vertical; border: 1px solid var(--line); border-radius: 15px; outline: 0; }
+.messenger-ai-composer button { display: grid; place-items: center; width: 42px; height: 42px; border: 0; border-radius: 50%; background: var(--green); color: white; cursor: pointer; }
+.messenger-ai-composer button:disabled { opacity: .45; }
+.messenger-ai-composer > small { color: var(--muted); font-size: 9px; text-align: right; }
+.messenger-ai-composer > p { margin: 0; color: #a32620; font-size: 10px; }
 .mobile-header, .bottom-nav { display: none; }
 
 @media (max-width: 1100px) {
@@ -501,6 +527,16 @@ button { color: inherit; }
   .conversation { margin-bottom: 5px; border: 1px solid rgb(255 255 255 / 66%); border-radius: 20px; background: rgb(255 255 255 / 43%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 70%); -webkit-backdrop-filter: blur(3px) saturate(125%); backdrop-filter: blur(3px) saturate(125%); }
   .conversation:hover, .conversation.active { background: rgb(255 255 255 / 74%); box-shadow: 0 8px 22px rgb(22 93 138 / 9%), inset 0 1px 0 white; }
   .chat-panel { height: 100%; background: radial-gradient(circle at 4% 14%, rgb(62 186 255 / 17%), transparent 18rem), radial-gradient(circle at 96% 70%, rgb(117 211 255 / 14%), transparent 20rem), linear-gradient(180deg, #f5fafc, #edf5f8); }
+  .messenger-ai-chat > header { min-height: calc(76px + env(safe-area-inset-top)); padding: calc(10px + env(safe-area-inset-top)) 10px 8px; border: 0; }
+  .messenger-ai-chat > header .mobile-chat-back { display: grid; }
+  .messenger-ai-avatar { width: 48px; height: 48px; flex-basis: 48px; border-radius: 50%; box-shadow: 0 8px 22px rgb(19 91 137 / 14%); }
+  .messenger-ai-reset { width: 42px; height: 42px; border: 1px solid rgb(255 255 255 / 76%); border-radius: 50%; background: rgb(255 255 255 / 55%); box-shadow: 0 6px 19px rgb(19 91 137 / 11%); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+  .messenger-ai-stream { padding: 14px 11px 8px; }
+  .messenger-ai-message { max-width: 88%; border: 1px solid rgb(255 255 255 / 58%); border-radius: 19px 19px 19px 6px; background: rgb(255 255 255 / 66%); box-shadow: 0 5px 15px rgb(18 83 123 / 7%); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+  .messenger-ai-message.user { border-color: rgb(111 204 255 / 60%); border-radius: 19px 19px 6px; background: rgb(49 166 235 / 76%); }
+  .messenger-ai-composer { padding: 4px 8px max(5px, env(safe-area-inset-bottom)); border: 0; }
+  .messenger-ai-composer textarea { min-height: 42px; max-height: 94px; resize: none; border-color: rgb(255 255 255 / 76%); border-radius: 22px; background: rgb(255 255 255 / 55%); box-shadow: 0 6px 19px rgb(19 91 137 / 10%); font-size: 16px; -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+  .messenger-ai-composer button { flex: 0 0 42px; background: rgb(12 136 224 / 82%); }
   .chat-panel > header { position: relative; z-index: 3; min-height: calc(76px + env(safe-area-inset-top)); gap: 9px; padding: calc(10px + env(safe-area-inset-top)) 10px 8px !important; border: 0; background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .mobile-chat-back { display: grid; flex-basis: 52px; width: 52px; height: 52px; margin: 0; border: 1px solid rgb(255 255 255 / 76%); border-radius: 999px; background: rgb(255 255 255 / 55%); color: #111; box-shadow: 0 8px 24px rgb(19 91 137 / 13%), inset 0 1px 0 rgb(255 255 255 / 94%); -webkit-backdrop-filter: blur(3px) saturate(140%); backdrop-filter: blur(3px) saturate(140%); }
   .mobile-chat-back svg { width: 30px; height: 30px; stroke-width: 2; }
@@ -603,6 +639,10 @@ html[data-theme='dark'] .message { background: #232d27; }
 html[data-theme='dark'] .message.mine { background: #2b6f4b; color: white; }
 html[data-theme='dark'] .message.sticker-message,
 html[data-theme='dark'] .message.sticker-message.mine { background: transparent; }
+html[data-theme='dark'] .messenger-ai-message { background: #232d27; color: var(--ink); }
+html[data-theme='dark'] .messenger-ai-message.user { background: #2b6f8f; color: white; }
+html[data-theme='dark'] .messenger-ai-reset,
+html[data-theme='dark'] .messenger-ai-composer textarea { border-color: var(--line); background: var(--paper); color: var(--ink); }
 html[data-theme='dark'] .sticker-picker button,
 html[data-theme='dark'] .share-post-bar,
 html[data-theme='dark'] .theme-settings { background: #131a16; }
@@ -681,6 +721,10 @@ html[data-theme='dark'] .mobile-header { background: rgb(13 18 15 / 92%); }
   html[data-theme='dark'] .message-input-glass .sticker-trigger { border: 0; background: transparent; box-shadow: none; color: rgb(222 237 246 / 66%); }
   html[data-theme='dark'] .message-composer .composer-primary-action { background: rgb(18 143 224 / 78%); color: white; }
   html[data-theme='dark'] .sticker-picker { border-color: rgb(152 218 255 / 15%); background: rgb(19 29 38 / 82%); box-shadow: 0 18px 45px rgb(0 0 0 / 38%), inset 0 1px 0 rgb(255 255 255 / 10%); }
+  html[data-theme='dark'] .messenger-ai-message { border-color: rgb(152 218 255 / 12%); background: rgb(24 37 46 / 82%); }
+  html[data-theme='dark'] .messenger-ai-message.user { background: rgb(25 125 181 / 78%); }
+  html[data-theme='dark'] .messenger-ai-reset,
+  html[data-theme='dark'] .messenger-ai-composer textarea { border-color: rgb(152 218 255 / 15%); background: rgb(19 29 38 / 68%); color: var(--ink); box-shadow: 0 8px 22px rgb(0 0 0 / 25%); }
 }
 
 @media (max-width: 520px) {

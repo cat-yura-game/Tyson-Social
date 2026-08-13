@@ -1,4 +1,4 @@
-import { Bookmark, ChevronLeft, LockKeyhole, Mic, Paperclip, Plus, Send, Smile, Square } from 'lucide-react';
+import { Bookmark, ChevronLeft, LockKeyhole, Mic, Paperclip, Plus, Send, Smile, Sparkles, Square } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRawRequest, apiRequest, mediaUrl } from '../api/client';
@@ -8,10 +8,12 @@ import { parseMessageContent, type EncryptedMessagePayload, type MessageContent 
 import { getSticker, STICKERS, type StickerId } from '../messaging/stickers';
 import { EncryptedMessageImage } from '../components/EncryptedMessageImage';
 import { EncryptedMessageAudio } from '../components/EncryptedMessageAudio';
+import { MessengerAiChat } from '../components/MessengerAiChat';
 
 const STANDARD_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_VOICE_DURATION_MS = 10 * 60 * 1000;
 const AUDIO_MIME_TYPES = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus'] as const;
+const TYSON_AI_CHAT_ID = 'tyson-ai';
 
 function formatDuration(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -69,7 +71,7 @@ export function MessagesPage() {
     const result = await apiRequest<{ conversations: Conversation[] }>('/messages/conversations');
     setConversations(result.conversations);
     const requested = searchParams.get('conversation');
-    setActiveId((current) => requested && result.conversations.some((item) => item.id === requested)
+    setActiveId((current) => requested === TYSON_AI_CHAT_ID || (requested && result.conversations.some((item) => item.id === requested))
       ? requested
       : current ?? (window.matchMedia('(min-width: 761px)').matches ? result.conversations[0]?.id ?? null : null));
   }, [searchParams]);
@@ -114,7 +116,7 @@ export function MessagesPage() {
   }, []);
 
   const loadMessages = useCallback(async () => {
-    if (!activeId || !identity || busy.current) return;
+    if (!activeId || activeId === TYSON_AI_CHAT_ID || !identity || busy.current) return;
     busy.current = true;
     try {
       const path = active?.securityMode === 'secret'
@@ -371,13 +373,14 @@ export function MessagesPage() {
     setShowStickers(false);
   };
 
-  return <section className={`messages-page${active ? ' mobile-chat-open' : ''}`}>
+  return <section className={`messages-page${activeId ? ' mobile-chat-open' : ''}`}>
     <aside className="conversation-list">
       <div className="messages-title"><div><p className="eyebrow">Синхронизация между устройствами</p><h1>Сообщения</h1></div><LockKeyhole size={21} /></div>
       <form className="new-conversation" onSubmit={(event) => void startConversation(event)}><input required value={newUsername} onChange={(event) => setNewUsername(event.target.value)} placeholder="username получателя" /><button type="submit" aria-label="Начать разговор"><Plus /></button>{secretChatsEnabled && <label className="secret-chat-option"><input type="checkbox" checked={startSecretChat} onChange={(event) => setStartSecretChat(event.target.checked)} />Секретный чат</label>}</form>
+      <button className={activeId === TYSON_AI_CHAT_ID ? 'conversation ai-conversation active' : 'conversation ai-conversation'} onClick={() => { setActiveId(TYSON_AI_CHAT_ID); setSearchParams({ conversation: TYSON_AI_CHAT_ID }); }}><span className="avatar avatar-small ai-conversation-avatar"><Sparkles size={20} /></span><span><strong>Tyson AI</strong><small>На основе Gemini</small></span></button>
       {conversations.map((conversation) => <button key={conversation.id} className={conversation.id === activeId ? 'conversation active' : 'conversation'} onClick={() => { setActiveId(conversation.id); setSearchParams(sharedPostId ? { conversation: conversation.id, sharePost: sharedPostId } : { conversation: conversation.id }); }}><span className={`avatar avatar-small${conversation.isSaved ? ' saved-avatar' : ''}`}>{conversation.isSaved ? <Bookmark size={20} /> : conversation.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(conversation.otherAvatarKey) ?? ''} alt="" /> : conversation.otherDisplayName.slice(0, 1).toUpperCase()}</span><span><strong>{conversation.otherDisplayName}</strong><small>{conversation.isSaved ? 'Личный защищённый архив' : `@${conversation.otherUsername}`}</small></span></button>)}
     </aside>
-    <div className="chat-panel">{active ? <>
+    <div className="chat-panel">{activeId === TYSON_AI_CHAT_ID ? <MessengerAiChat onBack={closeMobileChat} /> : active ? <>
       <header><button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={closeMobileChat}><ChevronLeft /></button>{active.isSaved ? <div className="chat-profile-link"><span className="avatar avatar-small saved-avatar"><Bookmark size={19} /></span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>Ваш личный архив</small></span></div> : <Link className="chat-profile-link" to={`/profile/${encodeURIComponent(active.otherUsername)}`} aria-label={`Открыть профиль ${active.otherDisplayName}`}><span className="avatar avatar-small">{active.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(active.otherAvatarKey) ?? ''} alt="" /> : active.otherDisplayName.slice(0, 1).toUpperCase()}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>@{active.otherUsername}</small></span></Link>}<span className="chat-security"><LockKeyhole size={14} />{active.securityMode === 'secret' ? 'E2EE' : 'Защищено'}</span></header>
       <div className="message-stream">{messages.map((message) => {
         const sticker = message.content.type === 'sticker' ? getSticker(message.content.stickerId) : null;
