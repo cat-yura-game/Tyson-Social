@@ -31,7 +31,7 @@ export function AdminPage() {
       if (query.trim()) params.set('q', query.trim());
       if (status) params.set('status', status);
       const [overview, list] = await Promise.all([
-        apiRequest<{ stats: AdminStats }>('/admin/overview'),
+        apiRequest<{ stats: AdminStats }>('/admin/overview?v=1'),
         apiRequest<{ users: AdminUser[] }>(`/admin/users?${params}`),
       ]);
       setStats(overview.stats); setUsers(list.users);
@@ -73,4 +73,3 @@ export function AdminPage() {
     </article>)}</div>
   </section>;
 }
-
