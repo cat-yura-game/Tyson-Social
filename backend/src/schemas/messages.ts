@@ -32,6 +32,10 @@ const cloudContentSchema = z.discriminatedUnion('type', [
 
 export const cloudMessageSchema = z.object({ content: cloudContentSchema }).strict();
 
+export const deleteMessageSchema = z.object({
+  attachmentId: z.string().uuid().optional(),
+}).strict();
+
 export const messageBatchSchema = z.object({
   senderDeviceId: z.string().uuid(),
   envelopes: z.array(z.object({

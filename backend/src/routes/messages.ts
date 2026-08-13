@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
 import { fail, ok } from '../lib/responses';
-import { cloudMessageSchema, conversationSchema, deviceSchema, messageBatchSchema } from '../schemas/messages';
+import { cloudMessageSchema, conversationSchema, deleteMessageSchema, deviceSchema, messageBatchSchema } from '../schemas/messages';
 import type { AppVariables, AuthUser, Env } from '../types';
 import { decryptCloudMessage, encryptCloudMessage } from '../services/cloud-message-crypto';
 import { uploadLimitForUser } from '../services/upload-limits';
+import { canDeleteMessage } from '../services/message-permissions';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const messageRoutes = new Hono<App>();
@@ -245,4 +246,55 @@ messageRoutes.post('/conversations/:id/messages', async (c) => {
   statements.push(c.env.DB.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').bind(now, conversationId));
   await c.env.DB.batch(statements);
   return ok(c, { sent: true, sentAt: now }, 201);
+});
+
+messageRoutes.delete('/conversations/:id/messages/:messageId', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const conversationId = c.req.param('id');
+  const messageId = c.req.param('messageId');
+  if (!await isMember(c.env.DB, conversationId, user.id)) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/iu.test(messageId)) return fail(c, 422, 'VALIDATION_ERROR', 'Invalid message identifier.');
+  const input = await parse(c, deleteMessageSchema); if (input instanceof Response) return input;
+  const conversation = await c.env.DB.prepare('SELECT security_mode AS securityMode FROM conversations WHERE id = ?').bind(conversationId)
+    .first<{ securityMode: 'cloud' | 'secret' }>();
+  if (!conversation) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+
+  let attachmentId = input.attachmentId;
+  let deleteMessageStatement: D1PreparedStatement;
+  if (conversation.securityMode === 'cloud') {
+    const message = await c.env.DB.prepare(`SELECT sender_user_id AS senderUserId, ciphertext, nonce
+      FROM cloud_messages WHERE id = ? AND conversation_id = ?`).bind(messageId, conversationId)
+      .first<{ senderUserId: string; ciphertext: string; nonce: string }>();
+    if (!message) return fail(c, 404, 'MESSAGE_NOT_FOUND', 'Message not found.');
+    if (!canDeleteMessage(user.id, message.senderUserId)) return fail(c, 403, 'MESSAGE_DELETE_FORBIDDEN', 'Only the author can delete this message.');
+    const content = await decryptCloudMessage<unknown>(c.env, message.ciphertext, message.nonce);
+    if (content && typeof content === 'object' && 'type' in content && 'attachmentId' in content
+      && (content.type === 'image' || content.type === 'audio') && typeof content.attachmentId === 'string') {
+      attachmentId = content.attachmentId;
+    }
+    deleteMessageStatement = c.env.DB.prepare('DELETE FROM cloud_messages WHERE id = ? AND conversation_id = ? AND sender_user_id = ?')
+      .bind(messageId, conversationId, user.id);
+  } else {
+    const message = await c.env.DB.prepare(`SELECT sender_user_id AS senderUserId, client_message_id AS clientMessageId
+      FROM encrypted_messages WHERE id = ? AND conversation_id = ?`).bind(messageId, conversationId)
+      .first<{ senderUserId: string; clientMessageId: string }>();
+    if (!message) return fail(c, 404, 'MESSAGE_NOT_FOUND', 'Message not found.');
+    if (!canDeleteMessage(user.id, message.senderUserId)) return fail(c, 403, 'MESSAGE_DELETE_FORBIDDEN', 'Only the author can delete this message.');
+    const logicalId = message.clientMessageId.split(':', 1)[0];
+    deleteMessageStatement = c.env.DB.prepare(`DELETE FROM encrypted_messages WHERE conversation_id = ? AND sender_user_id = ?
+      AND (client_message_id = ? OR (instr(client_message_id, ':') > 0 AND substr(client_message_id, 1, instr(client_message_id, ':') - 1) = ?))`)
+      .bind(conversationId, user.id, message.clientMessageId, logicalId);
+  }
+
+  const attachment = attachmentId ? await c.env.DB.prepare(`SELECT storage_key AS storageKey FROM encrypted_message_attachments
+    WHERE id = ? AND conversation_id = ? AND uploader_user_id = ?`).bind(attachmentId, conversationId, user.id)
+    .first<{ storageKey: string }>() : null;
+  const statements = [deleteMessageStatement];
+  if (attachmentId && attachment) {
+    statements.push(c.env.DB.prepare(`DELETE FROM encrypted_message_attachments
+      WHERE id = ? AND conversation_id = ? AND uploader_user_id = ?`).bind(attachmentId, conversationId, user.id));
+  }
+  await c.env.DB.batch(statements);
+  if (attachment) await c.env.MEDIA.delete(attachment.storageKey);
+  return ok(c, { deleted: true });
 });

@@ -1,4 +1,4 @@
-import { Bookmark, ChevronLeft, LockKeyhole, Mic, Paperclip, Plus, Send, Smile, Sparkles, Square } from 'lucide-react';
+import { Bookmark, ChevronLeft, LockKeyhole, Mic, Paperclip, Plus, Send, Smile, Sparkles, Square, Trash2 } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRawRequest, apiRequest, mediaUrl } from '../api/client';
@@ -51,6 +51,7 @@ export function MessagesPage() {
   const [showStickers, setShowStickers] = useState(false);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [maxUploadBytes, setMaxUploadBytes] = useState(STANDARD_UPLOAD_BYTES);
@@ -236,6 +237,27 @@ export function MessagesPage() {
     await sendContent({ type: 'sticker', stickerId });
   };
 
+  const deleteMessage = async (message: PlainMessage) => {
+    if (!active || message.senderUserId !== user?.id || deletingMessageId) return;
+    setDeletingMessageId(message.id);
+    setError(null);
+    const attachmentId = message.content.type === 'image' || message.content.type === 'audio'
+      ? message.content.attachmentId
+      : undefined;
+    try {
+      await apiRequest(`/messages/conversations/${active.id}/messages/${message.id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ ...(attachmentId ? { attachmentId } : {}) }),
+      });
+      setMessages((current) => current.filter((item) => item.id !== message.id));
+      await loadConversations();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : 'Не удалось удалить сообщение.');
+    } finally {
+      setDeletingMessageId(null);
+    }
+  };
+
   const uploadEncryptedAttachment = async (blob: Blob) => {
     if (!active) throw new Error('Сначала откройте диалог.');
     if (!blob.size || blob.size > maxUploadBytes) {
@@ -389,6 +411,7 @@ export function MessagesPage() {
         return <Fragment key={message.id}>
           {startsDay && <div className="message-day-separator"><span>{formatMessageDay(message.sentAt)}</span></div>}
           <article className={`${message.senderUserId === user?.id ? 'message mine' : 'message'}${sticker ? ' sticker-message' : ''}`}>
+            {message.senderUserId === user?.id && <button className="message-delete-button" type="button" disabled={deletingMessageId === message.id} onClick={() => void deleteMessage(message)} aria-label="Удалить сообщение"><Trash2 /></button>}
             {message.content.type === 'text' ? <p>{message.content.text}</p>
               : sticker ? <img className="message-sticker" src={sticker.src} alt={sticker.accessibleLabel} />
                 : message.content.type === 'post' ? <Link className="shared-post-message" to={`/post/${message.content.postId}`}><strong>Публикация Tyson</strong><span>Открыть публикацию</span></Link>
