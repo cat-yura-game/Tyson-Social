@@ -448,6 +448,12 @@ button { color: inherit; }
   .auth-panel { padding: 36px 22px 50px; }
   .messages-page { height: calc(100dvh - 145px); min-height: 460px; display: block; border-radius: 18px; }
   .ai-page { position: relative; display: block; height: calc(100dvh - 145px); min-height: 460px; border-radius: 18px; }
+  .app-shell.ai-fullscreen { height: 100dvh; overflow: hidden; }
+  .app-shell.ai-fullscreen .mobile-header, .app-shell.ai-fullscreen .bottom-nav { display: none; }
+  .app-shell.ai-fullscreen .main-content { height: 100dvh; min-height: 0; padding: 0; }
+  .app-shell.ai-fullscreen .ai-page { width: 100%; height: 100dvh; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
+  .app-shell.ai-fullscreen .ai-chat > header { min-height: calc(62px + env(safe-area-inset-top)); padding: calc(9px + env(safe-area-inset-top)) 12px 9px; }
+  .app-shell.ai-fullscreen .ai-conversations > header { min-height: calc(74px + env(safe-area-inset-top)); padding-top: calc(15px + env(safe-area-inset-top)); }
   .ai-conversations { position: absolute; z-index: 5; inset: 0 56px 0 0; display: none; border-right: 1px solid var(--line); box-shadow: 15px 0 45px rgb(10 20 14 / 22%); }
   .ai-page.ai-sidebar-open .ai-conversations { display: flex; }
   .ai-chat { height: 100%; }

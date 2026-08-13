@@ -1,6 +1,6 @@
 import { Bell, Building2, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, Sparkles, UserRound } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { mediaUrl } from '../api/client';
 import { Brand } from './Brand';
@@ -8,7 +8,9 @@ import { TrendsCard } from './TrendsCard';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
+  const aiFullscreen = location.pathname === '/ai';
   const profilePath = user ? `/profile/${user.username}` : '/login';
   const navItems = [
     { to: '/', label: 'Главная', icon: Home, end: true },
@@ -25,7 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="app-shell">
+    <div className={aiFullscreen ? 'app-shell ai-fullscreen' : 'app-shell'}>
       <header className="mobile-header"><Brand /><button className="icon-button" type="button" aria-label="Уведомления"><Bell size={21} /></button></header>
       <aside className="sidebar">
         <Brand />
