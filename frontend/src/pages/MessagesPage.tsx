@@ -55,6 +55,7 @@ export function MessagesPage() {
   const busy = useRef(false);
   const messageEnd = useRef<HTMLDivElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
+  const draftInput = useRef<HTMLTextAreaElement>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const microphoneStream = useRef<MediaStream | null>(null);
   const voiceChunks = useRef<Blob[]>([]);
@@ -151,6 +152,20 @@ export function MessagesPage() {
   useEffect(() => {
     messageEnd.current?.scrollIntoView({ block: 'end' });
   }, [activeId, messages.length]);
+
+  useEffect(() => {
+    const input = draftInput.current;
+    if (!input) return;
+    if (!window.matchMedia('(max-width: 760px)').matches) {
+      input.style.removeProperty('height');
+      input.style.removeProperty('overflow-y');
+      return;
+    }
+    input.style.height = '40px';
+    const nextHeight = Math.min(94, Math.max(40, input.scrollHeight));
+    input.style.height = `${nextHeight}px`;
+    input.style.overflowY = input.scrollHeight > 94 ? 'auto' : 'hidden';
+  }, [draft]);
 
   const startConversation = async (event: FormEvent) => {
     event.preventDefault();
@@ -381,7 +396,7 @@ export function MessagesPage() {
         <form className="message-composer" onSubmit={(event) => void sendText(event)}>
           <button className="image-message-trigger" type="button" disabled={uploading || sending || recording} aria-label="Прикрепить изображение" onClick={() => imageInput.current?.click()}><Paperclip /></button><input ref={imageInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void sendImage(event)} />
           <div className="message-input-glass">
-            {recording ? <div className="voice-recording-status" role="status"><span aria-hidden="true" />Запись {formatDuration(recordingSeconds)}</div> : <textarea required maxLength={4000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Сообщение" />}
+            {recording ? <div className="voice-recording-status" role="status"><span aria-hidden="true" />Запись {formatDuration(recordingSeconds)}</div> : <textarea ref={draftInput} rows={1} required maxLength={4000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Сообщение" />}
             <button className="sticker-trigger" type="button" disabled={recording} aria-label="Открыть стикеры" aria-expanded={showStickers} onClick={() => setShowStickers((shown) => !shown)}><Smile /></button>
           </div>
           {recording ? <button className="voice-message-trigger recording" type="button" disabled={uploading || sending} aria-label="Остановить и отправить голосовое" onClick={finishRecording}><Square size={17} fill="currentColor" /></button>
