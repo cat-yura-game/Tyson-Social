@@ -1,7 +1,7 @@
-import { BadgeCheck, Camera, LockKeyhole, Monitor, Moon, RefreshCw, Save, Send, Sun, Unlink, UserPlus } from 'lucide-react';
+import { BadgeCheck, Camera, LockKeyhole, Monitor, Moon, RefreshCw, Save, Send, Sun, Trash2, Unlink, UserPlus } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ApiError, apiRequest, mediaUrl } from '../api/client';
+import { ApiError, apiRequest, mediaUrl, setAccessToken } from '../api/client';
 import { useAuth, type AuthUser } from '../auth/AuthProvider';
 import { cropAvatarToSquare } from '../images/crop-square';
 import { getThemePreference, setThemePreference, type ThemePreference } from '../theme';
@@ -27,6 +27,10 @@ export function SettingsPage() {
   const [secretChatEnabled, setSecretChatEnabled] = useState(false);
   const [secretChatPending, setSecretChatPending] = useState(false);
   const [siteRefreshPending, setSiteRefreshPending] = useState(false);
+  const [deleteUsername, setDeleteUsername] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const telegramResult = searchParams.get('telegram');
   const telegramCallbackError = searchParams.get('telegram_error');
 
@@ -154,6 +158,20 @@ export function SettingsPage() {
     }
   };
 
+  const deleteAccount = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!window.confirm('Аккаунт, публикации, сообщения и файлы будут удалены без возможности восстановления. Продолжить?')) return;
+    setDeletePending(true); setDeleteError(null);
+    try {
+      await apiRequest('/users/me', { method: 'DELETE', body: JSON.stringify({ username: deleteUsername.trim(), password: deletePassword || undefined, confirmation: 'DELETE' }) });
+      setAccessToken(null);
+      window.location.replace('/login');
+    } catch (caught) {
+      setDeleteError(caught instanceof ApiError ? caught.message : 'Не удалось удалить аккаунт.');
+      setDeletePending(false);
+    }
+  };
+
   return <section className="surface-page narrow-page settings-page">
     <header className="page-heading"><div><p className="eyebrow">Ваш аккаунт</p><h1>Настройки профиля</h1></div></header>
     <section className="theme-settings" aria-labelledby="theme-settings-title"><div><p className="eyebrow">Оформление</p><h2 id="theme-settings-title">Тема Tyson</h2></div><div className="theme-options" role="radiogroup" aria-label="Тема интерфейса"><button type="button" role="radio" aria-checked={theme === 'system'} className={theme === 'system' ? 'selected' : ''} onClick={() => chooseTheme('system')}><Monitor size={18} />Как в системе</button><button type="button" role="radio" aria-checked={theme === 'light'} className={theme === 'light' ? 'selected' : ''} onClick={() => chooseTheme('light')}><Sun size={18} />Светлая</button><button type="button" role="radio" aria-checked={theme === 'dark'} className={theme === 'dark' ? 'selected' : ''} onClick={() => chooseTheme('dark')}><Moon size={18} />Тёмная</button></div></section>
@@ -185,5 +203,9 @@ export function SettingsPage() {
       </form>}
       {!!verifiedAccounts.accounts.length && <div className="linked-account-list">{verifiedAccounts.accounts.map((account) => <button key={account.id} type="button" disabled={linkedAccountPending} onClick={() => void changeAccount(account.id)}><BadgeCheck size={15} /><span>{account.displayName} <small>@{account.username}</small></span><span className="linked-account-switch">Перейти</span></button>)}</div>}
     </section>}
+    <section className="delete-account-settings" aria-labelledby="delete-account-title">
+      <div><p className="eyebrow">Опасная зона</p><h2 id="delete-account-title"><Trash2 size={18} />Удалить аккаунт</h2><p>Профиль, публикации, комментарии, истории, AI-диалоги, сообщения и загруженные файлы будут удалены без возможности восстановления.</p></div>
+      <form onSubmit={(event) => void deleteAccount(event)}><label><span>Введите @{user.username}</span><input required autoComplete="off" value={deleteUsername} onChange={(event) => setDeleteUsername(event.target.value)} placeholder={user.username} /></label>{!telegramStatus?.linked && <label><span>Текущий пароль</span><input required type="password" autoComplete="current-password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} /></label>}{deleteError && <p className="form-error" role="alert">{deleteError}</p>}<button type="submit" disabled={deletePending || deleteUsername.trim().toLowerCase() !== user.username.toLowerCase()}><Trash2 size={16} />{deletePending ? 'Удаляем…' : 'Удалить аккаунт навсегда'}</button></form>
+    </section>
   </section>;
 }

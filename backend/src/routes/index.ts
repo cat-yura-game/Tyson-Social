@@ -9,6 +9,7 @@ import { messageRoutes } from './messages';
 import { telegramAuthRoutes } from './telegram-auth';
 import { storyRoutes } from './stories';
 import { aiChatRoutes } from './ai-chat';
+import { adminRoutes } from './admin';
 
 export const api = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -21,3 +22,4 @@ api.route('/media', mediaRoutes);
 api.route('/messages', messageRoutes);
 api.route('/stories', storyRoutes);
 api.route('/ai', aiChatRoutes);
+api.route('/admin', adminRoutes);

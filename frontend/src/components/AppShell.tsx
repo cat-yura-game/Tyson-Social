@@ -1,4 +1,4 @@
-import { Bell, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, Sparkles, UserRound } from 'lucide-react';
+import { Bell, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -18,6 +18,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: '/ai', label: 'AI', icon: Sparkles },
     { to: profilePath, label: user ? 'Профиль' : 'Войти', icon: user ? UserRound : LogIn },
     { to: '/settings', label: 'Настройки', icon: Settings },
+    ...(user?.role === 'admin' ? [{ to: '/admin', label: 'Админ-панель', icon: ShieldCheck }] : []),
   ];
 
   const handleLogout = async () => {

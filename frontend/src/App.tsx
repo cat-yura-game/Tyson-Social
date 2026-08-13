@@ -10,6 +10,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { PostPage } from './pages/PostPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TelegramCallbackPage } from './pages/TelegramCallbackPage';
+import { AdminPage } from './pages/AdminPage';
 
 const MessagesPage = lazy(() => import('./pages/MessagesPage').then((module) => ({ default: module.MessagesPage })));
 const AiPage = lazy(() => import('./pages/AiPage').then((module) => ({ default: module.AiPage })));
@@ -32,7 +33,7 @@ function ProductRoutes() {
         <Route path="/ai" element={<RequireAuth><Suspense fallback={<div className="app-loading">Запускаем Tyson AI…</div>}><AiPage /></Suspense></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
         <Route path="/company" element={<RequireAuth><PlaceholderPage kind="company" /></RequireAuth>} />
-        <Route path="/admin" element={<RequireAuth><PlaceholderPage kind="admin" /></RequireAuth>} />
+        <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>
