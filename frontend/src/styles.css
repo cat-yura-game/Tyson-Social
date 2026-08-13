@@ -305,6 +305,12 @@ button { color: inherit; }
 .theme-options button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 43px; padding: 9px; border: 1px solid var(--line); border-radius: 12px; background: white; font-size: 11px; font-weight: 750; cursor: pointer; }
 .theme-options button.selected { border-color: var(--green); background: var(--soft-green); color: var(--green); box-shadow: 0 0 0 2px rgb(23 61 43 / 7%); }
 .telegram-settings { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 18px; margin-top: 30px; padding-top: 25px; border-top: 1px solid var(--line); }
+.site-refresh-settings { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 18px; margin: 18px 0 28px; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: rgb(255 255 255 / 58%); }
+.site-refresh-settings h2 { margin: 4px 0; font-size: 17px; }
+.site-refresh-settings p:last-child { max-width: 520px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.site-refresh-settings .secondary-button { flex: 0 0 auto; }
+.refresh-spinning { animation: refresh-spin .8s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
 .telegram-settings-copy { display: flex; align-items: center; gap: 13px; min-width: 0; }
 .telegram-mark { display: grid; place-items: center; flex: 0 0 auto; width: 44px; height: 44px; border-radius: 14px; background: #e5f5fd; color: #229ed9; }
 .telegram-settings h2 { margin: 0 0 3px; font-size: 16px; }

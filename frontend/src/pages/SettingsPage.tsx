@@ -1,4 +1,4 @@
-import { BadgeCheck, Camera, LockKeyhole, Monitor, Moon, Save, Send, Sun, Unlink, UserPlus } from 'lucide-react';
+import { BadgeCheck, Camera, LockKeyhole, Monitor, Moon, RefreshCw, Save, Send, Sun, Unlink, UserPlus } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest, mediaUrl } from '../api/client';
@@ -26,6 +26,7 @@ export function SettingsPage() {
   const [linkedAccountError, setLinkedAccountError] = useState<string | null>(null);
   const [secretChatEnabled, setSecretChatEnabled] = useState(false);
   const [secretChatPending, setSecretChatPending] = useState(false);
+  const [siteRefreshPending, setSiteRefreshPending] = useState(false);
   const telegramResult = searchParams.get('telegram');
   const telegramCallbackError = searchParams.get('telegram_error');
 
@@ -135,9 +136,28 @@ export function SettingsPage() {
     finally { setSecretChatPending(false); }
   };
 
+  const refreshSite = async () => {
+    setSiteRefreshPending(true);
+    try {
+      if ('caches' in window) {
+        const cacheNames = await window.caches.keys();
+        await Promise.all(cacheNames.map((cacheName) => window.caches.delete(cacheName)));
+      }
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.unregister()));
+      }
+    } finally {
+      const freshUrl = new URL(window.location.href);
+      freshUrl.searchParams.set('tyson_refresh', Date.now().toString());
+      window.location.replace(freshUrl.toString());
+    }
+  };
+
   return <section className="surface-page narrow-page settings-page">
     <header className="page-heading"><div><p className="eyebrow">Ваш аккаунт</p><h1>Настройки профиля</h1></div></header>
     <section className="theme-settings" aria-labelledby="theme-settings-title"><div><p className="eyebrow">Оформление</p><h2 id="theme-settings-title">Тема Tyson</h2></div><div className="theme-options" role="radiogroup" aria-label="Тема интерфейса"><button type="button" role="radio" aria-checked={theme === 'system'} className={theme === 'system' ? 'selected' : ''} onClick={() => chooseTheme('system')}><Monitor size={18} />Как в системе</button><button type="button" role="radio" aria-checked={theme === 'light'} className={theme === 'light' ? 'selected' : ''} onClick={() => chooseTheme('light')}><Sun size={18} />Светлая</button><button type="button" role="radio" aria-checked={theme === 'dark'} className={theme === 'dark' ? 'selected' : ''} onClick={() => chooseTheme('dark')}><Moon size={18} />Тёмная</button></div></section>
+    <section className="site-refresh-settings" aria-labelledby="site-refresh-title"><div><p className="eyebrow">Версия сайта</p><h2 id="site-refresh-title">Обновить Tyson</h2><p>Удалит старые файлы интерфейса из кэша и загрузит актуальную версию. Аккаунт, сообщения и настройки сохранятся.</p></div><button className="secondary-button" type="button" disabled={siteRefreshPending} onClick={() => void refreshSite()}><RefreshCw className={siteRefreshPending ? 'refresh-spinning' : ''} size={17} />{siteRefreshPending ? 'Обновляем…' : 'Обновить сайт'}</button></section>
     <div className="avatar-editor">{avatar ? <img src={avatar} alt="Фотография профиля" /> : <span className="avatar profile-avatar">{user.displayName.slice(0, 1).toUpperCase()}</span>}<label className="secondary-button"><Camera size={17} />Изменить фото<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden onChange={(event) => void uploadAvatar(event.target.files?.[0])} /></label></div>
     <form className="settings-form" onSubmit={(event) => void save(event)}>
       <label><span>Отображаемое имя</span><input required maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
