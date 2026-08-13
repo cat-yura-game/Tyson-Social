@@ -612,7 +612,7 @@ button { color: inherit; }
   .conversation-list { background: transparent; }
   .conversation { margin-bottom: 5px; border: 1px solid rgb(255 255 255 / 66%); border-radius: 20px; background: rgb(255 255 255 / 43%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 70%); -webkit-backdrop-filter: blur(3px) saturate(125%); backdrop-filter: blur(3px) saturate(125%); }
   .conversation:hover, .conversation.active { background: rgb(255 255 255 / 74%); box-shadow: 0 8px 22px rgb(22 93 138 / 9%), inset 0 1px 0 white; }
-  .chat-panel { height: 100%; background: transparent; }
+  .chat-panel { height: 100%; overflow: hidden; background: transparent; }
   .messenger-ai-chat > header { min-height: calc(76px + env(safe-area-inset-top)); padding: calc(10px + env(safe-area-inset-top)) 10px 8px; border: 0; }
   .messenger-ai-chat > header .mobile-chat-back { display: grid; }
   .messenger-ai-avatar { width: 48px; height: 48px; flex-basis: 48px; border-radius: 50%; box-shadow: 0 8px 22px rgb(19 91 137 / 14%); }
@@ -622,7 +622,7 @@ button { color: inherit; }
   .messenger-ai-composer { padding: 4px 8px max(5px, env(safe-area-inset-bottom)); border: 0; }
   .messenger-ai-composer textarea { min-height: 40px; max-height: 94px; resize: none; border: 0; border-radius: inherit; background: transparent; box-shadow: none; font-size: 16px; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .messenger-ai-composer button { flex: 0 0 42px; background: rgb(12 136 224 / 82%); }
-  .chat-panel > header { position: relative; z-index: 3; min-height: calc(76px + env(safe-area-inset-top)); gap: 9px; padding: calc(10px + env(safe-area-inset-top)) 10px 8px !important; border: 0; background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .chat-panel > header { position: absolute; z-index: 3; top: 0; right: 0; left: 0; min-height: calc(76px + env(safe-area-inset-top)); gap: 9px; padding: calc(10px + env(safe-area-inset-top)) 10px 8px !important; border: 0; background: transparent !important; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .mobile-chat-back { display: grid; flex-basis: 52px; width: 52px; height: 52px; margin: 0; border: 1px solid rgb(255 255 255 / 76%); border-radius: 999px; background: rgb(255 255 255 / 55%); color: #111; box-shadow: 0 8px 24px rgb(19 91 137 / 13%), inset 0 1px 0 rgb(255 255 255 / 94%); -webkit-backdrop-filter: blur(3px) saturate(140%); backdrop-filter: blur(3px) saturate(140%); }
   .mobile-chat-back svg { width: 30px; height: 30px; stroke-width: 2; }
   .chat-profile-link { flex: 1; gap: 8px; margin: 0; border-radius: 999px; }
@@ -634,10 +634,10 @@ button { color: inherit; }
   .chat-panel > header .chat-security { display: none; }
   .chat-panel > header > div { min-width: 0; margin-right: 0; }
   .chat-panel > header strong, .chat-panel > header small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .message-stream { padding: 14px 11px 8px; overscroll-behavior: contain; }
+  .message-stream { position: absolute; inset: 0; overflow-y: auto; padding: calc(76px + env(safe-area-inset-top) + 14px) 11px 70px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   .message { max-width: 88%; padding: 9px 12px; border: 1px solid rgb(255 255 255 / 58%); border-radius: 19px 19px 19px 6px; background: rgb(255 255 255 / 66%); box-shadow: 0 5px 15px rgb(18 83 123 / 7%), inset 0 1px 0 rgb(255 255 255 / 80%); -webkit-backdrop-filter: blur(3px) saturate(125%); backdrop-filter: blur(3px) saturate(125%); }
   .message.mine { border-color: rgb(111 204 255 / 60%); border-radius: 19px 19px 6px; background: rgb(49 166 235 / 76%); box-shadow: 0 6px 18px rgb(13 112 174 / 14%), inset 0 1px 0 rgb(255 255 255 / 35%); }
-  .composer-area { padding-bottom: max(3px, env(safe-area-inset-bottom)); border: 0; background: transparent !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .composer-area { position: absolute; z-index: 3; right: 0; bottom: 0; left: 0; padding-bottom: max(3px, env(safe-area-inset-bottom)); border: 0; background: transparent !important; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .message-composer { align-items: flex-end; gap: 5px; padding: 4px 8px 5px; }
   .message-input-glass { height: auto; min-height: 42px; max-height: 96px; overflow: hidden; border: 1px solid rgb(255 255 255 / 76%); border-radius: 23px; background: rgb(255 255 255 / 55%); box-shadow: 0 6px 19px rgb(19 91 137 / 10%), inset 0 1px 0 rgb(255 255 255 / 94%); -webkit-backdrop-filter: blur(3px) saturate(140%); backdrop-filter: blur(3px) saturate(140%); }
   .message-composer textarea { min-width: 0; height: 40px; min-height: 40px; max-height: 94px; padding: 8px 2px 7px 14px; resize: none; overflow-y: hidden; border: 0; background: transparent !important; color: #111; font-size: 16px; line-height: 24px; -webkit-backdrop-filter: none; backdrop-filter: none; }
