@@ -75,6 +75,11 @@ messageRoutes.get('/users/:username/devices', async (c) => {
   return ok(c, { devices: rows.results });
 });
 
+messageRoutes.get('/upload-limit', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  return ok(c, { maxBytes: await uploadLimitForUser(c.env.DB, user.id) });
+});
+
 messageRoutes.post('/conversations', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const input = await parse(c, conversationSchema); if (input instanceof Response) return input;

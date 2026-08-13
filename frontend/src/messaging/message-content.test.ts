@@ -19,4 +19,12 @@ describe('parseMessageContent', () => {
     expect(parseMessageContent({ type: 'image', attachmentId: id, key: 'A'.repeat(44), nonce: 'B'.repeat(32), digest: 'C'.repeat(44), mimeType: 'image/png' })).toMatchObject({ type: 'image', digest: 'C'.repeat(44) });
     expect(() => parseMessageContent({ type: 'image', attachmentId: id, key: 'A'.repeat(44), nonce: 'B'.repeat(32), digest: 'bad', mimeType: 'image/png' })).toThrow();
   });
+
+  it('validates encrypted voice message metadata', () => {
+    const id = '123e4567-e89b-12d3-a456-426614174000';
+    expect(parseMessageContent({ type: 'audio', attachmentId: id, key: 'A'.repeat(44), nonce: 'B'.repeat(32), digest: 'C'.repeat(44), mimeType: 'audio/webm', durationMs: 12_500 }))
+      .toMatchObject({ type: 'audio', attachmentId: id, durationMs: 12_500 });
+    expect(() => parseMessageContent({ type: 'audio', attachmentId: id, key: 'A'.repeat(44), nonce: 'B'.repeat(32), mimeType: 'audio/mpeg', durationMs: 12_500 })).toThrow();
+    expect(() => parseMessageContent({ type: 'audio', attachmentId: id, key: 'A'.repeat(44), nonce: 'B'.repeat(32), mimeType: 'audio/webm', durationMs: 0 })).toThrow();
+  });
 });
