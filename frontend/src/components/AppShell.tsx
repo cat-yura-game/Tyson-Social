@@ -10,7 +10,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const aiFullscreen = location.pathname === '/ai';
+  const mobileImmersive = location.pathname === '/ai' || location.pathname === '/messages';
   const profilePath = user ? `/profile/${user.username}` : '/login';
   const navItems = [
     { to: '/', label: 'Главная', icon: Home, end: true },
@@ -27,7 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className={aiFullscreen ? 'app-shell ai-fullscreen' : 'app-shell'}>
+    <div className={mobileImmersive ? 'app-shell mobile-immersive' : 'app-shell'}>
       <header className="mobile-header"><Brand /><button className="icon-button" type="button" aria-label="Уведомления"><Bell size={21} /></button></header>
       <aside className="sidebar">
         <Brand />
