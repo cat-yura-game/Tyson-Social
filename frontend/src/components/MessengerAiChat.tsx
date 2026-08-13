@@ -14,6 +14,7 @@ export function MessengerAiChat({ onBack }: { onBack(): void }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const stream = useRef<HTMLDivElement>(null);
+  const draftInput = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     void Promise.all([
@@ -32,6 +33,15 @@ export function MessengerAiChat({ onBack }: { onBack(): void }) {
   useEffect(() => {
     stream.current?.scrollTo({ top: stream.current.scrollHeight, behavior: 'smooth' });
   }, [messages, sending]);
+
+  useEffect(() => {
+    const input = draftInput.current;
+    if (!input) return;
+    input.style.height = '40px';
+    const nextHeight = Math.min(94, Math.max(40, input.scrollHeight));
+    input.style.height = `${nextHeight}px`;
+    input.style.overflowY = input.scrollHeight > 94 ? 'auto' : 'hidden';
+  }, [draft]);
 
   const createConversation = async () => {
     const result = await apiRequest<{ conversation: AiConversation }>('/ai/conversations', { method: 'POST' });
@@ -81,18 +91,17 @@ export function MessengerAiChat({ onBack }: { onBack(): void }) {
   return <div className="messenger-ai-chat">
     <header>
       <button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={onBack}><ChevronLeft /></button>
-      <span className="messenger-ai-avatar"><Sparkles /></span>
-      <div><strong>Tyson AI</strong><small>На основе Gemini</small></div>
+      <div className="chat-profile-link messenger-ai-profile"><span className="chat-profile-copy"><strong>Tyson AI</strong><small>На основе Gemini</small></span><span className="avatar avatar-small messenger-ai-avatar"><Sparkles /></span></div>
       <button className="messenger-ai-reset" type="button" disabled={!conversationId || sending} onClick={() => void reset()} aria-label="Очистить диалог"><Trash2 /></button>
     </header>
     <div className="messenger-ai-stream" ref={stream}>
       {!messages.length && <div className="messenger-ai-welcome"><span><Sparkles /></span><strong>Tyson AI в сообщениях</strong><p>Пишите как обычному собеседнику. Используется общий дневной лимит Tyson AI.</p></div>}
-      {messages.map((message) => <article className={`messenger-ai-message ${message.role}`} key={message.id}><strong>{message.role === 'assistant' ? 'Tyson AI' : 'Вы'}</strong><p>{message.content}</p><small>{new Date(message.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small></article>)}
-      {sending && <article className="messenger-ai-message assistant thinking"><strong>Tyson AI</strong><p>Думаю…</p></article>}
+      {messages.map((message) => <article className={message.role === 'user' ? 'message mine messenger-ai-message' : 'message messenger-ai-message'} key={message.id}>{message.role === 'assistant' && <strong>Tyson AI</strong>}<p>{message.content}</p><small>{new Date(message.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small></article>)}
+      {sending && <article className="message messenger-ai-message thinking"><strong>Tyson AI</strong><p>Думаю…</p></article>}
     </div>
-    <form className="messenger-ai-composer" onSubmit={(event) => void send(event)}>
+    <form className="composer-area messenger-ai-composer" onSubmit={(event) => void send(event)}>
       {error && <p role="alert">{error}</p>}
-      <div><textarea rows={1} maxLength={8000} value={draft} disabled={sending || quota?.remaining === 0} onChange={(event) => setDraft(event.target.value)} placeholder="Сообщение для Tyson AI" /><button type="submit" disabled={sending || quota?.remaining === 0 || !draft.trim()} aria-label="Отправить"><Send /></button></div>
+      <div className="message-composer"><div className="message-input-glass"><textarea ref={draftInput} rows={1} maxLength={8000} value={draft} disabled={sending || quota?.remaining === 0} onChange={(event) => setDraft(event.target.value)} placeholder="Сообщение" /><span className="messenger-ai-input-icon" aria-hidden="true"><Sparkles /></span></div><button className="composer-primary-action" type="submit" disabled={sending || quota?.remaining === 0 || !draft.trim()} aria-label="Отправить"><Send /></button></div>
       <small>{quota ? `${quota.remaining} из ${quota.limit} запросов сегодня` : 'Загрузка лимита…'}</small>
     </form>
   </div>;
