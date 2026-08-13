@@ -1,15 +1,17 @@
 import { Bell, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { mediaUrl } from '../api/client';
 import { Brand } from './Brand';
+import { SearchDialog } from './SearchDialog';
 import { TrendsCard } from './TrendsCard';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [showSearch, setShowSearch] = useState(false);
   const mobileImmersive = location.pathname === '/ai' || location.pathname === '/messages';
   const profilePath = user ? `/profile/${user.username}` : '/login';
   const navItems = [
@@ -45,7 +47,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
       <main className="main-content">{children}</main>
       <aside className="right-rail">
-        <label className="search-box"><Search size={18} /><input type="search" placeholder="Найти в Tyson" aria-label="Поиск в Tyson" /></label>
+        <button className="search-box rail-search-button" type="button" onClick={() => setShowSearch(true)}><Search size={18} /><span>Найти в Tyson</span></button>
         <TrendsCard />
         <section className="rail-card quiet-card"><p className="eyebrow">Ваши рекомендации</p><p>Лента становится точнее с каждым лайком, открытием и скрытым дизлайком.</p></section>
       </aside>
@@ -58,6 +60,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           { to: profilePath, label: user ? 'Профиль' : 'Войти', icon: user ? UserRound : LogIn },
         ].map(({ to, label, icon: Icon, end }) => <NavLink key={`${to}-${label}`} to={to} end={end} aria-label={label} className={({ isActive }) => isActive ? 'active' : ''}><Icon className="mobile-nav-icon" /><span>{label}</span></NavLink>)}
       </nav>
+      {showSearch && <SearchDialog onClose={() => setShowSearch(false)} />}
     </div>
   );
 }

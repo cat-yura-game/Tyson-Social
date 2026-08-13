@@ -113,6 +113,27 @@ contentRoutes.get('/trends', async (c) => {
   return ok(c, { topics: extractTrends(rows.results) });
 });
 
+contentRoutes.get('/search', async (c) => {
+  const query = c.req.query('q')?.trim().replaceAll(/\s+/gu, ' ').slice(0, 80) ?? '';
+  if (query.length < 2) return ok(c, { query, users: [], posts: [] });
+  const escaped = query.replace(/[\\%_]/gu, '\\$&');
+  const like = `%${escaped}%`;
+  const prefix = `${escaped}%`;
+  const [users, posts] = await Promise.all([
+    c.env.DB.prepare(`SELECT id, username, display_name AS displayName, avatar_key AS avatarKey,
+      bio, is_verified AS verified FROM users
+      WHERE status IN ('active', 'limited') AND (username LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\')
+      ORDER BY CASE WHEN username LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END, is_verified DESC, created_at DESC LIMIT 8`)
+      .bind(like, like, prefix).all(),
+    c.env.DB.prepare(`SELECT p.id, p.title, substr(p.body, 1, 220) AS excerpt, p.published_at AS publishedAt,
+      u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified
+      FROM posts p JOIN users u ON u.id = p.author_user_id
+      WHERE p.status = 'published' AND (p.title LIKE ? ESCAPE '\\' OR p.body LIKE ? ESCAPE '\\' OR u.username LIKE ? ESCAPE '\\')
+      ORDER BY p.like_count DESC, p.published_at DESC LIMIT 12`).bind(like, like, like).all(),
+  ]);
+  return ok(c, { query, users: users.results, posts: posts.results });
+});
+
 contentRoutes.get('/posts/:id', async (c) => {
   const viewerId = c.get('authUser')?.id ?? '';
   const row = await c.env.DB.prepare(`${POST_SELECT} WHERE p.id = ? AND p.status = 'published'`).bind(viewerId, c.req.param('id')).first();
