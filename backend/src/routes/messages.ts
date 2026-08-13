@@ -173,11 +173,11 @@ messageRoutes.get('/attachments/:id', async (c) => {
   if (!attachment) return fail(c, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found.');
   const stored = await c.env.MEDIA.get(attachment.storageKey, 'arrayBuffer');
   if (!stored) return fail(c, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found.');
-  return new Response(stored, { headers: {
+  return c.body(stored, 200, {
     'content-type': 'application/octet-stream',
     'cache-control': 'private, no-store',
     'x-content-type-options': 'nosniff',
-  } });
+  });
 });
 
 messageRoutes.get('/conversations/:id/messages', async (c) => {

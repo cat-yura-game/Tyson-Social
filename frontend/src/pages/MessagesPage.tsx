@@ -1,11 +1,12 @@
 import { Bookmark, ChevronLeft, LockKeyhole, Mic, Paperclip, Plus, Send, Smile, Sparkles, Square } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRawRequest, apiRequest, mediaUrl } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { attachmentDigest, decryptForDevice, encryptAttachment, encryptForDevice, getOrCreateIdentity, type DeviceIdentity } from '../messaging/crypto';
 import { parseMessageContent, type EncryptedMessagePayload, type MessageContent } from '../messaging/message-content';
 import { getSticker, STICKERS, type StickerId } from '../messaging/stickers';
+import { formatMessageDay, messageDayKey } from '../messaging/message-day';
 import { EncryptedMessageImage } from '../components/EncryptedMessageImage';
 import { EncryptedMessageAudio } from '../components/EncryptedMessageAudio';
 import { MessengerAiChat } from '../components/MessengerAiChat';
@@ -382,16 +383,20 @@ export function MessagesPage() {
     </aside>
     <div className="chat-panel">{activeId === TYSON_AI_CHAT_ID ? <MessengerAiChat onBack={closeMobileChat} /> : active ? <>
       <header><button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={closeMobileChat}><ChevronLeft /></button>{active.isSaved ? <div className="chat-profile-link"><span className="avatar avatar-small saved-avatar"><Bookmark size={19} /></span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>Ваш личный архив</small></span></div> : <Link className="chat-profile-link" to={`/profile/${encodeURIComponent(active.otherUsername)}`} aria-label={`Открыть профиль ${active.otherDisplayName}`}><span className="avatar avatar-small">{active.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(active.otherAvatarKey) ?? ''} alt="" /> : active.otherDisplayName.slice(0, 1).toUpperCase()}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>@{active.otherUsername}</small></span></Link>}<span className="chat-security"><LockKeyhole size={14} />{active.securityMode === 'secret' ? 'E2EE' : 'Защищено'}</span></header>
-      <div className="message-stream">{messages.map((message) => {
+      <div className="message-stream">{messages.map((message, index) => {
         const sticker = message.content.type === 'sticker' ? getSticker(message.content.stickerId) : null;
-        return <article key={message.id} className={`${message.senderUserId === user?.id ? 'message mine' : 'message'}${sticker ? ' sticker-message' : ''}`}>
-          {message.content.type === 'text' ? <p>{message.content.text}</p>
-            : sticker ? <img className="message-sticker" src={sticker.src} alt={sticker.accessibleLabel} />
-              : message.content.type === 'post' ? <Link className="shared-post-message" to={`/post/${message.content.postId}`}><strong>Публикация Tyson</strong><span>Открыть публикацию</span></Link>
-                : message.content.type === 'image' ? <EncryptedMessageImage attachmentId={message.content.attachmentId} encryptionKey={message.content.key} nonce={message.content.nonce} digest={message.content.digest} mimeType={message.content.mimeType} />
-                  : message.content.type === 'audio' ? <EncryptedMessageAudio attachmentId={message.content.attachmentId} encryptionKey={message.content.key} nonce={message.content.nonce} digest={message.content.digest} mimeType={message.content.mimeType} /> : null}
-          <small>{new Date(message.sentAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small>
-        </article>;
+        const startsDay = index === 0 || messageDayKey(messages[index - 1].sentAt) !== messageDayKey(message.sentAt);
+        return <Fragment key={message.id}>
+          {startsDay && <div className="message-day-separator"><span>{formatMessageDay(message.sentAt)}</span></div>}
+          <article className={`${message.senderUserId === user?.id ? 'message mine' : 'message'}${sticker ? ' sticker-message' : ''}`}>
+            {message.content.type === 'text' ? <p>{message.content.text}</p>
+              : sticker ? <img className="message-sticker" src={sticker.src} alt={sticker.accessibleLabel} />
+                : message.content.type === 'post' ? <Link className="shared-post-message" to={`/post/${message.content.postId}`}><strong>Публикация Tyson</strong><span>Открыть публикацию</span></Link>
+                  : message.content.type === 'image' ? <EncryptedMessageImage attachmentId={message.content.attachmentId} encryptionKey={message.content.key} nonce={message.content.nonce} digest={message.content.digest} mimeType={message.content.mimeType} />
+                    : message.content.type === 'audio' ? <EncryptedMessageAudio attachmentId={message.content.attachmentId} encryptionKey={message.content.key} nonce={message.content.nonce} digest={message.content.digest} mimeType={message.content.mimeType} /> : null}
+            <small>{new Date(message.sentAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small>
+          </article>
+        </Fragment>;
       })}{!messages.length && <div className="chat-empty"><LockKeyhole /><p>{active.securityMode === 'secret' ? 'Секретные сообщения шифруются только на устройствах участников.' : 'Сообщения синхронизируются со всеми вашими устройствами и шифруются при хранении.'}</p></div>}<div ref={messageEnd} aria-hidden="true" /></div>
       <div className="composer-area">
         {sharedPostId && <div className="share-post-bar"><div><strong>Отправить публикацию</strong><small>{active.isSaved ? 'Сохранить в Избранное' : `Поделиться с @${active.otherUsername}`}</small></div><button type="button" disabled={sending} onClick={() => void sendSharedPost()}><Send size={16} />Отправить</button></div>}

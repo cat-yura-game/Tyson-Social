@@ -435,6 +435,8 @@ button { color: inherit; }
 .chat-profile-copy strong, .chat-profile-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-chat-back { display: none; place-items: center; flex: 0 0 38px; width: 38px; height: 38px; margin-right: 9px; padding: 0; border: 0; border-radius: 12px; background: #eef1eb; color: var(--green); cursor: pointer; }
 .message-stream { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding: 18px; }
+.message-day-separator { display: flex; align-items: center; justify-content: center; margin: 8px 0 4px; }
+.message-day-separator span { padding: 5px 11px; border: 1px solid rgb(255 255 255 / 62%); border-radius: 999px; background: rgb(255 255 255 / 72%); color: var(--muted); box-shadow: 0 4px 14px rgb(18 83 123 / 7%), inset 0 1px 0 rgb(255 255 255 / 82%); font-size: 10px; font-weight: 800; line-height: 1; -webkit-backdrop-filter: blur(3px) saturate(125%); backdrop-filter: blur(3px) saturate(125%); }
 .message { align-self: flex-start; max-width: 78%; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: #f0f2ed; }
 .message.mine { align-self: flex-end; border-radius: 14px 14px 4px; background: var(--green); color: white; }
 .message p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
@@ -635,6 +637,8 @@ button { color: inherit; }
   .chat-panel > header > div { min-width: 0; margin-right: 0; }
   .chat-panel > header strong, .chat-panel > header small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .message-stream { position: absolute; inset: 0; overflow-y: auto; padding: calc(76px + env(safe-area-inset-top) + 14px) 11px 70px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .message-day-separator { margin: 7px 0 3px; }
+  .message-day-separator span { color: rgb(17 17 17 / 66%); }
   .message { max-width: 88%; padding: 9px 12px; border: 1px solid rgb(255 255 255 / 58%); border-radius: 19px 19px 19px 6px; background: rgb(255 255 255 / 66%); box-shadow: 0 5px 15px rgb(18 83 123 / 7%), inset 0 1px 0 rgb(255 255 255 / 80%); -webkit-backdrop-filter: blur(3px) saturate(125%); backdrop-filter: blur(3px) saturate(125%); }
   .message.mine { border-color: rgb(111 204 255 / 60%); border-radius: 19px 19px 6px; background: rgb(49 166 235 / 76%); box-shadow: 0 6px 18px rgb(13 112 174 / 14%), inset 0 1px 0 rgb(255 255 255 / 35%); }
   .composer-area { position: absolute; z-index: 3; right: 0; bottom: 0; left: 0; padding-bottom: max(3px, env(safe-area-inset-bottom)); border: 0; background: var(--messenger-glass-underlay-bottom) !important; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -802,8 +806,7 @@ html[data-theme='dark'] .mobile-header { background: rgb(13 18 15 / 92%); }
   html[data-theme='dark'] .post-summary,
   html[data-theme='dark'] .active-topic { border-color: rgb(112 201 255 / 18%); background: rgb(45 132 180 / 14%); color: #9edcff; }
   html[data-theme='dark'] .conversation-list,
-  html[data-theme='dark'] .chat-panel,
-  html[data-theme='dark'] .composer-area { background: transparent !important; }
+  html[data-theme='dark'] .chat-panel { background: transparent !important; }
   html[data-theme='dark'] .conversation,
   html[data-theme='dark'] .chat-profile-copy,
   html[data-theme='dark'] .chat-profile-link .avatar,
@@ -818,6 +821,7 @@ html[data-theme='dark'] .mobile-header { background: rgb(13 18 15 / 92%); }
   html[data-theme='dark'] .chat-profile-copy small,
   html[data-theme='dark'] .message-composer textarea::placeholder { color: rgb(222 237 246 / 52%) !important; }
   html[data-theme='dark'] .message-input-glass .sticker-trigger { border: 0; background: transparent; box-shadow: none; color: rgb(222 237 246 / 66%); }
+  html[data-theme='dark'] .message-day-separator span { border-color: rgb(152 218 255 / 15%); background: rgb(19 29 38 / 72%); color: rgb(222 237 246 / 68%); box-shadow: 0 5px 16px rgb(0 0 0 / 20%), inset 0 1px 0 rgb(255 255 255 / 9%); }
   html[data-theme='dark'] .message-composer .composer-primary-action { background: rgb(18 143 224 / 78%); color: white; }
   html[data-theme='dark'] .sticker-picker { border-color: rgb(152 218 255 / 15%); background: rgb(19 29 38 / 82%); box-shadow: 0 18px 45px rgb(0 0 0 / 38%), inset 0 1px 0 rgb(255 255 255 / 10%); }
   html[data-theme='dark'] .messenger-ai-reset { border-color: rgb(152 218 255 / 15%); background: rgb(19 29 38 / 68%); color: var(--ink); box-shadow: 0 8px 22px rgb(0 0 0 / 25%); }
