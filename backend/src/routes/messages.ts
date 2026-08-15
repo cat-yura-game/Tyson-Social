@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
 import { fail, ok } from '../lib/responses';
-import { cloudMessageSchema, conversationSchema, deleteMessageSchema, deviceSchema, messageBatchSchema } from '../schemas/messages';
+import { cloneAttachmentSchema, cloudMessageSchema, conversationSchema, deleteMessageSchema, deviceSchema, editCloudMessageSchema, messageBatchSchema } from '../schemas/messages';
 import type { AppVariables, AuthUser, Env } from '../types';
 import { decryptCloudMessage, encryptCloudMessage } from '../services/cloud-message-crypto';
 import { uploadLimitForUser } from '../services/upload-limits';
-import { canDeleteMessage } from '../services/message-permissions';
+import { canDeleteMessage, canEditMessage } from '../services/message-permissions';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const messageRoutes = new Hono<App>();
@@ -26,6 +26,14 @@ async function parse<T>(c: Parameters<typeof fail>[0], schema: { parse(value: un
 
 async function isMember(db: D1Database, conversationId: string, userId: string): Promise<boolean> {
   return Boolean(await db.prepare(`SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL`).bind(conversationId, userId).first());
+}
+
+function attachmentIdFromContent(content: unknown): string | undefined {
+  if (!content || typeof content !== 'object') return undefined;
+  const value = content as Record<string, unknown>;
+  if ((value.type === 'image' || value.type === 'audio') && typeof value.attachmentId === 'string') return value.attachmentId;
+  if (value.type === 'forwarded') return attachmentIdFromContent(value.content);
+  return undefined;
 }
 
 async function ensureSavedConversation(db: D1Database, user: AuthUser): Promise<string> {
@@ -181,6 +189,40 @@ messageRoutes.get('/attachments/:id', async (c) => {
   });
 });
 
+messageRoutes.post('/attachments/:id/clone', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const sourceAttachmentId = c.req.param('id');
+  const input = await parse(c, cloneAttachmentSchema); if (input instanceof Response) return input;
+  if (!await isMember(c.env.DB, input.targetConversationId, user.id)) {
+    return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Target conversation not found.');
+  }
+  const source = await c.env.DB.prepare(`SELECT a.storage_key AS storageKey, a.byte_size AS byteSize
+    FROM encrypted_message_attachments a JOIN conversation_members m ON m.conversation_id = a.conversation_id
+    WHERE a.id = ? AND m.user_id = ? AND m.left_at IS NULL`).bind(sourceAttachmentId, user.id)
+    .first<{ storageKey: string; byteSize: number }>();
+  if (!source) return fail(c, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found.');
+  const maxAttachmentBytes = await uploadLimitForUser(c.env.DB, user.id) + ENCRYPTED_ATTACHMENT_OVERHEAD;
+  if (source.byteSize > maxAttachmentBytes) return fail(c, 413, 'ATTACHMENT_TOO_LARGE', 'Encrypted attachment is too large.');
+  const recent = await c.env.DB.prepare(`SELECT COUNT(*) AS count FROM encrypted_message_attachments
+    WHERE uploader_user_id = ? AND created_at > datetime('now', '-1 hour')`).bind(user.id).first<{ count: number }>();
+  if ((recent?.count ?? 0) >= 30) return fail(c, 429, 'ATTACHMENT_RATE_LIMITED', 'Too many attachments. Try again later.');
+  const bytes = await c.env.MEDIA.get(source.storageKey, 'arrayBuffer');
+  if (!bytes) return fail(c, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found.');
+  const id = crypto.randomUUID();
+  const storageKey = `encrypted-attachments/${user.id}/${id}.bin`;
+  const now = new Date().toISOString();
+  await c.env.MEDIA.put(storageKey, bytes, { metadata: { ownerUserId: user.id, byteSize: source.byteSize } });
+  try {
+    await c.env.DB.prepare(`INSERT INTO encrypted_message_attachments
+      (id, conversation_id, uploader_user_id, storage_key, byte_size, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .bind(id, input.targetConversationId, user.id, storageKey, source.byteSize, now).run();
+  } catch (error) {
+    await c.env.MEDIA.delete(storageKey);
+    throw error;
+  }
+  return ok(c, { attachmentId: id }, 201);
+});
+
 messageRoutes.get('/conversations/:id/messages', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const conversationId = c.req.param('id');
@@ -189,11 +231,11 @@ messageRoutes.get('/conversations/:id/messages', async (c) => {
     .first<{ securityMode: 'cloud' | 'secret' }>();
   if (!conversation) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
   if (conversation.securityMode === 'cloud') {
-    const rows = await c.env.DB.prepare(`SELECT id, sender_user_id AS senderUserId, ciphertext, nonce, sent_at AS sentAt
+    const rows = await c.env.DB.prepare(`SELECT id, sender_user_id AS senderUserId, ciphertext, nonce, sent_at AS sentAt, edited_at AS editedAt
       FROM cloud_messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 500`).bind(conversationId)
-      .all<{ id: string; senderUserId: string; ciphertext: string; nonce: string; sentAt: string }>();
+      .all<{ id: string; senderUserId: string; ciphertext: string; nonce: string; sentAt: string; editedAt: string | null }>();
     const messages = await Promise.all(rows.results.map(async (row) => ({
-      id: row.id, senderUserId: row.senderUserId, sentAt: row.sentAt,
+      id: row.id, senderUserId: row.senderUserId, sentAt: row.sentAt, editedAt: row.editedAt,
       content: await decryptCloudMessage<unknown>(c.env, row.ciphertext, row.nonce),
     })));
     return ok(c, { securityMode: 'cloud', messages });
@@ -203,7 +245,7 @@ messageRoutes.get('/conversations/:id/messages', async (c) => {
   const device = await c.env.DB.prepare(`SELECT 1 FROM devices WHERE id = ? AND user_id = ? AND revoked_at IS NULL`).bind(deviceId, user.id).first();
   if (!device) return fail(c, 403, 'DEVICE_FORBIDDEN', 'Device does not belong to this account.');
   const rows = await c.env.DB.prepare(`SELECT m.id, m.sender_user_id AS senderUserId, m.sender_device_id AS senderDeviceId,
-    m.ciphertext, m.sent_at AS sentAt, m.created_at AS createdAt
+    m.ciphertext, m.sent_at AS sentAt, m.edited_at AS editedAt, m.created_at AS createdAt
     FROM encrypted_messages m WHERE m.conversation_id = ? AND m.recipient_device_id = ?
     ORDER BY m.created_at ASC LIMIT 500`).bind(conversationId, deviceId).all();
   return ok(c, { securityMode: 'secret', messages: rows.results });
@@ -248,6 +290,59 @@ messageRoutes.post('/conversations/:id/messages', async (c) => {
   return ok(c, { sent: true, sentAt: now }, 201);
 });
 
+messageRoutes.put('/conversations/:id/messages/:messageId', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const conversationId = c.req.param('id');
+  const messageId = c.req.param('messageId');
+  if (!await isMember(c.env.DB, conversationId, user.id)) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/iu.test(messageId)) return fail(c, 422, 'VALIDATION_ERROR', 'Invalid message identifier.');
+  const conversation = await c.env.DB.prepare('SELECT security_mode AS securityMode FROM conversations WHERE id = ?').bind(conversationId)
+    .first<{ securityMode: 'cloud' | 'secret' }>();
+  if (!conversation) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  const editedAt = new Date().toISOString();
+
+  if (conversation.securityMode === 'cloud') {
+    const input = await parse(c, editCloudMessageSchema); if (input instanceof Response) return input;
+    const message = await c.env.DB.prepare(`SELECT sender_user_id AS senderUserId FROM cloud_messages
+      WHERE id = ? AND conversation_id = ?`).bind(messageId, conversationId).first<{ senderUserId: string }>();
+    if (!message) return fail(c, 404, 'MESSAGE_NOT_FOUND', 'Message not found.');
+    if (!canEditMessage(user.id, message.senderUserId)) return fail(c, 403, 'MESSAGE_EDIT_FORBIDDEN', 'Only the author can edit this message.');
+    const encrypted = await encryptCloudMessage(c.env, input.content);
+    await c.env.DB.prepare(`UPDATE cloud_messages SET ciphertext = ?, nonce = ?, edited_at = ?
+      WHERE id = ? AND conversation_id = ? AND sender_user_id = ?`)
+      .bind(encrypted.ciphertext, encrypted.nonce, editedAt, messageId, conversationId, user.id).run();
+    return ok(c, { edited: true, editedAt });
+  }
+
+  const input = await parse(c, messageBatchSchema); if (input instanceof Response) return input;
+  const message = await c.env.DB.prepare(`SELECT sender_user_id AS senderUserId, client_message_id AS clientMessageId,
+    sent_at AS sentAt, created_at AS createdAt
+    FROM encrypted_messages WHERE id = ? AND conversation_id = ?`).bind(messageId, conversationId)
+    .first<{ senderUserId: string; clientMessageId: string; sentAt: string; createdAt: string }>();
+  if (!message) return fail(c, 404, 'MESSAGE_NOT_FOUND', 'Message not found.');
+  if (!canEditMessage(user.id, message.senderUserId)) return fail(c, 403, 'MESSAGE_EDIT_FORBIDDEN', 'Only the author can edit this message.');
+  const senderDevice = await c.env.DB.prepare(`SELECT 1 FROM devices WHERE id = ? AND user_id = ? AND revoked_at IS NULL`)
+    .bind(input.senderDeviceId, user.id).first();
+  if (!senderDevice) return fail(c, 403, 'DEVICE_FORBIDDEN', 'Sender device does not belong to this account.');
+  const recipientIds = [...new Set(input.envelopes.map((envelope) => envelope.recipientDeviceId))];
+  const placeholders = recipientIds.map(() => '?').join(',');
+  const allowedDevices = await c.env.DB.prepare(`SELECT d.id FROM devices d JOIN conversation_members m ON m.user_id = d.user_id
+    WHERE m.conversation_id = ? AND m.left_at IS NULL AND d.revoked_at IS NULL AND d.id IN (${placeholders})`)
+    .bind(conversationId, ...recipientIds).all<{ id: string }>();
+  if (allowedDevices.results.length !== recipientIds.length) return fail(c, 403, 'RECIPIENT_DEVICE_FORBIDDEN', 'A recipient device is not part of this conversation.');
+  const logicalId = message.clientMessageId.split(':', 1)[0];
+  const statements = [c.env.DB.prepare(`DELETE FROM encrypted_messages WHERE conversation_id = ? AND sender_user_id = ?
+    AND (client_message_id = ? OR (instr(client_message_id, ':') > 0 AND substr(client_message_id, 1, instr(client_message_id, ':') - 1) = ?))`)
+    .bind(conversationId, user.id, message.clientMessageId, logicalId)];
+  statements.push(...input.envelopes.map((envelope) => c.env.DB.prepare(`INSERT INTO encrypted_messages
+    (id, conversation_id, sender_user_id, sender_device_id, recipient_device_id, ciphertext, envelope_version, client_message_id, sent_at, edited_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`)
+    .bind(crypto.randomUUID(), conversationId, user.id, input.senderDeviceId, envelope.recipientDeviceId,
+      envelope.ciphertext, envelope.clientMessageId, message.sentAt, editedAt, message.createdAt)));
+  await c.env.DB.batch(statements);
+  return ok(c, { edited: true, editedAt });
+});
+
 messageRoutes.delete('/conversations/:id/messages/:messageId', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const conversationId = c.req.param('id');
@@ -268,10 +363,7 @@ messageRoutes.delete('/conversations/:id/messages/:messageId', async (c) => {
     if (!message) return fail(c, 404, 'MESSAGE_NOT_FOUND', 'Message not found.');
     if (!canDeleteMessage(user.id, message.senderUserId)) return fail(c, 403, 'MESSAGE_DELETE_FORBIDDEN', 'Only the author can delete this message.');
     const content = await decryptCloudMessage<unknown>(c.env, message.ciphertext, message.nonce);
-    if (content && typeof content === 'object' && 'type' in content && 'attachmentId' in content
-      && (content.type === 'image' || content.type === 'audio') && typeof content.attachmentId === 'string') {
-      attachmentId = content.attachmentId;
-    }
+    attachmentId = attachmentIdFromContent(content) ?? attachmentId;
     deleteMessageStatement = c.env.DB.prepare('DELETE FROM cloud_messages WHERE id = ? AND conversation_id = ? AND sender_user_id = ?')
       .bind(messageId, conversationId, user.id);
   } else {

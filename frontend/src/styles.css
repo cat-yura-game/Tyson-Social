@@ -440,12 +440,32 @@ button { color: inherit; }
 .message { position: relative; align-self: flex-start; max-width: 78%; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: #f0f2ed; }
 .message.mine { align-self: flex-end; border-radius: 14px 14px 4px; background: var(--green); color: white; }
 .message p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
-.message small { display: block; margin-top: 4px; text-align: right; opacity: .65; font-size: 9px; }
-.message-delete-button { position: absolute; right: calc(100% + 6px); bottom: 0; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--muted); opacity: 0; box-shadow: 0 5px 14px rgb(18 83 123 / 9%); cursor: pointer; transition: opacity .16s ease, color .16s ease, transform .16s ease; }
-.message-delete-button svg { width: 14px; height: 14px; }
-.message.mine:hover .message-delete-button, .message-delete-button:focus-visible { opacity: 1; }
-.message-delete-button:hover { color: #c1322b; transform: scale(1.06); }
-.message-delete-button:disabled { cursor: wait; opacity: .45; }
+.message small { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 4px; text-align: right; opacity: .65; font-size: 9px; }
+.message small span { font-style: italic; }
+.forwarded-message-label { display: flex; align-items: center; gap: 4px; margin-bottom: 5px; color: inherit; opacity: .76; font-size: 10px; font-weight: 800; }
+.message-menu-layer, .forward-dialog-layer { position: fixed; z-index: 100; inset: 0; background: rgb(10 20 27 / 10%); }
+.message-context-menu { position: fixed; top: min(var(--menu-y), calc(100dvh - 170px)); left: min(var(--menu-x), calc(100vw - 190px)); width: 180px; overflow: hidden; padding: 5px; border: 1px solid rgb(255 255 255 / 72%); border-radius: 17px; background: rgb(255 255 255 / 82%); box-shadow: 0 18px 48px rgb(18 51 70 / 20%), inset 0 1px 0 rgb(255 255 255 / 85%); -webkit-backdrop-filter: blur(10px) saturate(145%); backdrop-filter: blur(10px) saturate(145%); transform: translate(-16px, 8px); }
+.message-context-menu button { display: flex; width: 100%; align-items: center; gap: 9px; padding: 10px; border: 0; border-radius: 11px; background: transparent; color: var(--ink); font: inherit; font-size: 12px; font-weight: 750; cursor: pointer; }
+.message-context-menu button:hover { background: rgb(18 119 190 / 10%); }
+.message-context-menu button.danger { color: #c5322a; }
+.message-context-menu button svg { width: 17px; height: 17px; }
+.message-edit-bar { display: flex; align-items: center; gap: 9px; padding: 8px 12px 0; color: var(--green); }
+.message-edit-bar > div { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.message-edit-bar strong { font-size: 11px; }
+.message-edit-bar small { color: var(--muted); font-size: 9px; }
+.message-edit-bar button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
+.message-edit-bar button svg { width: 17px; height: 17px; }
+.forward-dialog-layer { display: grid; place-items: center; padding: 18px; background: rgb(7 19 27 / 28%); }
+.forward-dialog { width: min(420px, 100%); max-height: min(620px, 82dvh); overflow: hidden; border: 1px solid rgb(255 255 255 / 72%); border-radius: 25px; background: rgb(255 255 255 / 88%); box-shadow: 0 25px 80px rgb(10 43 64 / 28%); -webkit-backdrop-filter: blur(12px) saturate(140%); backdrop-filter: blur(12px) saturate(140%); }
+.forward-dialog > header { display: flex; align-items: center; justify-content: space-between; padding: 17px 18px 10px; }
+.forward-dialog h2 { margin: 2px 0 0; font-size: 20px; }
+.forward-dialog > header > button { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: rgb(18 119 190 / 9%); color: var(--ink); cursor: pointer; }
+.forward-conversation-list { max-height: 480px; overflow-y: auto; padding: 5px 10px 13px; }
+.forward-conversation-list > button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 9px; border: 0; border-radius: 15px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.forward-conversation-list > button:hover { background: rgb(18 119 190 / 9%); }
+.forward-conversation-list > button > span:nth-child(2) { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.forward-conversation-list small { color: var(--muted); }
+.forward-conversation-list > button > svg { width: 18px; color: var(--green); }
 .composer-area { position: relative; border-top: 1px solid var(--line); }
 .message-composer { display: flex; align-items: flex-end; gap: 8px; padding: 12px; }
 .message-input-glass { flex: 1; min-width: 0; display: flex; align-items: flex-end; border: 1px solid var(--line); border-radius: 16px; background: white; }
@@ -646,7 +666,14 @@ button { color: inherit; }
   .message-day-separator span { color: rgb(17 17 17 / 66%); }
   .message { max-width: 88%; padding: 9px 12px; border: 1px solid rgb(255 255 255 / 58%); border-radius: 19px 19px 19px 6px; background: rgb(255 255 255 / 66%); box-shadow: 0 5px 15px rgb(18 83 123 / 7%), inset 0 1px 0 rgb(255 255 255 / 80%); -webkit-backdrop-filter: blur(3px) saturate(125%); backdrop-filter: blur(3px) saturate(125%); }
   .message.mine { border-color: rgb(111 204 255 / 60%); border-radius: 19px 19px 6px; background: rgb(49 166 235 / 76%); box-shadow: 0 6px 18px rgb(13 112 174 / 14%), inset 0 1px 0 rgb(255 255 255 / 35%); }
-  .message-delete-button { width: 30px; height: 30px; opacity: .72; -webkit-backdrop-filter: blur(3px) saturate(125%); backdrop-filter: blur(3px) saturate(125%); }
+  .message { -webkit-touch-callout: none; user-select: none; }
+  .message p { user-select: text; }
+  .message-context-menu { top: auto; right: 8px; bottom: calc(82px + env(safe-area-inset-bottom)); left: 8px; width: auto; padding: 7px; border-radius: 24px; transform: none; }
+  .message-context-menu button { min-height: 48px; padding: 11px 14px; border-radius: 17px; font-size: 14px; }
+  .message-menu-layer { background: rgb(6 17 25 / 18%); }
+  .message-edit-bar { padding: 7px 12px 0; }
+  .forward-dialog-layer { align-items: end; padding: 8px 8px calc(76px + env(safe-area-inset-bottom)); }
+  .forward-dialog { width: 100%; max-height: 72dvh; border-radius: 28px; }
   .composer-area { position: absolute; z-index: 3; right: 0; bottom: 0; left: 0; padding-bottom: max(3px, env(safe-area-inset-bottom)); border: 0; background: var(--messenger-glass-underlay-bottom) !important; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .message-composer { align-items: flex-end; gap: 5px; padding: 4px 8px 5px; }
   .message-input-glass { height: auto; min-height: 42px; max-height: 96px; overflow: hidden; border: 1px solid rgb(255 255 255 / 76%); border-radius: 23px; background: rgb(255 255 255 / 55%); box-shadow: 0 6px 19px rgb(19 91 137 / 10%), inset 0 1px 0 rgb(255 255 255 / 94%); -webkit-backdrop-filter: blur(3px) saturate(140%); backdrop-filter: blur(3px) saturate(140%); }
@@ -742,6 +769,11 @@ html[data-theme='dark'] .message { background: #232d27; }
 html[data-theme='dark'] .message.mine { background: #2b6f4b; color: white; }
 html[data-theme='dark'] .message.sticker-message,
 html[data-theme='dark'] .message.sticker-message.mine { background: transparent; }
+html[data-theme='dark'] .message-context-menu,
+html[data-theme='dark'] .forward-dialog { border-color: rgb(126 196 235 / 24%); background: rgb(20 31 39 / 92%); }
+html[data-theme='dark'] .message-context-menu button:hover,
+html[data-theme='dark'] .forward-conversation-list > button:hover,
+html[data-theme='dark'] .forward-dialog > header > button { background: rgb(93 185 239 / 13%); }
 html[data-theme='dark'] .messenger-ai-reset { border-color: var(--line); background: var(--paper); color: var(--ink); }
 html[data-theme='dark'] .messenger-ai-composer textarea { background: transparent; color: var(--ink); }
 html[data-theme='dark'] .sticker-picker button,

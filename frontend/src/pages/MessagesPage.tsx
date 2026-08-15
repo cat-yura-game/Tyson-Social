@@ -1,10 +1,10 @@
-import { Bookmark, ChevronLeft, LockKeyhole, Mic, Paperclip, Plus, Send, Smile, Sparkles, Square, Trash2 } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Bookmark, ChevronLeft, Forward as ForwardIcon, LockKeyhole, Mic, Paperclip, Pencil, Plus, Send, Smile, Sparkles, Square, Trash2, X } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRawRequest, apiRequest, mediaUrl } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { attachmentDigest, decryptForDevice, encryptAttachment, encryptForDevice, getOrCreateIdentity, type DeviceIdentity } from '../messaging/crypto';
-import { parseMessageContent, type EncryptedMessagePayload, type MessageContent } from '../messaging/message-content';
+import { parseMessageContent, type BasicMessageContent, type EncryptedMessagePayload, type MessageContent } from '../messaging/message-content';
 import { getSticker, STICKERS, type StickerId } from '../messaging/stickers';
 import { formatMessageDay, messageDayKey } from '../messaging/message-day';
 import { EncryptedMessageImage } from '../components/EncryptedMessageImage';
@@ -33,9 +33,32 @@ interface Conversation {
 }
 
 interface PublicDevice { deviceId: string; name: string; publicKey: string }
-interface EncryptedMessage { id: string; senderUserId: string; senderDeviceId: string; ciphertext: string; sentAt: string }
+interface EncryptedMessage { id: string; senderUserId: string; senderDeviceId: string; ciphertext: string; sentAt: string; editedAt?: string | null }
 interface PlainMessage extends EncryptedMessage { content: MessageContent }
-interface CloudMessage { id: string; senderUserId: string; sentAt: string; content: unknown }
+interface CloudMessage { id: string; senderUserId: string; sentAt: string; editedAt?: string | null; content: unknown }
+interface MessageMenuState { message: PlainMessage; x: number; y: number }
+
+function basicContent(content: MessageContent): BasicMessageContent {
+  return content.type === 'forwarded' ? content.content : content;
+}
+
+function attachmentIdFromMessage(content: MessageContent): string | undefined {
+  const value = basicContent(content);
+  return value.type === 'image' || value.type === 'audio' ? value.attachmentId : undefined;
+}
+
+function MessageBody({ content }: { content: MessageContent }) {
+  const value = basicContent(content);
+  const sticker = value.type === 'sticker' ? getSticker(value.stickerId) : null;
+  return <>
+    {content.type === 'forwarded' && <span className="forwarded-message-label"><ForwardIcon size={13} />Переслано от {content.fromDisplayName}</span>}
+    {value.type === 'text' ? <p>{value.text}</p>
+      : sticker ? <img className="message-sticker" src={sticker.src} alt={sticker.accessibleLabel} />
+        : value.type === 'post' ? <Link className="shared-post-message" to={`/post/${value.postId}`}><strong>Публикация Tyson</strong><span>Открыть публикацию</span></Link>
+          : value.type === 'image' ? <EncryptedMessageImage attachmentId={value.attachmentId} encryptionKey={value.key} nonce={value.nonce} digest={value.digest} mimeType={value.mimeType} />
+            : value.type === 'audio' ? <EncryptedMessageAudio attachmentId={value.attachmentId} encryptionKey={value.key} nonce={value.nonce} digest={value.digest} mimeType={value.mimeType} /> : null}
+  </>;
+}
 
 export function MessagesPage() {
   const { user } = useAuth();
@@ -52,6 +75,9 @@ export function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [editingMessage, setEditingMessage] = useState<PlainMessage | null>(null);
+  const [messageMenu, setMessageMenu] = useState<MessageMenuState | null>(null);
+  const [forwardingMessage, setForwardingMessage] = useState<PlainMessage | null>(null);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [maxUploadBytes, setMaxUploadBytes] = useState(STANDARD_UPLOAD_BYTES);
@@ -66,6 +92,7 @@ export function MessagesPage() {
   const voiceBytes = useRef(0);
   const recordingStartedAt = useRef(0);
   const recordingTimer = useRef<number | null>(null);
+  const longPressTimer = useRef<number | null>(null);
   const active = conversations.find((conversation) => conversation.id === activeId) ?? null;
   const sharedPostId = searchParams.get('sharePost');
 
@@ -148,6 +175,10 @@ export function MessagesPage() {
 
   useEffect(() => {
     setShowStickers(false);
+    setMessageMenu(null);
+    setEditingMessage(null);
+    setForwardingMessage(null);
+    setDraft('');
     void loadMessages();
     const timer = window.setInterval(() => void loadMessages(), 4000);
     return () => window.clearInterval(timer);
@@ -188,46 +219,62 @@ export function MessagesPage() {
     }
   };
 
-  const sendContent = async (content: MessageContent) => {
-    if (!active || !identity || sending) return;
+  const createSecretEnvelopes = async (target: Conversation, content: MessageContent, sentAt: string, editedAt?: string) => {
+    if (!identity) throw new Error('Защищённое устройство не готово.');
+    const recipient = await apiRequest<{ devices: PublicDevice[] }>(`/messages/users/${encodeURIComponent(target.otherUsername)}/devices`);
+    if (!recipient.devices.length) throw new Error('Получатель ещё не открыл защищённый мессенджер на своём устройстве.');
+    const payload: EncryptedMessagePayload = { ...content, version: 1, sentAt, ...(editedAt ? { editedAt } : {}) };
+    const plaintext = JSON.stringify(payload);
+    const targets = [...new Map([...recipient.devices, { deviceId: identity.deviceId, name: 'Это устройство', publicKey: identity.publicKey }]
+      .map((device) => [device.deviceId, device])).values()];
+    const baseId = crypto.randomUUID();
+    return Promise.all(targets.map(async (device) => ({
+      recipientDeviceId: device.deviceId,
+      ciphertext: await encryptForDevice(plaintext, device.publicKey),
+      clientMessageId: `${baseId}:${device.deviceId}`,
+    })));
+  };
+
+  const sendContentToConversation = async (target: Conversation, content: MessageContent) => {
+    if (!identity || sending) return false;
     setSending(true);
     setError(null);
     try {
-      if (active.securityMode === 'cloud') {
-        await apiRequest(`/messages/conversations/${active.id}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
-        await loadMessages();
+      if (target.securityMode === 'cloud') {
+        await apiRequest(`/messages/conversations/${target.id}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
+        if (target.id === activeId) await loadMessages();
         await loadConversations();
-        return;
+        return true;
       }
-      const recipient = await apiRequest<{ devices: PublicDevice[] }>(`/messages/users/${encodeURIComponent(active.otherUsername)}/devices`);
-      if (!recipient.devices.length) throw new Error('Получатель ещё не открыл защищённый мессенджер на своём устройстве.');
-      const payload: EncryptedMessagePayload = { ...content, version: 1, sentAt: new Date().toISOString() };
-      const plaintext = JSON.stringify(payload);
-      const targets = [...new Map([...recipient.devices, { deviceId: identity.deviceId, name: 'Это устройство', publicKey: identity.publicKey }]
-        .map((device) => [device.deviceId, device])).values()];
-      const baseId = crypto.randomUUID();
-      const envelopes = await Promise.all(targets.map(async (device) => ({
-        recipientDeviceId: device.deviceId,
-        ciphertext: await encryptForDevice(plaintext, device.publicKey),
-        clientMessageId: `${baseId}:${device.deviceId}`,
-      })));
-      await apiRequest(`/messages/conversations/${active.id}/messages`, {
+      const envelopes = await createSecretEnvelopes(target, content, new Date().toISOString());
+      await apiRequest(`/messages/conversations/${target.id}/messages`, {
         method: 'POST',
         body: JSON.stringify({ senderDeviceId: identity.deviceId, envelopes }),
       });
-      await loadMessages();
+      if (target.id === activeId) await loadMessages();
       await loadConversations();
+      return true;
     } catch (caught) {
       setError(caught instanceof ApiError || caught instanceof Error ? caught.message : 'Не удалось отправить сообщение.');
+      return false;
     } finally {
       setSending(false);
     }
+  };
+
+  const sendContent = async (content: MessageContent) => {
+    if (!active) return false;
+    return sendContentToConversation(active, content);
   };
 
   const sendText = async (event: FormEvent) => {
     event.preventDefault();
     const text = draft.trim();
     if (!text) return;
+    if (editingMessage) {
+      await editTextMessage(editingMessage, text);
+      return;
+    }
     await sendContent({ type: 'text', text });
     setDraft('');
   };
@@ -241,9 +288,7 @@ export function MessagesPage() {
     if (!active || message.senderUserId !== user?.id || deletingMessageId) return;
     setDeletingMessageId(message.id);
     setError(null);
-    const attachmentId = message.content.type === 'image' || message.content.type === 'audio'
-      ? message.content.attachmentId
-      : undefined;
+    const attachmentId = attachmentIdFromMessage(message.content);
     try {
       await apiRequest(`/messages/conversations/${active.id}/messages/${message.id}`, {
         method: 'DELETE',
@@ -255,6 +300,92 @@ export function MessagesPage() {
       setError(caught instanceof ApiError ? caught.message : 'Не удалось удалить сообщение.');
     } finally {
       setDeletingMessageId(null);
+    }
+  };
+
+  const editTextMessage = async (message: PlainMessage, text: string) => {
+    if (!active || !identity || message.senderUserId !== user?.id || basicContent(message.content).type !== 'text') return;
+    setSending(true);
+    setError(null);
+    try {
+      if (active.securityMode === 'cloud') {
+        await apiRequest(`/messages/conversations/${active.id}/messages/${message.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ content: { type: 'text', text } }),
+        });
+      } else {
+        const editedAt = new Date().toISOString();
+        const envelopes = await createSecretEnvelopes(active, { type: 'text', text }, message.sentAt, editedAt);
+        await apiRequest(`/messages/conversations/${active.id}/messages/${message.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ senderDeviceId: identity.deviceId, envelopes }),
+        });
+      }
+      setEditingMessage(null);
+      setDraft('');
+      await loadMessages();
+    } catch (caught) {
+      setError(caught instanceof ApiError || caught instanceof Error ? caught.message : 'Не удалось изменить сообщение.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const cancelEditing = () => {
+    setEditingMessage(null);
+    setDraft('');
+  };
+
+  const openMessageMenu = (message: PlainMessage, x: number, y: number) => {
+    setMessageMenu({ message, x, y });
+    if (navigator.vibrate) navigator.vibrate(25);
+  };
+
+  const clearLongPress = () => {
+    if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
+  };
+
+  const handleMessagePointerDown = (event: ReactPointerEvent<HTMLElement>, message: PlainMessage) => {
+    if (event.pointerType !== 'touch') return;
+    clearLongPress();
+    const { clientX, clientY } = event;
+    longPressTimer.current = window.setTimeout(() => openMessageMenu(message, clientX, clientY), 480);
+  };
+
+  const handleMessageContextMenu = (event: ReactMouseEvent<HTMLElement>, message: PlainMessage) => {
+    event.preventDefault();
+    clearLongPress();
+    openMessageMenu(message, event.clientX, event.clientY);
+  };
+
+  const beginEditing = (message: PlainMessage) => {
+    const content = basicContent(message.content);
+    if (content.type !== 'text' || message.content.type === 'forwarded') return;
+    setMessageMenu(null);
+    setEditingMessage(message);
+    setDraft(content.text);
+    window.setTimeout(() => draftInput.current?.focus(), 0);
+  };
+
+  const forwardMessage = async (target: Conversation) => {
+    if (!forwardingMessage || !active) return;
+    let content = basicContent(forwardingMessage.content);
+    try {
+      if (content.type === 'image' || content.type === 'audio') {
+        const cloned = await apiRequest<{ attachmentId: string }>(`/messages/attachments/${content.attachmentId}/clone`, {
+          method: 'POST',
+          body: JSON.stringify({ targetConversationId: target.id }),
+        });
+        content = { ...content, attachmentId: cloned.attachmentId };
+      }
+      const fromDisplayName = forwardingMessage.content.type === 'forwarded'
+        ? forwardingMessage.content.fromDisplayName
+        : forwardingMessage.senderUserId === user?.id ? user?.displayName ?? 'Tyson' : active.otherDisplayName;
+      const sent = await sendContentToConversation(target, { type: 'forwarded', fromDisplayName, content });
+      if (sent) setForwardingMessage(null);
+    } catch (caught) {
+      setError(caught instanceof ApiError || caught instanceof Error ? caught.message : 'Не удалось переслать сообщение.');
     }
   };
 
@@ -406,22 +537,22 @@ export function MessagesPage() {
     <div className="chat-panel">{activeId === TYSON_AI_CHAT_ID ? <MessengerAiChat onBack={closeMobileChat} /> : active ? <>
       <header><button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={closeMobileChat}><ChevronLeft /></button>{active.isSaved ? <div className="chat-profile-link"><span className="avatar avatar-small saved-avatar"><Bookmark size={19} /></span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>Ваш личный архив</small></span></div> : <Link className="chat-profile-link" to={`/profile/${encodeURIComponent(active.otherUsername)}`} aria-label={`Открыть профиль ${active.otherDisplayName}`}><span className="avatar avatar-small">{active.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(active.otherAvatarKey) ?? ''} alt="" /> : active.otherDisplayName.slice(0, 1).toUpperCase()}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>@{active.otherUsername}</small></span></Link>}<span className="chat-security"><LockKeyhole size={14} />{active.securityMode === 'secret' ? 'E2EE' : 'Защищено'}</span></header>
       <div className="message-stream">{messages.map((message, index) => {
-        const sticker = message.content.type === 'sticker' ? getSticker(message.content.stickerId) : null;
+        const displayedContent = basicContent(message.content);
+        const sticker = displayedContent.type === 'sticker' ? getSticker(displayedContent.stickerId) : null;
         const startsDay = index === 0 || messageDayKey(messages[index - 1].sentAt) !== messageDayKey(message.sentAt);
         return <Fragment key={message.id}>
           {startsDay && <div className="message-day-separator"><span>{formatMessageDay(message.sentAt)}</span></div>}
-          <article className={`${message.senderUserId === user?.id ? 'message mine' : 'message'}${sticker ? ' sticker-message' : ''}`}>
-            {message.senderUserId === user?.id && <button className="message-delete-button" type="button" disabled={deletingMessageId === message.id} onClick={() => void deleteMessage(message)} aria-label="Удалить сообщение"><Trash2 /></button>}
-            {message.content.type === 'text' ? <p>{message.content.text}</p>
-              : sticker ? <img className="message-sticker" src={sticker.src} alt={sticker.accessibleLabel} />
-                : message.content.type === 'post' ? <Link className="shared-post-message" to={`/post/${message.content.postId}`}><strong>Публикация Tyson</strong><span>Открыть публикацию</span></Link>
-                  : message.content.type === 'image' ? <EncryptedMessageImage attachmentId={message.content.attachmentId} encryptionKey={message.content.key} nonce={message.content.nonce} digest={message.content.digest} mimeType={message.content.mimeType} />
-                    : message.content.type === 'audio' ? <EncryptedMessageAudio attachmentId={message.content.attachmentId} encryptionKey={message.content.key} nonce={message.content.nonce} digest={message.content.digest} mimeType={message.content.mimeType} /> : null}
-            <small>{new Date(message.sentAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small>
+          <article className={`${message.senderUserId === user?.id ? 'message mine' : 'message'}${sticker ? ' sticker-message' : ''}`}
+            onPointerDown={(event) => handleMessagePointerDown(event, message)} onPointerUp={clearLongPress}
+            onPointerCancel={clearLongPress} onPointerMove={clearLongPress}
+            onContextMenu={(event) => handleMessageContextMenu(event, message)}>
+            <MessageBody content={message.content} />
+            <small>{message.editedAt && <span>изменено</span>}{new Date(message.sentAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small>
           </article>
         </Fragment>;
       })}{!messages.length && <div className="chat-empty"><LockKeyhole /><p>{active.securityMode === 'secret' ? 'Секретные сообщения шифруются только на устройствах участников.' : 'Сообщения синхронизируются со всеми вашими устройствами и шифруются при хранении.'}</p></div>}<div ref={messageEnd} aria-hidden="true" /></div>
       <div className="composer-area">
+        {editingMessage && <div className="message-edit-bar"><Pencil size={16} /><div><strong>Изменение сообщения</strong><small>Время отправки останется прежним</small></div><button type="button" aria-label="Отменить изменение" onClick={cancelEditing}><X /></button></div>}
         {sharedPostId && <div className="share-post-bar"><div><strong>Отправить публикацию</strong><small>{active.isSaved ? 'Сохранить в Избранное' : `Поделиться с @${active.otherUsername}`}</small></div><button type="button" disabled={sending} onClick={() => void sendSharedPost()}><Send size={16} />Отправить</button></div>}
         {showStickers && <div className="sticker-picker" aria-label="Стикеры">{STICKERS.map((sticker) => <button key={sticker.id} type="button" disabled={sending} aria-label={sticker.accessibleLabel} onClick={() => void sendSticker(sticker.id)}><img src={sticker.src} alt="" /></button>)}</div>}
         <form className="message-composer" onSubmit={(event) => void sendText(event)}>
@@ -435,6 +566,22 @@ export function MessagesPage() {
               : <button className="voice-message-trigger" type="button" disabled={uploading || sending} aria-label="Записать голосовое" onClick={() => void startRecording()}><Mic /></button>}
         </form>
       </div>
+      {messageMenu && <div className="message-menu-layer" role="presentation" onPointerDown={() => setMessageMenu(null)}>
+        <div className="message-context-menu" role="menu" style={{ '--menu-x': `${messageMenu.x}px`, '--menu-y': `${messageMenu.y}px` } as CSSProperties} onPointerDown={(event) => event.stopPropagation()}>
+          {messageMenu.message.senderUserId === user?.id && messageMenu.message.content.type === 'text' && <button type="button" role="menuitem" onClick={() => beginEditing(messageMenu.message)}><Pencil />Изменить</button>}
+          <button type="button" role="menuitem" onClick={() => { setForwardingMessage(messageMenu.message); setMessageMenu(null); }}><ForwardIcon />Переслать</button>
+          {messageMenu.message.senderUserId === user?.id && <button className="danger" type="button" role="menuitem" disabled={deletingMessageId === messageMenu.message.id} onClick={() => { const selected = messageMenu.message; setMessageMenu(null); void deleteMessage(selected); }}><Trash2 />Удалить</button>}
+        </div>
+      </div>}
+      {forwardingMessage && <div className="forward-dialog-layer" role="presentation" onPointerDown={() => setForwardingMessage(null)}>
+        <section className="forward-dialog" role="dialog" aria-modal="true" aria-labelledby="forward-dialog-title" onPointerDown={(event) => event.stopPropagation()}>
+          <header><div><p className="eyebrow">Пересылка</p><h2 id="forward-dialog-title">Выберите чат</h2></div><button type="button" aria-label="Закрыть" onClick={() => setForwardingMessage(null)}><X /></button></header>
+          <div className="forward-conversation-list">{conversations.map((conversation) => <button key={conversation.id} type="button" disabled={sending} onClick={() => void forwardMessage(conversation)}>
+            <span className={`avatar avatar-small${conversation.isSaved ? ' saved-avatar' : ''}`}>{conversation.isSaved ? <Bookmark size={18} /> : conversation.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(conversation.otherAvatarKey) ?? ''} alt="" /> : conversation.otherDisplayName.slice(0, 1).toUpperCase()}</span>
+            <span><strong>{conversation.otherDisplayName}</strong><small>{conversation.isSaved ? 'Личный архив' : `@${conversation.otherUsername}`}</small></span><ForwardIcon />
+          </button>)}</div>
+        </section>
+      </div>}
     </> : <div className="chat-empty"><LockKeyhole /><h2>Защищённый разговор</h2><p>Введите username слева, чтобы начать переписку.</p></div>}{error && <p className="messages-error" role="alert">{error}</p>}</div>
   </section>;
 }

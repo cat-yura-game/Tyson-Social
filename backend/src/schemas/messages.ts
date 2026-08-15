@@ -22,15 +22,25 @@ const audioContent = z.object({
   digest: z.string().min(32).max(256).optional(), mimeType: z.enum(['audio/webm', 'audio/mp4', 'audio/ogg']),
   durationMs: z.number().int().positive().max(600_000),
 }).strict();
-const cloudContentSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('text'), text: z.string().trim().min(1).max(4000) }).strict(),
+const textContent = z.object({ type: z.literal('text'), text: z.string().trim().min(1).max(4000) }).strict();
+const basicCloudContentSchema = z.discriminatedUnion('type', [
+  textContent,
   z.object({ type: z.literal('sticker'), stickerId: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/u) }).strict(),
   z.object({ type: z.literal('post'), postId: z.string().uuid() }).strict(),
   imageContent,
   audioContent,
 ]);
+const cloudContentSchema = z.union([
+  basicCloudContentSchema,
+  z.object({
+    type: z.literal('forwarded'),
+    fromDisplayName: z.string().trim().min(1).max(80),
+    content: basicCloudContentSchema,
+  }).strict(),
+]);
 
 export const cloudMessageSchema = z.object({ content: cloudContentSchema }).strict();
+export const editCloudMessageSchema = z.object({ content: textContent }).strict();
 
 export const deleteMessageSchema = z.object({
   attachmentId: z.string().uuid().optional(),
@@ -43,4 +53,8 @@ export const messageBatchSchema = z.object({
     ciphertext: z.string().min(32).max(32_000).regex(/^[A-Za-z0-9+/=_-]+$/u),
     clientMessageId: z.string().min(8).max(120),
   }).strict()).min(1).max(20),
+}).strict();
+
+export const cloneAttachmentSchema = z.object({
+  targetConversationId: z.string().uuid(),
 }).strict();

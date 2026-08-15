@@ -27,4 +27,13 @@ describe('parseMessageContent', () => {
     expect(() => parseMessageContent({ type: 'audio', attachmentId: id, key: 'A'.repeat(44), nonce: 'B'.repeat(32), mimeType: 'audio/mpeg', durationMs: 12_500 })).toThrow();
     expect(() => parseMessageContent({ type: 'audio', attachmentId: id, key: 'A'.repeat(44), nonce: 'B'.repeat(32), mimeType: 'audio/webm', durationMs: 0 })).toThrow();
   });
+
+  it('parses forwarded content without allowing nested forwards', () => {
+    expect(parseMessageContent({ type: 'forwarded', fromDisplayName: 'Анна', content: { type: 'text', text: 'Привет' } }))
+      .toEqual({ type: 'forwarded', fromDisplayName: 'Анна', content: { type: 'text', text: 'Привет' } });
+    expect(() => parseMessageContent({
+      type: 'forwarded', fromDisplayName: 'Анна',
+      content: { type: 'forwarded', fromDisplayName: 'Борис', content: { type: 'text', text: 'Нет' } },
+    })).toThrow();
+  });
 });
