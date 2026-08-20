@@ -1,5 +1,5 @@
-import { BadgeCheck, CalendarDays, MessageCircle, QrCode, UserCheck, UserPlus } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { BadgeCheck, CalendarDays, Gift, MessageCircle, QrCode, UserCheck, UserPlus } from 'lucide-react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
 import { useAuth, type AuthUser } from '../auth/AuthProvider';
@@ -29,6 +29,7 @@ export function ProfilePage() {
   const [followError, setFollowError] = useState<string | null>(null);
   const [selectedGift, setSelectedGift] = useState<GiftDetails | null>(null);
   const [showQr, setShowQr] = useState(false);
+  const [profileTab, setProfileTab] = useState<'posts' | 'gifts'>('posts');
 
   useEffect(() => {
     setLoading(true); setMissing(false);
@@ -81,9 +82,8 @@ export function ProfilePage() {
       <div className="profile-copy"><h1>{profile.displayName}{profile.verified && <BadgeCheck className="verified" size={21} aria-label="Подтверждённый аккаунт" />}{gifts.find((gift) => gift.worn) && <img className="profile-worn-gift" src={gifts.find((gift) => gift.worn)?.image} alt="Надетый подарок" />}</h1><p>@{profile.username}</p><p className="profile-bio">{profile.bio || 'Пользователь пока ничего о себе не рассказал.'}</p><span><CalendarDays size={16} />В Tyson с {joined}</span></div>
       <div className="profile-stats"><span><strong>{posts.length}</strong> публикаций</span><span><strong>{profile.followerCount}</strong> подписчиков</span><span><strong>{profile.followingCount}</strong> подписок</span></div>
     </header>
-    {gifts.length > 0 && <section className="profile-gifts"><div className="section-label">Подарки</div><div className="profile-gift-list">{gifts.map((gift) => <article className={gift.worn ? 'profile-gift worn' : 'profile-gift'} style={{ borderColor: gift.accentColor }} role="button" tabIndex={0} onClick={() => setSelectedGift(gift)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedGift(gift); }} key={gift.id}><img src={gift.image} alt={gift.title} /><span>{gift.title}<small>#{gift.serialNumber} / {gift.maxSupply}</small></span></article>)}</div></section>}
-    <div className="section-label">Публикации</div>
-    <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setPosts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div>
+    <div className="profile-tabs" role="tablist" aria-label="Разделы профиля"><button className={profileTab === 'posts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'posts'} onClick={() => setProfileTab('posts')}>Публикации</button><button className={profileTab === 'gifts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'gifts'} onClick={() => setProfileTab('gifts')}><Gift size={17} />Подарки{gifts.length > 0 && <span>{gifts.length}</span>}</button></div>
+    {profileTab === 'posts' ? <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setPosts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div> : <section className="profile-gift-gallery" aria-label="Подарки профиля">{gifts.length ? gifts.map((gift) => <button className={gift.worn ? 'profile-gift-tile worn' : 'profile-gift-tile'} style={{ '--gift-accent': gift.accentColor } as CSSProperties} type="button" onClick={() => setSelectedGift(gift)} key={gift.id}><img src={gift.image} alt={gift.title} />{gift.worn && <span>Надет</span>}</button>) : <div className="empty-profile">У пользователя пока нет подарков.</div>}</section>}
     {selectedGift && <GiftDetailsModal gift={selectedGift} owner={{ username: profile.username, displayName: profile.displayName, avatarKey: profile.avatarKey }} onClose={() => setSelectedGift(null)} />}
     {showQr && <ProfileQrModal username={profile.username} onClose={() => setShowQr(false)} />}
   </section>;
