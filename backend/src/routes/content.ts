@@ -5,7 +5,7 @@ import { fail, ok } from '../lib/responses';
 import { commentBodySchema, extractLinks, postBodySchema, reactionSchema } from '../schemas/content';
 import { sha256 } from '../security/tokens';
 import type { AppVariables, Env } from '../types';
-import { rankFeed, type FeedCandidate } from '../recommendations/feed-ranking';
+import { interleaveAuthors, rankFeed, type FeedCandidate } from '../recommendations/feed-ranking';
 import { extractTrends, type TrendSourcePost } from '../trends/extract-trends';
 import { assertImageSignature, assertValidMedia, createMediaKey, KvMediaStorage, type AllowedImageType } from '../services/media-storage';
 import { base64Encode } from '../security/encoding';
@@ -73,7 +73,8 @@ const POST_SELECT = `SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.
   (SELECT pm.storage_key FROM post_media pm WHERE pm.post_id = p.id ORDER BY pm.sort_order LIMIT 1) AS mediaKey,
   COALESCE((SELECT reaction FROM post_reactions r WHERE r.post_id = p.id AND r.user_id = ?), '') AS viewerReaction,
   COALESCE((SELECT SUM(amount) FROM post_diamond_reactions dr WHERE dr.post_id = p.id), 0) AS diamondCount,
-  EXISTS(SELECT 1 FROM post_diamond_reactions dr WHERE dr.post_id = p.id AND dr.sender_user_id = ?) AS viewerDiamondGiven
+  EXISTS(SELECT 1 FROM post_diamond_reactions dr WHERE dr.post_id = p.id AND dr.sender_user_id = ?) AS viewerDiamondGiven,
+  EXISTS(SELECT 1 FROM post_promotions pp WHERE pp.post_id = p.id AND pp.delivered_views < pp.purchased_views) AS promoted
   FROM posts p JOIN users u ON u.id = p.author_user_id`;
 const diamondAmountSchema = z.object({ amount: z.number().int().min(1).max(1_000_000) }).strict();
 
@@ -101,11 +102,25 @@ contentRoutes.get('/feed', async (c) => {
       strategy = 'scoring';
     }
   }
+  if (view === 'for-you') posts = interleaveAuthors([...posts].sort((left, right) => Number(right.promoted ?? 0) - Number(left.promoted ?? 0)));
   if (viewerId) {
     const now = new Date().toISOString();
-    if (posts.length) await c.env.DB.batch(posts.slice(0, 20).map((post) => c.env.DB.prepare(`INSERT INTO recommendation_events
+    const statements = posts.slice(0, 20).map((post) => c.env.DB.prepare(`INSERT INTO recommendation_events
       (id, user_id, post_id, event_type, context_json, created_at) VALUES (?, ?, ?, 'impression', ?, ?)`)
-      .bind(crypto.randomUUID(), viewerId, post.id, JSON.stringify({ strategy, view }), now)));
+      .bind(crypto.randomUUID(), viewerId, post.id, JSON.stringify({ strategy, view }), now));
+    if (view === 'for-you') for (const post of posts.slice(0, 10).filter((item) => Number(item.promoted ?? 0) === 1 && item.authorId !== viewerId)) {
+      const viewId = crypto.randomUUID();
+      statements.push(
+        c.env.DB.prepare(`INSERT OR IGNORE INTO post_promotion_views (id, post_id, viewer_user_id, view_date, created_at)
+          SELECT ?, pp.post_id, ?, ?, ? FROM post_promotions pp
+          WHERE pp.post_id = ? AND pp.owner_user_id != ? AND pp.delivered_views < pp.purchased_views`)
+          .bind(viewId, viewerId, now.slice(0, 10), now, post.id, viewerId),
+        c.env.DB.prepare(`UPDATE post_promotions SET delivered_views = delivered_views + 1, updated_at = ?
+          WHERE post_id = ? AND EXISTS (SELECT 1 FROM post_promotion_views WHERE id = ?)`)
+          .bind(now, post.id, viewId),
+      );
+    }
+    if (statements.length) await c.env.DB.batch(statements);
   }
   return ok(c, { posts, recommendation: { strategy } });
 });
@@ -179,6 +194,34 @@ contentRoutes.post('/posts', async (c) => {
   if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Publication was blocked by safety checks.');
   if (status === 'published') await completeDailyTask(c.env, auth.user.id, 'post');
   return ok(c, { id: postId, status }, 201);
+});
+
+const promotionSchema = z.object({ views: z.number().int().min(1).max(500) }).strict();
+
+contentRoutes.post('/posts/:id/promote', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  const input = await json(c, promotionSchema); if (input instanceof Response) return input;
+  const post = await c.env.DB.prepare(`SELECT id FROM posts WHERE id = ? AND author_user_id = ? AND status = 'published'`)
+    .bind(c.req.param('id'), auth.user.id).first();
+  if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
+  const cost = input.views * 2; const now = new Date().toISOString(); const transactionId = crypto.randomUUID();
+  const results = await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
+      SELECT ?, id, ?, 'debit', 'post_promotion', ?, ? FROM users WHERE id = ? AND diamond_balance >= ?`)
+      .bind(transactionId, -cost, c.req.param('id'), now, auth.user.id, cost),
+    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance - ? WHERE id = ?
+      AND EXISTS (SELECT 1 FROM diamond_transactions WHERE id = ?)`)
+      .bind(cost, auth.user.id, transactionId),
+    c.env.DB.prepare(`INSERT INTO post_promotions (post_id, owner_user_id, purchased_views, delivered_views, created_at, updated_at)
+      SELECT ?, ?, ?, 0, ?, ? WHERE EXISTS (SELECT 1 FROM diamond_transactions WHERE id = ?)
+      ON CONFLICT(post_id) DO UPDATE SET purchased_views = purchased_views + excluded.purchased_views, updated_at = excluded.updated_at`)
+      .bind(c.req.param('id'), auth.user.id, input.views, now, now, transactionId),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'Not enough diamonds.');
+  const campaign = await c.env.DB.prepare(`SELECT purchased_views AS purchasedViews, delivered_views AS deliveredViews
+    FROM post_promotions WHERE post_id = ?`).bind(c.req.param('id')).first();
+  const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(auth.user.id).first<{ balance: number }>();
+  return ok(c, { cost, balance: balance?.balance ?? 0, campaign });
 });
 
 contentRoutes.patch('/posts/:id', async (c) => {

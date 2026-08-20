@@ -16,6 +16,7 @@ export interface Post {
   viewerReaction: '' | 'like' | 'dislike';
   diamondCount: number;
   viewerDiamondGiven: number | boolean;
+  promoted?: number | boolean;
 }
 
 export interface Comment {

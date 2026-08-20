@@ -1,4 +1,4 @@
-import { Bold, ImagePlus, Pilcrow, Send, Sparkles, X } from 'lucide-react';
+import { Bold, Heading2, ImagePlus, Italic, Link2, List, Pilcrow, Quote, Rocket, Send, Sparkles, Strikethrough, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../api/client';
@@ -37,6 +37,7 @@ export function CreatePage() {
   const [rewriting, setRewriting] = useState(false);
   const [rewriteResult, setRewriteResult] = useState<{ title: string; body: string } | null>(null);
   const [rewriteRemaining, setRewriteRemaining] = useState<number | null>(null);
+  const [promotionViews, setPromotionViews] = useState(0);
 
   useEffect(() => {
     if (!image) { setPreview(null); return; }
@@ -79,6 +80,29 @@ export function CreatePage() {
       field.focus();
       field.setSelectionRange(start + 2, start + 2 + selected.length);
     });
+  };
+
+  const wrapSelection = (before: string, after = before, placeholder = 'текст') => {
+    const field = bodyInput.current; if (!field) return;
+    const start = field.selectionStart; const end = field.selectionEnd;
+    const selected = body.slice(start, end) || placeholder;
+    setBody(`${body.slice(0, start)}${before}${selected}${after}${body.slice(end)}`);
+    window.requestAnimationFrame(() => { field.focus(); field.setSelectionRange(start + before.length, start + before.length + selected.length); });
+  };
+
+  const insertPrefix = (prefix: string) => {
+    const field = bodyInput.current; if (!field) return;
+    const start = field.selectionStart; const lineStart = body.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+    setBody(`${body.slice(0, lineStart)}${prefix}${body.slice(lineStart)}`);
+    window.requestAnimationFrame(() => { field.focus(); field.setSelectionRange(start + prefix.length, start + prefix.length); });
+  };
+
+  const insertLink = () => {
+    const field = bodyInput.current; if (!field) return;
+    const url = window.prompt('Введите ссылку (https://...)', 'https://');
+    if (!url || !/^https?:\/\/\S+$/iu.test(url)) return;
+    const start = field.selectionStart; const end = field.selectionEnd; const label = body.slice(start, end) || 'текст ссылки';
+    setBody(`${body.slice(0, start)}[${label}](${url})${body.slice(end)}`);
   };
 
   const newParagraph = () => {
@@ -139,6 +163,14 @@ export function CreatePage() {
         method: 'POST',
         body: request ?? JSON.stringify({ title, body }),
       });
+      if (result.status === 'published' && promotionViews > 0) {
+        try {
+          await apiRequest(`/posts/${result.id}/promote`, { method: 'POST', body: JSON.stringify({ views: promotionViews }) });
+          window.dispatchEvent(new Event('diamonds-changed'));
+        } catch (promotionError) {
+          window.alert(promotionError instanceof Error ? `Пост опубликован, но продвижение не запущено: ${promotionError.message}` : 'Пост опубликован, но продвижение не запущено.');
+        }
+      }
       navigate(result.status === 'published' ? `/post/${result.id}` : '/');
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Не удалось опубликовать пост.');
@@ -152,7 +184,7 @@ export function CreatePage() {
     <form className="composer-card" onSubmit={(event) => void submit(event)}>
       <div className="composer-author"><span className="avatar avatar-small">{user?.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{user?.displayName}</strong><small>Публикация от вашего имени</small></span></div>
       <input className="composer-title-input" maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Заголовок (необязательно)" aria-label="Заголовок публикации" />
-      <div className="formatting-toolbar" aria-label="Форматирование текста"><button type="button" onClick={makeBold} title="Жирный текст"><Bold size={17} /><span>Жирный</span></button><button type="button" onClick={newParagraph} title="Новый абзац"><Pilcrow size={17} /><span>Новый абзац</span></button><button className="ai-rewrite-trigger" type="button" onClick={() => void openRewrite()} title="Изменить стиль с AI"><Sparkles size={17} /><span>Изменить с AI</span></button></div>
+      <div className="formatting-toolbar" aria-label="Форматирование текста"><button type="button" onClick={() => insertPrefix('## ')} title="Заголовок"><Heading2 size={17} /><span>Заголовок</span></button><button type="button" onClick={makeBold} title="Жирный текст"><Bold size={17} /><span>Жирный</span></button><button type="button" onClick={() => wrapSelection('*', '*', 'курсив')} title="Курсив"><Italic size={17} /><span>Курсив</span></button><button type="button" onClick={() => wrapSelection('~~', '~~', 'зачёркнутый текст')} title="Зачёркнуть"><Strikethrough size={17} /></button><button type="button" onClick={insertLink} title="Добавить ссылку"><Link2 size={17} /><span>Ссылка</span></button><button type="button" onClick={() => insertPrefix('- ')} title="Список"><List size={17} /></button><button type="button" onClick={() => insertPrefix('> ')} title="Цитата"><Quote size={17} /></button><button type="button" onClick={newParagraph} title="Новый абзац"><Pilcrow size={17} /><span>Абзац</span></button><button className="ai-rewrite-trigger" type="button" onClick={() => void openRewrite()} title="Изменить стиль с AI"><Sparkles size={17} /><span>Изменить с AI</span></button></div>
       <textarea ref={bodyInput} required minLength={1} maxLength={10000} value={body} onChange={(event) => setBody(event.target.value)} placeholder="О чём вы думаете? Нажмите Enter для новой строки." aria-label="Текст публикации" />
       {rewriteOpen && <section className="ai-rewrite-panel">
         <header><div><strong>Изменить пост с AI</strong><small>Выберите стиль или дополните его своей инструкцией</small></div><span>{rewriteRemaining === null ? 'Загрузка лимита…' : `Осталось запросов: ${rewriteRemaining}`}</span></header>
@@ -168,6 +200,7 @@ export function CreatePage() {
         <span>{body.length} / 10 000</span>
       </div>
       <div className="moderation-note"><Sparkles size={18} /><span>Перед публикацией Gemini проверит текст и изображение на спам, мошенничество и нарушения правил.</span></div>
+      <label className="post-promotion-option"><span><Rocket size={19} /><span><strong>Продвинуть публикацию</strong><small>2 💎 за уникальный просмотр аккаунтом в сутки</small></span></span><select value={promotionViews} onChange={(event) => setPromotionViews(Number(event.target.value))}><option value={0}>Не продвигать</option><option value={5}>5 просмотров · 10 💎</option><option value={10}>10 просмотров · 20 💎</option><option value={25}>25 просмотров · 50 💎</option><option value={50}>50 просмотров · 100 💎</option></select></label>
       {error && <p className="form-error" role="alert">{error}</p>}
       <button className="primary-button" disabled={pending || !body.trim()} type="submit">{pending ? 'Проверяем…' : 'Опубликовать'}<Send size={18} /></button>
     </form>

@@ -1,4 +1,4 @@
-import { BadgeCheck, Heart, MessageCircle, MoreHorizontal, Share2, Sparkles, ThumbsDown, Trash2 } from 'lucide-react';
+import { BadgeCheck, Heart, MessageCircle, MoreHorizontal, Rocket, Share2, Sparkles, ThumbsDown, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
@@ -20,6 +20,7 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [ownerMenu, setOwnerMenu] = useState(false);
   const time = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' });
   const minutes = Math.round((new Date(post.publishedAt).getTime() - Date.now()) / 60_000);
 
@@ -64,6 +65,18 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
   };
   const pickDiamondAmount = () => { const amount = Number(window.prompt('Сколько алмазов отправить?', '1')); if (Number.isInteger(amount) && amount > 0) void giveDiamond(amount); };
 
+  const promotePost = async () => {
+    const views = Number(window.prompt('Сколько уникальных просмотров купить?\nСтоимость: 2 💎 за просмотр.', '10'));
+    if (!Number.isInteger(views) || views < 1 || views > 500) return;
+    if (!window.confirm(`Запустить продвижение на ${views} просмотров за ${views * 2} 💎?`)) return;
+    try {
+      await apiRequest(`/posts/${post.id}/promote`, { method: 'POST', body: JSON.stringify({ views }) });
+      window.dispatchEvent(new Event('diamonds-changed'));
+      window.alert('Продвижение запущено.');
+      setOwnerMenu(false);
+    } catch (error) { window.alert(error instanceof Error ? error.message : 'Не удалось запустить продвижение.'); }
+  };
+
   const summarize = async () => {
     if (summary) { setSummary(null); return; }
     if (summaryLoading) return;
@@ -87,10 +100,10 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
         <Link to={`/profile/${post.username}`} className="avatar">{post.avatarKey ? <img className="avatar-image" src={mediaUrl(post.avatarKey) ?? ''} alt="" /> : post.displayName.slice(0, 1).toUpperCase()}</Link>
         <div className="post-author"><Link to={`/profile/${post.username}`}><strong>{post.displayName}</strong>{post.verified && <BadgeCheck className="verified" size={17} aria-label="Подтверждённый аккаунт" />}{post.wornGiftImage && <img className="author-worn-gift" src={post.wornGiftImage} alt="Надетый подарок" />}</Link><span>@{post.username} · {Math.abs(minutes) < 60 ? time.format(minutes, 'minute') : new Date(post.publishedAt).toLocaleDateString('ru-RU')}</span></div>
         {user?.id === post.authorId
-          ? <button className="icon-button delete-content-button" type="button" disabled={deleting} aria-label="Удалить публикацию" onClick={() => void deletePost()}><Trash2 size={19} /></button>
+          ? <div className="post-owner-menu"><button className="icon-button" type="button" aria-label="Действия с публикацией" onClick={() => setOwnerMenu((value) => !value)}><MoreHorizontal size={20} /></button>{ownerMenu && <div className="post-owner-menu-popover"><button type="button" onClick={() => void promotePost()}><Rocket size={16} />Продвинуть</button><button className="danger" type="button" disabled={deleting} onClick={() => void deletePost()}><Trash2 size={16} />Удалить</button></div>}</div>
           : <button className="icon-button" type="button" aria-label="Действия с публикацией"><MoreHorizontal size={20} /></button>}
       </header>
-      <Link className="post-body" to={`/post/${post.id}`}>{post.title && <h2 className="post-title">{post.title}</h2>}<RichPostText text={post.body} /></Link>
+      <div className="post-body">{post.promoted && <span className="promoted-label"><Rocket size={12} />Продвигается</span>}{post.title && <Link to={`/post/${post.id}`}><h2 className="post-title">{post.title}</h2></Link>}<RichPostText text={post.body} /></div>
       {post.mediaKey && <Link className="post-media" to={`/post/${post.id}`}><img loading="lazy" src={mediaUrl(post.mediaKey) ?? ''} alt="Изображение публикации" /></Link>}
       {summary && <aside className="post-summary"><span><Sparkles size={15} />Краткое содержание от AI</span><p>{summary}</p></aside>}
       {summaryError && <p className="post-summary-error" role="alert">{summaryError}</p>}
