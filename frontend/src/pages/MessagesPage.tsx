@@ -72,6 +72,7 @@ export function MessagesPage() {
   const [draft, setDraft] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [secretChatsEnabled, setSecretChatsEnabled] = useState(false);
+  const [messageSoundsEnabled, setMessageSoundsEnabled] = useState(true);
   const [startSecretChat, setStartSecretChat] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [showGifts, setShowGifts] = useState(false);
@@ -98,6 +99,7 @@ export function MessagesPage() {
   const recordingStartedAt = useRef(0);
   const recordingTimer = useRef<number | null>(null);
   const longPressTimer = useRef<number | null>(null);
+  const knownMessageIds = useRef(new Set<string>());
   const active = conversations.find((conversation) => conversation.id === activeId) ?? null;
   const sharedPostId = searchParams.get('sharePost');
   const sharedCommentId = searchParams.get('shareComment');
@@ -135,6 +137,9 @@ export function MessagesPage() {
       .catch(() => setSecretChatsEnabled(false));
   }, [user]);
 
+  useEffect(() => { if (user) void apiRequest<{ messageSoundsEnabled: boolean }>('/users/me/notification-settings')
+    .then((value) => setMessageSoundsEnabled(value.messageSoundsEnabled)).catch(() => setMessageSoundsEnabled(true)); }, [user]);
+
   useEffect(() => {
     if (!user) return;
     void apiRequest<{ maxBytes: number }>('/messages/upload-limit')
@@ -159,11 +164,23 @@ export function MessagesPage() {
         ? `/messages/conversations/${activeId}/messages?deviceId=${identity.deviceId}`
         : `/messages/conversations/${activeId}/messages`;
       const result = await apiRequest<{ securityMode: 'cloud' | 'secret'; messages: EncryptedMessage[] | CloudMessage[] }>(path);
+      const notifyAboutNewIncoming = (next: PlainMessage[]) => {
+        const hadMessages = knownMessageIds.current.size > 0;
+        const incoming = next.some((message) => message.senderUserId !== user?.id && !knownMessageIds.current.has(message.id));
+        knownMessageIds.current = new Set(next.map((message) => message.id));
+        if (!hadMessages || !incoming || !messageSoundsEnabled || document.visibilityState !== 'visible') return;
+        const AudioContextClass = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextClass) return;
+        const context = new AudioContextClass(); const oscillator = context.createOscillator(); const gain = context.createGain();
+        oscillator.frequency.value = 740; gain.gain.setValueAtTime(0.035, context.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.12);
+        oscillator.connect(gain).connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + 0.12); oscillator.onended = () => void context.close();
+      };
       if (result.securityMode === 'cloud') {
-        setMessages((result.messages as CloudMessage[]).map((message) => {
+        const next = (result.messages as CloudMessage[]).map((message): PlainMessage => {
           try { return { ...message, senderDeviceId: '', ciphertext: '', content: parseMessageContent(message.content) }; }
-          catch { return { ...message, senderDeviceId: '', ciphertext: '', content: { type: 'text', text: 'Не удалось прочитать сообщение.' } }; }
-        }));
+          catch { return { ...message, senderDeviceId: '', ciphertext: '', content: { type: 'text' as const, text: 'Не удалось прочитать сообщение.' } }; }
+        });
+        notifyAboutNewIncoming(next); setMessages(next);
         return;
       }
       const decrypted = await Promise.all((result.messages as EncryptedMessage[]).map(async (message): Promise<PlainMessage> => {
@@ -174,11 +191,11 @@ export function MessagesPage() {
           return { ...message, content: { type: 'text', text: 'Не удалось расшифровать сообщение на этом устройстве.' } };
         }
       }));
-      setMessages(decrypted);
+      notifyAboutNewIncoming(decrypted); setMessages(decrypted);
     } finally {
       busy.current = false;
     }
-  }, [active?.securityMode, activeId, identity]);
+  }, [active?.securityMode, activeId, identity, messageSoundsEnabled, user?.id]);
 
   useEffect(() => {
     setShowStickers(false);
@@ -186,6 +203,7 @@ export function MessagesPage() {
     setEditingMessage(null);
     setForwardingMessage(null);
     setDraft('');
+    knownMessageIds.current = new Set();
     void loadMessages();
     const timer = window.setInterval(() => void loadMessages(), 4000);
     return () => window.clearInterval(timer);
