@@ -921,3 +921,20 @@ html[data-theme='dark'] .mobile-header { background: rgb(13 18 15 / 92%); }
   .linked-account-form { grid-template-columns: 1fr; }
   .gift-modal-top > img { width: 94px; height: 94px; }
 }
+
+/* Final gift sheet layout: kept last so legacy gift rules cannot override it. */
+.gift-modal .gift-modal-top { display: flex; min-height: 0; flex-direction: column; align-items: center; padding: 28px 28px 30px; background: radial-gradient(circle at 50% 34%, rgb(132 222 255 / 42%), transparent 29%), linear-gradient(145deg, color-mix(in srgb, var(--gift-accent, #3a9dde) 54%, #88d9f7), color-mix(in srgb, var(--gift-accent, #3a9dde) 68%, #5c9ccd)); }
+.gift-modal .gift-modal-top > img { width: 210px; height: 210px; margin: 24px auto 8px; object-fit: contain; }
+.gift-modal .gift-modal-top > p { margin: 5px 0 0; }
+.gift-modal .gift-modal-actions { width: 100%; margin-top: 22px; }
+.gift-modal .gift-modal-actions.collectible-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.gift-modal .gift-modal-actions button { min-height: 86px; border-radius: 22px; font-size: 14px; }
+.gift-modal .gift-modal-ok { width: calc(100% - 46px); margin: 0 23px 23px; padding: 17px; border: 0; border-radius: 999px; background: #1687ed !important; color: #fff !important; box-shadow: 0 12px 24px rgb(0 117 223 / 24%); }
+
+@media (max-width: 600px) {
+  .gift-modal .gift-modal-top { min-height: 0; padding: 18px 16px 20px; }
+  .gift-modal .gift-modal-top > img { width: 178px; height: 178px; margin: 20px auto 5px; }
+  .gift-modal .gift-modal-actions { margin-top: 17px; }
+  .gift-modal .gift-modal-actions button { min-height: 72px; padding: 7px 3px; border-radius: 18px; font-size: 12px; }
+  .gift-modal .gift-modal-ok { width: calc(100% - 26px); margin: 0 13px 13px; padding: 14px; border-radius: 999px; }
+}
