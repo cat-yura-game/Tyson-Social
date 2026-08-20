@@ -269,12 +269,12 @@ contentRoutes.post('/posts/:id/diamond', async (c) => {
   const post = await c.env.DB.prepare("SELECT author_user_id AS authorId FROM posts WHERE id = ? AND status = 'published'").bind(postId).first<{ authorId: string }>();
   if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
   if (post.authorId === auth.user.id) return fail(c, 422, 'SELF_DIAMOND', 'You cannot give diamonds to your own post.');
-  const now = new Date().toISOString();
+  const now = new Date().toISOString(); const operationId = crypto.randomUUID();
   const result = await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO post_diamond_reactions (id, post_id, sender_user_id, recipient_user_id, amount, created_at)
       SELECT ?, p.id, ?, p.author_user_id, ?, ? FROM posts p JOIN users s ON s.id = ?
       WHERE p.id = ? AND p.status = 'published' AND p.author_user_id != ? AND s.diamond_balance >= ?`)
-      .bind(crypto.randomUUID(), auth.user.id, input.amount, now, auth.user.id, postId, auth.user.id, input.amount),
+      .bind(operationId, auth.user.id, input.amount, now, auth.user.id, postId, auth.user.id, input.amount),
     c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance - ? WHERE id = ? AND EXISTS
       (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ? AND amount = ?)`)
       .bind(input.amount, auth.user.id, postId, auth.user.id, now, input.amount),
@@ -289,6 +289,9 @@ contentRoutes.post('/posts/:id/diamond', async (c) => {
       SELECT ?, ?, ?, 'credit', 'post_diamond_received', ?, ? WHERE EXISTS
       (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ? AND amount = ?)`)
       .bind(crypto.randomUUID(), post.authorId, input.amount, postId, now, postId, auth.user.id, now, input.amount),
+    c.env.DB.prepare(`INSERT INTO notifications (id, user_id, actor_user_id, type, entity_id, message, dedupe_key, created_at)
+      SELECT ?, ?, ?, 'diamond', ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM post_diamond_reactions WHERE id = ?)`)
+      .bind(crypto.randomUUID(), post.authorId, auth.user.id, postId, `отправил вам ${input.amount} 💎 за публикацию`, `diamond:${operationId}`, now, operationId),
   ]);
   if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'Not enough diamonds.');
   const [count, balance] = await Promise.all([
@@ -334,7 +337,7 @@ contentRoutes.post('/comments/:id/diamond', async (c) => {
 contentRoutes.post('/posts/:id/comments', async (c) => {
   const auth = requireUser(c); if ('error' in auth) return auth.error;
   const input = await json(c, commentBodySchema); if (input instanceof Response) return input;
-  const post = await c.env.DB.prepare(`SELECT id FROM posts WHERE id = ? AND status = 'published'`).bind(c.req.param('id')).first();
+  const post = await c.env.DB.prepare(`SELECT id, author_user_id AS authorId FROM posts WHERE id = ? AND status = 'published'`).bind(c.req.param('id')).first<{ id: string; authorId: string }>();
   if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
   const result = await moderatePublicContent(c.env, input.body, [], extractLinks(input.body));
   if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Comment was blocked by safety checks.');
@@ -343,6 +346,9 @@ contentRoutes.post('/posts/:id/comments', async (c) => {
     c.env.DB.prepare(`INSERT INTO comments (id, post_id, author_user_id, body, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(id, c.req.param('id'), auth.user.id, input.body, status, now, now),
     c.env.DB.prepare(`UPDATE posts SET comment_count = comment_count + ? WHERE id = ?`).bind(status === 'published' ? 1 : 0, c.req.param('id')),
     c.env.DB.prepare(`INSERT INTO recommendation_events (id, user_id, post_id, event_type, created_at) VALUES (?, ?, ?, 'comment', ?)`).bind(crypto.randomUUID(), auth.user.id, c.req.param('id'), now),
+    c.env.DB.prepare(`INSERT INTO notifications (id, user_id, actor_user_id, type, entity_id, message, dedupe_key, created_at)
+      SELECT ?, ?, ?, 'comment', ?, 'прокомментировал вашу публикацию', ?, ? WHERE ? = 'published' AND ? != ?`)
+      .bind(crypto.randomUUID(), post.authorId, auth.user.id, c.req.param('id'), `comment:${id}`, now, status, post.authorId, auth.user.id),
   ]);
   if (status === 'published') await completeDailyTask(c.env, auth.user.id, 'comment');
   return ok(c, { id, status }, 201);

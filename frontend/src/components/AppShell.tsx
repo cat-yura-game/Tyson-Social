@@ -1,4 +1,4 @@
-import { Bell, Gift, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import { Gift, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { DiamondIcon } from './DiamondIcon';
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
@@ -7,6 +7,7 @@ import { apiRequest, mediaUrl } from '../api/client';
 import { Brand } from './Brand';
 import { SearchDialog } from './SearchDialog';
 import { TrendsCard } from './TrendsCard';
+import { NotificationBell } from './NotificationBell';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
@@ -34,7 +35,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={mobileImmersive ? 'app-shell mobile-immersive' : 'app-shell'}>
-      <header className="mobile-header"><Brand /><span className="mobile-header-actions">{user && <NavLink className="mobile-diamonds" to="/gifts" aria-label="Подарки и алмазы"><DiamondIcon size={17} />{diamonds ?? 0}</NavLink>}<button className="icon-button" type="button" aria-label="Уведомления"><Bell size={21} /></button></span></header>
+      <header className="mobile-header"><Brand /><span className="mobile-header-actions">{user && <NavLink className="mobile-diamonds" to="/gifts" aria-label="Подарки и алмазы"><DiamondIcon size={17} />{diamonds ?? 0}</NavLink>}<NotificationBell enabled={Boolean(user)} /></span></header>
       <aside className="sidebar">
         <Brand />
         <nav className="primary-nav" aria-label="Основная навигация">

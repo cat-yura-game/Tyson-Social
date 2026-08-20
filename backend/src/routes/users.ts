@@ -292,6 +292,9 @@ userRoutes.put('/:username/follow', async (c) => {
     VALUES (?, ?, ?) ON CONFLICT(follower_user_id, followed_user_id) DO NOTHING`)
     .bind(viewer.id, target.id, new Date().toISOString()).run();
   const rewardId = crypto.randomUUID(); const now = new Date().toISOString();
+  if ((follow.meta.changes ?? 0) === 1) await c.env.DB.prepare(`INSERT OR IGNORE INTO notifications
+    (id, user_id, actor_user_id, type, entity_id, message, dedupe_key, created_at)
+    VALUES (?, ?, ?, 'follow', ?, 'подписался на вас', ?, ?)`).bind(crypto.randomUUID(), target.id, viewer.id, viewer.id, `follow:${viewer.id}:${target.id}`, now).run();
   const reward = (follow.meta.changes ?? 0) === 1 ? await c.env.DB.prepare(`INSERT OR IGNORE INTO follow_reward_claims (follower_user_id, followed_user_id, rewarded_at) VALUES (?, ?, ?)`)
     .bind(viewer.id, target.id, now).run() : null;
   if ((reward?.meta.changes ?? 0) === 1) await c.env.DB.batch([
