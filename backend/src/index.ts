@@ -22,6 +22,8 @@ function publicRedirect(requestUrl: string): string | null {
   if (profile) return `${OFFICIAL_SITE_ORIGIN}/profile/${profile[1]}`;
   const post = destination && /^\/post\/([0-9a-f-]{36})$/iu.exec(destination);
   if (post) return `${OFFICIAL_SITE_ORIGIN}/post/${post[1]}`;
+  const gift = destination && /^\/gift\/([0-9a-f-]{36})$/iu.exec(destination);
+  if (gift) return `${OFFICIAL_SITE_ORIGIN}/gift/${gift[1]}`;
   // Previously issued compact links keep working, but new links use ?to=/….
   const legacyPost = /^\/p\/([0-9a-f-]{36})$/iu.exec(url.pathname);
   if (legacyPost) return `${OFFICIAL_SITE_ORIGIN}/post/${legacyPost[1]}${url.search}`;

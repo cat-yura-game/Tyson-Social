@@ -13,6 +13,7 @@ import { TelegramCallbackPage } from './pages/TelegramCallbackPage';
 import { AdminPage } from './pages/AdminPage';
 import { EarnDiamondsPage } from './pages/EarnDiamondsPage';
 import { DiamondsPage } from './pages/DiamondsPage';
+import { CollectibleGiftPage } from './pages/CollectibleGiftPage';
 
 const MessagesPage = lazy(() => import('./pages/MessagesPage').then((module) => ({ default: module.MessagesPage })));
 const AiPage = lazy(() => import('./pages/AiPage').then((module) => ({ default: module.AiPage })));
@@ -30,6 +31,7 @@ function ProductRoutes() {
         <Route path="/" element={<FeedPage />} />
         <Route path="/profile/:username" element={<ProfilePage />} />
         <Route path="/post/:id" element={<PostPage />} />
+        <Route path="/gift/:id" element={<CollectibleGiftPage />} />
         <Route path="/create" element={<RequireAuth><CreatePage /></RequireAuth>} />
         <Route path="/messages" element={<RequireAuth><Suspense fallback={<div className="app-loading">Подготовка защищённого мессенджера…</div>}><MessagesPage /></Suspense></RequireAuth>} />
         <Route path="/ai" element={<RequireAuth><Suspense fallback={<div className="app-loading">Запускаем Tyson AI…</div>}><AiPage /></Suspense></RequireAuth>} />

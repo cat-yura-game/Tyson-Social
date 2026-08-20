@@ -10,6 +10,7 @@ export const giftRoutes = new Hono<App>();
 type GiftType = { id: string; slug: string; title: string; basePrice: number; upgradePrice: number; maxSupply: number; soldCount: number; baseImage: string; collectibleVariantsJson: string; isLimited: number; isUnlimited: number; canUpgrade: number; canTransfer: number; canWear: number; exchangeReward: number; exchangeWindowDays: number | null; active: number };
 type UserGift = { id: string; giftTypeId: string; serialNumber: number; variant: string | null; inscription: string | null; isCollectible: number; accentColor: string; isPublic: number; worn: number; activeListingId: string | null; purchasedAt: string; upgradedAt: string | null; title: string; basePrice: number; maxSupply: number; baseImage: string; collectibleVariantsJson: string; upgradePrice: number; isLimited: number; isUnlimited: number; canUpgrade: number; canTransfer: number; canWear: number; exchangeReward: number; exchangeWindowDays: number | null };
 type MarketListing = UserGift & { listingId: string; price: number; sellerUsername: string; sellerDisplayName: string; sellerAvatarKey: string | null };
+type PublicCollectible = UserGift & { ownerUsername: string; ownerDisplayName: string; ownerAvatarKey: string | null };
 
 function requireUser(c: Parameters<typeof fail>[0]): AuthUser | Response { return c.get('authUser') ?? fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.'); }
 function variants(raw: string): string[] { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) && parsed.every((item) => typeof item === 'string') ? parsed : []; } catch { return []; } }
@@ -76,6 +77,18 @@ giftRoutes.get('/users/:username/gifts', async (c) => {
     FROM users u JOIN user_gifts ug ON ug.owner_user_id = u.id JOIN gift_types gt ON gt.id = ug.gift_type_id
     WHERE u.username = ? AND ug.is_public = 1 ORDER BY worn DESC, ug.purchased_at DESC`).bind(c.req.param('username')).all<UserGift>();
   return ok(c, { gifts: rows.results.map(giftDto) });
+});
+
+giftRoutes.get('/gifts/collectibles/:id', async (c) => {
+  const row = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.inscription, ug.accent_color AS accentColor,
+    ug.is_collectible AS isCollectible, ug.is_public AS isPublic, CASE WHEN u.worn_gift_id = ug.id THEN 1 ELSE 0 END AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt,
+    gt.title, gt.base_price AS basePrice, gt.max_supply AS maxSupply, gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice,
+    gt.is_limited AS isLimited, gt.is_unlimited AS isUnlimited, gt.can_upgrade AS canUpgrade, gt.can_transfer AS canTransfer, gt.can_wear AS canWear, gt.exchange_reward AS exchangeReward,
+    gt.exchange_window_days AS exchangeWindowDays, NULL AS activeListingId, u.username AS ownerUsername, u.display_name AS ownerDisplayName, u.avatar_key AS ownerAvatarKey
+    FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id JOIN users u ON u.id = ug.owner_user_id
+    WHERE ug.id = ? AND ug.is_collectible = 1 AND ug.is_public = 1 AND u.status = 'active'`).bind(c.req.param('id')).first<PublicCollectible>();
+  if (!row) return fail(c, 404, 'GIFT_NOT_FOUND', 'Collectible gift not found.');
+  return ok(c, { gift: giftDto(row), owner: { username: row.ownerUsername, displayName: row.ownerDisplayName, avatarKey: row.ownerAvatarKey } });
 });
 
 giftRoutes.get('/gift-market', async (c) => {

@@ -930,6 +930,7 @@ html[data-theme='dark'] .mobile-header { background: rgb(13 18 15 / 92%); }
 .gift-modal .gift-modal-actions.collectible-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .gift-modal .gift-modal-actions button { min-height: 86px; border-radius: 22px; font-size: 14px; }
 .gift-modal .gift-modal-ok { width: calc(100% - 46px); margin: 0 23px 23px; padding: 17px; border: 0; border-radius: 999px; background: #1687ed !important; color: #fff !important; box-shadow: 0 12px 24px rgb(0 117 223 / 24%); }
+.gift-modal-share { position: absolute; z-index: 2; top: 22px; right: 22px; display: grid; width: 56px; height: 56px; place-items: center; border: 1px solid rgb(255 255 255 / 66%); border-radius: 50%; background: rgb(255 255 255 / 18%); color: #fff; cursor: pointer; }.gift-modal-share svg { width: 23px; height: 23px; }.gift-modal-share span { position: absolute; top: calc(100% + 5px); right: 0; padding: 4px 7px; border-radius: 999px; background: rgb(20 55 79 / 62%); font-size: 9px; font-weight: 750; white-space: nowrap; }.collectible-gift-page { min-height: 55vh; text-align: center; }.collectible-gift-page h1 { margin-bottom: 4px; }.collectible-gift-page p { color: var(--muted); }
 
 @media (max-width: 600px) {
   .gift-modal .gift-modal-top { min-height: 0; padding: 18px 16px 20px; }
@@ -937,4 +938,5 @@ html[data-theme='dark'] .mobile-header { background: rgb(13 18 15 / 92%); }
   .gift-modal .gift-modal-actions { margin-top: 17px; }
   .gift-modal .gift-modal-actions button { min-height: 72px; padding: 7px 3px; border-radius: 18px; font-size: 12px; }
   .gift-modal .gift-modal-ok { width: calc(100% - 26px); margin: 0 13px 13px; padding: 14px; border-radius: 999px; }
+  .gift-modal-share { top: 12px; right: 12px; width: 40px; height: 40px; }.gift-modal-share svg { width: 19px; height: 19px; }
 }
