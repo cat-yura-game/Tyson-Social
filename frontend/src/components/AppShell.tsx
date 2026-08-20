@@ -63,7 +63,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           { to: '/messages', label: 'Сообщения', icon: MessageCircle },
           { to: user ? '/create' : '/login', label: 'Создать', icon: Plus },
           { to: '/ai', label: 'AI', icon: Sparkles },
-          { to: profilePath, label: user ? 'Профиль' : 'Войти', icon: user ? UserRound : LogIn },
+          { to: user ? '/settings' : '/login', label: user ? 'Настройки' : 'Войти', icon: user ? Settings : LogIn },
         ].map(({ to, label, icon: Icon, end }) => <NavLink key={`${to}-${label}`} to={to} end={end} aria-label={label} className={({ isActive }) => isActive ? 'active' : ''}><Icon className="mobile-nav-icon" /><span>{label}</span></NavLink>)}
       </nav>
       {showSearch && <SearchDialog onClose={() => setShowSearch(false)} />}

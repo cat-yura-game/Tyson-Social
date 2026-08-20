@@ -227,6 +227,7 @@ export function SettingsPage() {
   ] as const;
   if (!settingsCategory) return <section className="surface-page narrow-page settings-page settings-directory">
     <header className="page-heading"><div><p className="eyebrow">Tyson</p><h1>Настройки</h1></div></header>
+    <button className="settings-my-profile" type="button" onClick={() => navigate(`/profile/${user.username}`)}><span className="avatar">{avatar ? <img className="avatar-image" src={avatar} alt="" /> : user.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{user.displayName}</strong><small>@{user.username}</small></span><b>Мой профиль</b><ChevronRight /></button>
     <nav className="settings-categories" aria-label="Разделы настроек">{categories.map(([target, icon, Icon, label, state]) => <button key={`${target}-${label}`} type="button" onClick={() => navigate(`/settings/${target}`)}><i className={`settings-category-icon ${icon}`}><Icon size={21} /></i><span>{label}</span>{state && <small>{state}</small>}<ChevronRight /></button>)}</nav>
   </section>;
 
