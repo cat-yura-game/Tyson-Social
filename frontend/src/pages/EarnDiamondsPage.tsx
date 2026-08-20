@@ -1,7 +1,8 @@
-import { Check, ChevronLeft, Circle, Diamond, UsersRound } from 'lucide-react';
+import { Check, ChevronLeft, Circle, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, apiRequest } from '../api/client';
+import { DiamondIcon as Diamond } from '../components/DiamondIcon';
 
 type Task = { key: 'post' | 'story' | 'comment' | 'like'; completed: boolean; claimed: boolean; reward: number };
 const names: Record<Task['key'], string> = { post: 'Опубликуйте пост', story: 'Добавьте сторис', comment: 'Напишите комментарий', like: 'Поставьте лайк любому посту' };

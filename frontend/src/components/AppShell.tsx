@@ -1,4 +1,5 @@
-import { Bell, Diamond, Gift, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import { Bell, Gift, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import { DiamondIcon } from './DiamondIcon';
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -33,14 +34,14 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={mobileImmersive ? 'app-shell mobile-immersive' : 'app-shell'}>
-      <header className="mobile-header"><Brand /><span className="mobile-header-actions">{user && <NavLink className="mobile-diamonds" to="/gifts" aria-label="Подарки и алмазы"><Diamond size={17} />{diamonds ?? 0}</NavLink>}<button className="icon-button" type="button" aria-label="Уведомления"><Bell size={21} /></button></span></header>
+      <header className="mobile-header"><Brand /><span className="mobile-header-actions">{user && <NavLink className="mobile-diamonds" to="/gifts" aria-label="Подарки и алмазы"><DiamondIcon size={17} />{diamonds ?? 0}</NavLink>}<button className="icon-button" type="button" aria-label="Уведомления"><Bell size={21} /></button></span></header>
       <aside className="sidebar">
         <Brand />
         <nav className="primary-nav" aria-label="Основная навигация">
           {navItems.map(({ to, label, icon: Icon, end }) => <NavLink key={`${to}-${label}`} to={to} end={end} className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}><Icon size={21} strokeWidth={1.9} /><span>{label}</span></NavLink>)}
         </nav>
         <NavLink className="create-button" to={user ? '/create' : '/login'}><Plus size={20} />Создать пост</NavLink>
-        {diamonds !== null && <NavLink className="sidebar-diamonds" to="/gifts"><Diamond size={17} />{diamonds}</NavLink>}
+        {diamonds !== null && <NavLink className="sidebar-diamonds" to="/gifts"><DiamondIcon size={17} />{diamonds}</NavLink>}
         {user ? (
           <div className="sidebar-profile">
             <span className="avatar avatar-small">{user.avatarKey ? <img className="avatar-image" src={mediaUrl(user.avatarKey) ?? ''} alt="" /> : user.displayName.slice(0, 1).toUpperCase()}</span>

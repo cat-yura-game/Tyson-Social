@@ -1,4 +1,5 @@
-import { ChevronLeft, Diamond, Gift, ListChecks, ShoppingBag, X } from 'lucide-react';
+import { ChevronLeft, Gift, ListChecks, ShoppingBag, X } from 'lucide-react';
+import { DiamondIcon as Diamond } from '../components/DiamondIcon';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, apiRequest } from '../api/client';
