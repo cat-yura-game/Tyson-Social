@@ -1,6 +1,7 @@
 import QRCode from 'qrcode';
 import { Download, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const SHORT_ORIGIN = 'https://tyso.eu.cc';
 
@@ -18,7 +19,7 @@ export function ProfileQrModal({ username, onClose }: { username: string; onClos
     anchor.href = qr; anchor.download = `tyson-${username}.png`; anchor.click();
   };
 
-  return <div className="profile-qr-backdrop" role="presentation" onClick={onClose}>
+  return createPortal(<div className="profile-qr-backdrop" role="presentation" onClick={onClose}>
     <section className="profile-qr-modal" role="dialog" aria-modal="true" aria-label={`QR-код @${username}`} onClick={(event) => event.stopPropagation()}>
       <button className="profile-qr-close" type="button" aria-label="Закрыть" onClick={onClose}><X /></button>
       <p>Профиль Tyson</p>
@@ -27,5 +28,5 @@ export function ProfileQrModal({ username, onClose }: { username: string; onClos
       <small>{link}</small>
       <button className="profile-qr-download" type="button" onClick={download} disabled={!qr}><Download size={18} />Скачать QR-код</button>
     </section>
-  </div>;
+  </div>, document.body);
 }
