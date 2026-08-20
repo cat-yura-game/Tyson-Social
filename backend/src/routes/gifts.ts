@@ -7,13 +7,13 @@ import { DAILY_TASKS, utcTaskDay, type DailyTaskKey } from '../services/daily-ta
 type App = { Bindings: Env; Variables: AppVariables };
 export const giftRoutes = new Hono<App>();
 
-type GiftType = { id: string; slug: string; title: string; basePrice: number; upgradePrice: number; maxSupply: number; soldCount: number; baseImage: string; collectibleVariantsJson: string; active: number };
+type GiftType = { id: string; slug: string; title: string; basePrice: number; upgradePrice: number; maxSupply: number; soldCount: number; baseImage: string; collectibleVariantsJson: string; isLimited: number; active: number };
 type UserGift = { id: string; giftTypeId: string; serialNumber: number; variant: string | null; inscription: string | null; isCollectible: number; accentColor: string; isPublic: number; worn: number; activeListingId: string | null; purchasedAt: string; upgradedAt: string | null; title: string; basePrice: number; maxSupply: number; baseImage: string; collectibleVariantsJson: string; upgradePrice: number };
 type MarketListing = UserGift & { listingId: string; price: number; sellerUsername: string; sellerDisplayName: string; sellerAvatarKey: string | null };
 
 function requireUser(c: Parameters<typeof fail>[0]): AuthUser | Response { return c.get('authUser') ?? fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.'); }
 function variants(raw: string): string[] { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) && parsed.every((item) => typeof item === 'string') ? parsed : []; } catch { return []; } }
-function typeDto(row: GiftType) { return { id: row.id, slug: row.slug, title: row.title, basePrice: row.basePrice, upgradePrice: row.upgradePrice, maxSupply: row.maxSupply, soldCount: row.soldCount, remaining: Math.max(0, row.maxSupply - row.soldCount), baseImage: row.baseImage, active: row.active === 1 }; }
+function typeDto(row: GiftType) { return { id: row.id, slug: row.slug, title: row.title, basePrice: row.basePrice, upgradePrice: row.upgradePrice, maxSupply: row.maxSupply, soldCount: row.soldCount, remaining: Math.max(0, row.maxSupply - row.soldCount), baseImage: row.baseImage, isLimited: row.isLimited === 1, active: row.active === 1 }; }
 function giftDto(row: UserGift) { const collectibleVariants = variants(row.collectibleVariantsJson); return { id: row.id, giftTypeId: row.giftTypeId, title: row.title, serialNumber: row.serialNumber, maxSupply: row.maxSupply, basePrice: row.basePrice, inscription: row.inscription ?? null, isCollectible: row.isCollectible === 1, accentColor: row.accentColor ?? '#111111', isPublic: row.isPublic === 1, worn: row.worn === 1, activeListingId: row.activeListingId ?? null, variant: row.variant, image: row.variant ?? row.baseImage, purchasedAt: row.purchasedAt, upgradedAt: row.upgradedAt, upgradePrice: row.upgradePrice, collectibleVariantNumber: row.variant ? collectibleVariants.indexOf(row.variant) + 1 : null }; }
 function listingDto(row: MarketListing) { return { id: row.listingId, price: row.price, gift: giftDto(row), seller: { username: row.sellerUsername, displayName: row.sellerDisplayName, avatarKey: row.sellerAvatarKey } }; }
 const giftColors = ['#22b8ff', '#9d72ff', '#ff5d91', '#ffad31', '#25c98b'];
@@ -55,7 +55,7 @@ giftRoutes.post('/diamonds/tasks/:taskKey/claim', async (c) => {
 
 giftRoutes.get('/gifts', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT id, slug, title, base_price AS basePrice, upgrade_price AS upgradePrice, max_supply AS maxSupply,
-    sold_count AS soldCount, base_image AS baseImage, collectible_variants_json AS collectibleVariantsJson, active FROM gift_types WHERE active = 1 ORDER BY title`).all<GiftType>();
+    sold_count AS soldCount, base_image AS baseImage, collectible_variants_json AS collectibleVariantsJson, is_limited AS isLimited, active FROM gift_types WHERE active = 1 ORDER BY title`).all<GiftType>();
   return ok(c, { gifts: rows.results.map(typeDto) });
 });
 
