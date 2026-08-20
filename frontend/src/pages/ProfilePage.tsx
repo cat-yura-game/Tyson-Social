@@ -12,7 +12,7 @@ type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarK
   followingCount: number;
   viewerFollowing: boolean;
 };
-type ProfileGift = { id: string; title: string; serialNumber: number; maxSupply: number; image: string; accentColor: string; worn: boolean; isCollectible: boolean };
+type ProfileGift = { id: string; title: string; serialNumber: number; maxSupply: number; basePrice: number; image: string; accentColor: string; worn: boolean; isCollectible: boolean };
 
 export function ProfilePage() {
   const { username = '' } = useParams();
