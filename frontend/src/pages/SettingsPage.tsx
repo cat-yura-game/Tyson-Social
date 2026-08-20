@@ -1,4 +1,4 @@
-import { BadgeCheck, Camera, LockKeyhole, Monitor, Moon, RefreshCw, Save, Send, Sun, Trash2, Unlink, UserPlus } from 'lucide-react';
+import { BadgeCheck, BellRing, Camera, LockKeyhole, Monitor, Moon, RefreshCw, Save, Send, ShieldCheck, Sun, Trash2, Unlink, UserPlus, Volume2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest, mediaUrl, setAccessToken } from '../api/client';
@@ -30,6 +30,11 @@ export function SettingsPage() {
   const [linkedAccountError, setLinkedAccountError] = useState<string | null>(null);
   const [secretChatEnabled, setSecretChatEnabled] = useState(false);
   const [secretChatPending, setSecretChatPending] = useState(false);
+  const [settingsCategory, setSettingsCategory] = useState<'profile' | 'privacy' | 'notifications'>('profile');
+  const [privacy, setPrivacy] = useState({ lastSeenVisibility: 'everyone', birthdayVisibility: 'everyone', messagingVisibility: 'everyone' });
+  const [privacyPending, setPrivacyPending] = useState(false);
+  const [messageSoundsEnabled, setMessageSoundsEnabled] = useState(true);
+  const [soundPending, setSoundPending] = useState(false);
   const [siteRefreshPending, setSiteRefreshPending] = useState(false);
   const [deleteUsername, setDeleteUsername] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
@@ -58,6 +63,9 @@ export function SettingsPage() {
 
   useEffect(() => { if (user?.verified) void loadVerifiedAccounts().catch(() => setVerifiedAccounts(null)); }, [user?.id, user?.verified]);
   useEffect(() => { if (user) void apiRequest<{ secretChatEnabled: boolean }>('/users/me/messaging-settings').then((value) => setSecretChatEnabled(value.secretChatEnabled)).catch(() => undefined); }, [user]);
+  useEffect(() => { if (user) void Promise.all([
+    apiRequest<typeof privacy>('/users/me/privacy-settings'), apiRequest<{ messageSoundsEnabled: boolean }>('/users/me/notification-settings'),
+  ]).then(([privacySettings, notifications]) => { setPrivacy(privacySettings); setMessageSoundsEnabled(notifications.messageSoundsEnabled); }).catch(() => undefined); }, [user]);
 
   if (!user) return null;
 
@@ -146,6 +154,20 @@ export function SettingsPage() {
     finally { setSecretChatPending(false); }
   };
 
+  const savePrivacy = async () => {
+    setPrivacyPending(true); setError(null);
+    try { const value = await apiRequest<typeof privacy>('/users/me/privacy-settings', { method: 'PUT', body: JSON.stringify(privacy) }); setPrivacy(value); setMessage('Настройки конфиденциальности сохранены.'); }
+    catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось сохранить настройки конфиденциальности.'); }
+    finally { setPrivacyPending(false); }
+  };
+
+  const changeMessageSound = async (enabled: boolean) => {
+    setSoundPending(true);
+    try { const value = await apiRequest<{ messageSoundsEnabled: boolean }>('/users/me/notification-settings', { method: 'PUT', body: JSON.stringify({ messageSoundsEnabled: enabled }) }); setMessageSoundsEnabled(value.messageSoundsEnabled); }
+    catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось изменить настройку звука.'); }
+    finally { setSoundPending(false); }
+  };
+
   const refreshSite = async () => {
     setSiteRefreshPending(true);
     try {
@@ -180,9 +202,26 @@ export function SettingsPage() {
 
   return <section className="surface-page narrow-page settings-page">
     <header className="page-heading"><div><p className="eyebrow">Ваш аккаунт</p><h1>Настройки профиля</h1></div></header>
+    <nav className="settings-categories" aria-label="Разделы настроек">
+      <button type="button" className={settingsCategory === 'profile' ? 'active' : ''} onClick={() => setSettingsCategory('profile')}>Профиль</button>
+      <button type="button" className={settingsCategory === 'privacy' ? 'active' : ''} onClick={() => setSettingsCategory('privacy')}><ShieldCheck size={15} />Конфиденциальность</button>
+      <button type="button" className={settingsCategory === 'notifications' ? 'active' : ''} onClick={() => setSettingsCategory('notifications')}><BellRing size={15} />Уведомления и звуки</button>
+    </nav>
+    {settingsCategory === 'notifications' && <>
+      <section className="notification-sound-settings"><div><p className="eyebrow">Звуки</p><h2><Volume2 size={19} />Звук новых сообщений</h2><p>Воспроизводить короткий сигнал в Tyson при получении нового сообщения.</p></div><label className="settings-switch"><input type="checkbox" checked={messageSoundsEnabled} disabled={soundPending} onChange={(event) => void changeMessageSound(event.target.checked)} /><span aria-hidden="true" /><b>{messageSoundsEnabled ? 'Включён' : 'Выключен'}</b></label></section>
+      <PushNotificationSettings />
+      <AuthorNotificationSettings />
+    </>}
+    {settingsCategory === 'privacy' && <>
+      <section className="privacy-settings"><div><p className="eyebrow">Конфиденциальность</p><h2><ShieldCheck size={19} />Кто может видеть и писать вам</h2><p>«Друзья» — пользователи с взаимной подпиской.</p></div>{([
+        ['lastSeenVisibility', 'Время последнего посещения'],
+        ['birthdayVisibility', 'День рождения'],
+        ['messagingVisibility', 'Кто может написать вам'],
+      ] as const).map(([key, label]) => <label key={key}><span>{label}</span><select value={privacy[key]} onChange={(event) => setPrivacy({ ...privacy, [key]: event.target.value })}><option value="everyone">Все</option><option value="friends">Друзья</option><option value="nobody">Никто</option></select></label>)}<button className="primary-button" type="button" disabled={privacyPending} onClick={() => void savePrivacy()}><Save size={17} />{privacyPending ? 'Сохраняем…' : 'Сохранить приватность'}</button></section>
+      <section className="secret-chats-settings" aria-labelledby="secret-chats-title"><div><p className="eyebrow">Приватные сообщения</p><h2 id="secret-chats-title"><LockKeyhole size={18} />Секретные чаты</h2><p>Обычные сообщения синхронизируются по аккаунту и шифруются при хранении. Секретные чаты используют E2EE и доступны только на добавленных устройствах.</p></div><label className="settings-switch"><input type="checkbox" checked={secretChatEnabled} disabled={secretChatPending} onChange={(event) => void changeSecretChat(event.target.checked)} /><span aria-hidden="true" /><b>{secretChatEnabled ? 'Включены' : 'Выключены'}</b></label></section>
+    </>}
+    {settingsCategory === 'profile' && <>
     <section className="theme-settings" aria-labelledby="theme-settings-title"><div><p className="eyebrow">Оформление</p><h2 id="theme-settings-title">Тема Tyson</h2></div><div className="theme-options" role="radiogroup" aria-label="Тема интерфейса"><button type="button" role="radio" aria-checked={theme === 'system'} className={theme === 'system' ? 'selected' : ''} onClick={() => chooseTheme('system')}><Monitor size={18} />Как в системе</button><button type="button" role="radio" aria-checked={theme === 'light'} className={theme === 'light' ? 'selected' : ''} onClick={() => chooseTheme('light')}><Sun size={18} />Светлая</button><button type="button" role="radio" aria-checked={theme === 'dark'} className={theme === 'dark' ? 'selected' : ''} onClick={() => chooseTheme('dark')}><Moon size={18} />Тёмная</button></div></section>
-    <PushNotificationSettings />
-    <AuthorNotificationSettings />
     <section className="site-refresh-settings" aria-labelledby="site-refresh-title"><div><p className="eyebrow">Версия сайта</p><h2 id="site-refresh-title">Обновить Tyson</h2><p>Удалит старые файлы интерфейса из кэша и загрузит актуальную версию. Аккаунт, сообщения и настройки сохранятся.</p></div><button className="secondary-button" type="button" disabled={siteRefreshPending} onClick={() => void refreshSite()}><RefreshCw className={siteRefreshPending ? 'refresh-spinning' : ''} size={17} />{siteRefreshPending ? 'Обновляем…' : 'Обновить сайт'}</button></section>
     <div className="avatar-editor">{avatar ? <img src={avatar} alt="Фотография профиля" /> : <span className="avatar profile-avatar">{user.displayName.slice(0, 1).toUpperCase()}</span>}<label className="secondary-button"><Camera size={17} />Изменить фото<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden onChange={(event) => void uploadAvatar(event.target.files?.[0])} /></label></div>
     <form className="settings-form" onSubmit={(event) => void save(event)}>
@@ -199,7 +238,6 @@ export function SettingsPage() {
       {telegramResult === 'linked' && <p className="form-success">Telegram успешно подключён.</p>}
       {telegramError && <p className="form-error" role="alert">{telegramError}</p>}
     </section>
-    <section className="secret-chats-settings" aria-labelledby="secret-chats-title"><div><p className="eyebrow">Приватность</p><h2 id="secret-chats-title"><LockKeyhole size={18} />Секретные чаты</h2><p>Обычные сообщения синхронизируются по аккаунту и шифруются при хранении. Секретные чаты используют E2EE и доступны только на добавленных устройствах.</p></div><label className="settings-switch"><input type="checkbox" checked={secretChatEnabled} disabled={secretChatPending} onChange={(event) => void changeSecretChat(event.target.checked)} /><span aria-hidden="true" /><b>{secretChatEnabled ? 'Включены' : 'Выключены'}</b></label></section>
     {verifiedAccounts && (verifiedAccounts.canCreate || verifiedAccounts.accounts.length > 0) && <section className="linked-accounts-settings" aria-labelledby="linked-accounts-title">
       <div><p className="eyebrow">Подтверждённый аккаунт</p><h2 id="linked-accounts-title"><BadgeCheck size={18} />Дополнительные аккаунты</h2><p>Созданные здесь профили получат галочку и отдельные данные для входа. Создать можно до 10 аккаунтов.</p></div>
       {verifiedAccounts.canCreate && <form className="linked-account-form" onSubmit={(event) => void createLinkedAccount(event)}>
@@ -216,5 +254,6 @@ export function SettingsPage() {
       <div><p className="eyebrow">Опасная зона</p><h2 id="delete-account-title"><Trash2 size={18} />Удалить аккаунт</h2><p>Профиль, публикации, комментарии, истории, AI-диалоги, сообщения и загруженные файлы будут удалены без возможности восстановления.</p></div>
       <form onSubmit={(event) => void deleteAccount(event)}><label><span>Введите @{user.username}</span><input required autoComplete="off" value={deleteUsername} onChange={(event) => setDeleteUsername(event.target.value)} placeholder={user.username} /></label>{!telegramStatus?.linked && <label><span>Текущий пароль</span><input required type="password" autoComplete="current-password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} /></label>}{deleteError && <p className="form-error" role="alert">{deleteError}</p>}<button type="submit" disabled={deletePending || deleteUsername.trim().toLowerCase() !== user.username.toLowerCase()}><Trash2 size={16} />{deletePending ? 'Удаляем…' : 'Удалить аккаунт навсегда'}</button></form>
     </section>
+    </>}
   </section>;
 }

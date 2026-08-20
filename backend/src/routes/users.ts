@@ -21,6 +21,13 @@ import { sendPushToUser } from '../services/web-push';
 
 export const userRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 const authorPushPreferenceSchema = z.object({ authorUserId: z.string().uuid(), enabled: z.boolean() }).strict();
+const visibilitySchema = z.enum(['everyone', 'friends', 'nobody']);
+const privacySettingsSchema = z.object({
+  lastSeenVisibility: visibilitySchema,
+  birthdayVisibility: visibilitySchema,
+  messagingVisibility: visibilitySchema,
+}).strict();
+const notificationSettingsSchema = z.object({ messageSoundsEnabled: z.boolean() }).strict();
 
 function publicProfile(user: AuthUser) {
   return {
@@ -165,6 +172,41 @@ userRoutes.get('/me/messaging-settings', async (c) => {
   const row = await c.env.DB.prepare('SELECT secret_chat_enabled AS secretChatEnabled FROM user_settings WHERE user_id = ?')
     .bind(user.id).first<{ secretChatEnabled: number }>();
   return ok(c, { secretChatEnabled: row?.secretChatEnabled === 1 });
+});
+
+userRoutes.get('/me/privacy-settings', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const row = await c.env.DB.prepare(`SELECT last_seen_visibility AS lastSeenVisibility, birthday_visibility AS birthdayVisibility,
+    messaging_visibility AS messagingVisibility FROM user_settings WHERE user_id = ?`).bind(user.id)
+    .first<{ lastSeenVisibility: 'everyone' | 'friends' | 'nobody'; birthdayVisibility: 'everyone' | 'friends' | 'nobody'; messagingVisibility: 'everyone' | 'friends' | 'nobody' }>();
+  return ok(c, row ?? { lastSeenVisibility: 'everyone', birthdayVisibility: 'everyone', messagingVisibility: 'everyone' });
+});
+
+userRoutes.put('/me/privacy-settings', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  try {
+    const input = privacySettingsSchema.parse(await parseJsonBody(c.req.raw));
+    await c.env.DB.prepare(`UPDATE user_settings SET last_seen_visibility = ?, birthday_visibility = ?, messaging_visibility = ?, updated_at = ? WHERE user_id = ?`)
+      .bind(input.lastSeenVisibility, input.birthdayVisibility, input.messagingVisibility, new Date().toISOString(), user.id).run();
+    return ok(c, input);
+  } catch { return fail(c, 422, 'VALIDATION_ERROR', 'Invalid privacy settings.'); }
+});
+
+userRoutes.get('/me/notification-settings', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const row = await c.env.DB.prepare('SELECT message_sounds_enabled AS messageSoundsEnabled FROM user_settings WHERE user_id = ?')
+    .bind(user.id).first<{ messageSoundsEnabled: number }>();
+  return ok(c, { messageSoundsEnabled: row?.messageSoundsEnabled !== 0 });
+});
+
+userRoutes.put('/me/notification-settings', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  try {
+    const input = notificationSettingsSchema.parse(await parseJsonBody(c.req.raw));
+    await c.env.DB.prepare('UPDATE user_settings SET message_sounds_enabled = ?, updated_at = ? WHERE user_id = ?')
+      .bind(input.messageSoundsEnabled ? 1 : 0, new Date().toISOString(), user.id).run();
+    return ok(c, input);
+  } catch { return fail(c, 422, 'VALIDATION_ERROR', 'Invalid notification settings.'); }
 });
 
 userRoutes.put('/me/messaging-settings', async (c) => {
@@ -361,8 +403,16 @@ userRoutes.get('/:username', async (c) => {
   const stats = await c.env.DB.prepare(`SELECT
     (SELECT COUNT(*) FROM user_follows WHERE followed_user_id = ?) AS followerCount,
     (SELECT COUNT(*) FROM user_follows WHERE follower_user_id = ?) AS followingCount,
-    EXISTS(SELECT 1 FROM user_follows WHERE follower_user_id = ? AND followed_user_id = ?) AS viewerFollowing`)
-    .bind(user.id, user.id, viewerId, user.id).first<{ followerCount: number; followingCount: number; viewerFollowing: number }>();
-  return ok(c, { user: { ...publicProfile(user), followerCount: stats?.followerCount ?? 0,
+    EXISTS(SELECT 1 FROM user_follows WHERE follower_user_id = ? AND followed_user_id = ?) AS viewerFollowing,
+    EXISTS(SELECT 1 FROM user_follows a JOIN user_follows b ON b.follower_user_id = a.followed_user_id AND b.followed_user_id = a.follower_user_id
+      WHERE a.follower_user_id = ? AND a.followed_user_id = ?) AS viewerIsFriend`)
+    .bind(user.id, user.id, viewerId, user.id, viewerId, user.id).first<{ followerCount: number; followingCount: number; viewerFollowing: number; viewerIsFriend: number }>();
+  const privacy = await c.env.DB.prepare(`SELECT last_seen_visibility AS lastSeenVisibility, birthday_visibility AS birthdayVisibility
+    FROM user_settings WHERE user_id = ?`).bind(user.id).first<{ lastSeenVisibility: string; birthdayVisibility: string }>();
+  const canSee = (visibility: string | undefined) => viewerId === user.id || visibility === 'everyone' || (visibility === 'friends' && stats?.viewerIsFriend === 1);
+  const profile = publicProfile(user);
+  if (!canSee(privacy?.lastSeenVisibility)) profile.lastSeenAt = null;
+  if (!canSee(privacy?.birthdayVisibility)) { profile.birthdayMonthDay = null; profile.birthdayYear = null; }
+  return ok(c, { user: { ...profile, followerCount: stats?.followerCount ?? 0,
     followingCount: stats?.followingCount ?? 0, viewerFollowing: stats?.viewerFollowing === 1 } });
 });

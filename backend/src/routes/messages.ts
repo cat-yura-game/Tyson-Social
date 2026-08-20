@@ -101,11 +101,19 @@ messageRoutes.get('/upload-limit', async (c) => {
 messageRoutes.post('/conversations', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const input = await parse(c, conversationSchema); if (input instanceof Response) return input;
-  const recipient = await c.env.DB.prepare(`SELECT id, username, display_name AS displayName, avatar_key AS avatarKey
-    FROM users WHERE username = ? COLLATE NOCASE AND status NOT IN ('suspended','deleted')`).bind(input.recipientUsername)
-    .first<{ id: string; username: string; displayName: string; avatarKey: string | null }>();
+  const recipient = await c.env.DB.prepare(`SELECT u.id, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey,
+    COALESCE(s.messaging_visibility, 'everyone') AS messagingVisibility
+    FROM users u LEFT JOIN user_settings s ON s.user_id = u.id
+    WHERE u.username = ? COLLATE NOCASE AND u.status NOT IN ('suspended','deleted')`).bind(input.recipientUsername)
+    .first<{ id: string; username: string; displayName: string; avatarKey: string | null; messagingVisibility: 'everyone' | 'friends' | 'nobody' }>();
   if (!recipient) return fail(c, 404, 'USER_NOT_FOUND', 'Recipient not found.');
   if (recipient.id === user.id) return fail(c, 422, 'SELF_CONVERSATION', 'You cannot start a conversation with yourself.');
+  if (recipient.messagingVisibility !== 'everyone') {
+    const mutual = recipient.messagingVisibility === 'friends' && Boolean(await c.env.DB.prepare(`SELECT 1 FROM user_follows a
+      JOIN user_follows b ON b.follower_user_id = a.followed_user_id AND b.followed_user_id = a.follower_user_id
+      WHERE a.follower_user_id = ? AND a.followed_user_id = ?`).bind(user.id, recipient.id).first());
+    if (!mutual) return fail(c, 403, 'MESSAGES_RESTRICTED', 'This user only accepts messages from permitted people.');
+  }
   if (input.securityMode === 'secret') {
     const enabled = await c.env.DB.prepare('SELECT secret_chat_enabled AS enabled FROM user_settings WHERE user_id = ?')
       .bind(user.id).first<{ enabled: number }>();
@@ -125,7 +133,8 @@ messageRoutes.post('/conversations', async (c) => {
       c.env.DB.prepare(`INSERT INTO conversation_members (conversation_id, user_id, joined_at) VALUES (?, ?, ?)`).bind(conversationId, recipient.id, now),
     ]);
   }
-  return ok(c, { conversation: { id: conversationId, otherUser: recipient, securityMode: input.securityMode } }, existing ? 200 : 201);
+  return ok(c, { conversation: { id: conversationId, otherUser: { id: recipient.id, username: recipient.username,
+    displayName: recipient.displayName, avatarKey: recipient.avatarKey }, securityMode: input.securityMode } }, existing ? 200 : 201);
 });
 
 messageRoutes.get('/conversations', async (c) => {
