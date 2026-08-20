@@ -806,6 +806,10 @@ html[data-theme='dark'] .rewrite-style-options button,
 html[data-theme='dark'] .rewrite-result,
 html[data-theme='dark'] .ai-rewrite-panel > header > span { background: var(--paper) !important; color: var(--ink); }
 html[data-theme='dark'] .settings-form input:disabled { background: #202722; }
+html[data-theme='dark'] .new-conversation input { border-color: #3a4b57; background: #18242d; color: #edf3f7; }
+html[data-theme='dark'] .new-conversation input::placeholder { color: #9cabb5; }
+html[data-theme='dark'] .site-refresh-settings { border-color: #334550; background: #17222a; }
+html[data-theme='dark'] .site-refresh-settings p:last-child { color: #aebdc6; }
 html[data-theme='dark'] .form-error,
 html[data-theme='dark'] .messages-error { background: #3b1f20; color: #ffaaa6 !important; }
 html[data-theme='dark'] .form-success { background: #193524; color: #92e2ad; }
@@ -883,6 +887,14 @@ html[data-theme='dark'] .mobile-header { background: rgb(13 18 15 / 92%); }
   html[data-theme='dark'] .sticker-picker { border-color: rgb(152 218 255 / 15%); background: rgb(19 29 38 / 82%); box-shadow: 0 18px 45px rgb(0 0 0 / 38%), inset 0 1px 0 rgb(255 255 255 / 10%); }
   html[data-theme='dark'] .messenger-ai-reset { border-color: rgb(152 218 255 / 15%); background: rgb(19 29 38 / 68%); color: var(--ink); box-shadow: 0 8px 22px rgb(0 0 0 / 25%); }
   html[data-theme='dark'] .messenger-ai-composer textarea { background: transparent; color: var(--ink); box-shadow: none; }
+  html[data-theme='dark'] .new-conversation input { border-color: rgb(152 218 255 / 20%); background: rgb(19 29 38 / 82%); color: #edf3f7; box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%); }
+  html[data-theme='dark'] .messenger-ai-chat > header { border-color: rgb(152 218 255 / 15%); background: rgb(19 29 38 / 84%); color: #edf3f7; }
+  html[data-theme='dark'] .messenger-ai-chat > header small { color: #9eacb5; }
+  html[data-theme='dark'] .messenger-ai-chat > header .mobile-chat-back,
+  html[data-theme='dark'] .messenger-ai-chat > header .messenger-ai-reset { border-color: rgb(152 218 255 / 18%); background: rgb(15 24 31 / 88%); color: #edf3f7; }
+  html[data-theme='dark'] .site-refresh-settings { border-color: rgb(152 218 255 / 15%); background: rgb(19 29 38 / 78%); box-shadow: var(--mobile-glass-shadow); }
+  html[data-theme='dark'] .site-refresh-settings h2 { color: #edf3f7; }
+  html[data-theme='dark'] .site-refresh-settings p:last-child { color: #aebdc6; }
 }
 
 @media (max-width: 520px) {
