@@ -3,6 +3,7 @@
   "name": "tyson-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-08",
+  "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "triggers": {
     "crons": ["*/15 * * * *"]
@@ -18,7 +19,9 @@
     "GEMINI_CHAT_MODEL": "gemini-3.5-flash-lite",
     "TELEGRAM_OIDC_CLIENT_ID": "8890017118",
     "TELEGRAM_OIDC_REDIRECT_URI": "https://tyson-api.clickerscatom.workers.dev/api/auth/telegram/callback",
-    "FRONTEND_URL": "https://tysonsocial.eu.cc"
+    "FRONTEND_URL": "https://tysonsocial.eu.cc",
+    "VAPID_PUBLIC_KEY": "BC6vNepAFt0qWvtYv-7JNjEMMbLx0BRWqS6Z8YdwTNOvBkMdQrnZm5zpJu9nt2z2tcvx489gu4Pj4pXKIugHfao",
+    "VAPID_SUBJECT": "https://tysonsocial.eu.cc"
   },
   "d1_databases": [
     {
@@ -48,7 +51,9 @@
         "GEMINI_CHAT_MODEL": "gemini-3.5-flash-lite",
         "TELEGRAM_OIDC_CLIENT_ID": "8890017118",
         "TELEGRAM_OIDC_REDIRECT_URI": "https://tyson-api.clickerscatom.workers.dev/api/auth/telegram/callback",
-        "FRONTEND_URL": "https://tysonsocial.eu.cc"
+        "FRONTEND_URL": "https://tysonsocial.eu.cc",
+        "VAPID_PUBLIC_KEY": "BC6vNepAFt0qWvtYv-7JNjEMMbLx0BRWqS6Z8YdwTNOvBkMdQrnZm5zpJu9nt2z2tcvx489gu4Pj4pXKIugHfao",
+        "VAPID_SUBJECT": "https://tysonsocial.eu.cc"
       },
       "d1_databases": [
         {

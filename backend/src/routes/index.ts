@@ -12,6 +12,7 @@ import { aiChatRoutes } from './ai-chat';
 import { adminRoutes } from './admin';
 import { giftRoutes } from './gifts';
 import { notificationRoutes } from './notifications';
+import { pushRoutes } from './push';
 
 export const api = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -27,3 +28,4 @@ api.route('/stories', storyRoutes);
 api.route('/ai', aiChatRoutes);
 api.route('/admin', adminRoutes);
 api.route('/notifications', notificationRoutes);
+api.route('/push', pushRoutes);

@@ -1,6 +1,7 @@
 {
   "name": "Tyson",
   "short_name": "Tyson",
+  "id": "/",
   "description": "Tyson — современная социальная сеть для людей и компаний.",
   "lang": "ru",
   "start_url": "/",

@@ -12,6 +12,7 @@ import { base64Encode } from '../security/encoding';
 import { moderatePublicContent } from '../services/moderation-service';
 import { uploadLimitForUser } from '../services/upload-limits';
 import { completeDailyTask } from '../services/daily-tasks';
+import { sendPushToUser } from '../services/web-push';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const contentRoutes = new Hono<App>();
@@ -337,6 +338,7 @@ contentRoutes.post('/posts/:id/diamond', async (c) => {
       .bind(crypto.randomUUID(), post.authorId, auth.user.id, postId, `отправил вам ${input.amount} 💎 за публикацию`, `diamond:${operationId}`, now, operationId),
   ]);
   if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'Not enough diamonds.');
+  c.executionCtx.waitUntil(sendPushToUser(c.env, post.authorId, { title: 'Алмазная реакция', body: `${auth.user.displayName} отправил вам ${input.amount} 💎`, url: `/post/${postId}`, tag: `diamond-${operationId}` }));
   const [count, balance] = await Promise.all([
     c.env.DB.prepare('SELECT COALESCE(SUM(amount), 0) AS diamondCount FROM post_diamond_reactions WHERE post_id = ?').bind(postId).first<{ diamondCount: number }>(),
     c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(auth.user.id).first<{ balance: number }>(),
@@ -393,6 +395,7 @@ contentRoutes.post('/posts/:id/comments', async (c) => {
       SELECT ?, ?, ?, 'comment', ?, 'прокомментировал вашу публикацию', ?, ? WHERE ? = 'published' AND ? != ?`)
       .bind(crypto.randomUUID(), post.authorId, auth.user.id, c.req.param('id'), `comment:${id}`, now, status, post.authorId, auth.user.id),
   ]);
+  if (status === 'published' && post.authorId !== auth.user.id) c.executionCtx.waitUntil(sendPushToUser(c.env, post.authorId, { title: 'Новый комментарий', body: `${auth.user.displayName} прокомментировал вашу публикацию`, url: `/post/${c.req.param('id')}`, tag: `comment-${id}` }));
   if (status === 'published') await completeDailyTask(c.env, auth.user.id, 'comment');
   return ok(c, { id, status }, 201);
 });

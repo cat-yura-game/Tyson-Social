@@ -17,6 +17,7 @@ import { deleteCookie } from 'hono/cookie';
 import { z } from 'zod';
 import { verifyPassword } from '../security/passwords';
 import { deleteUserAccount } from '../services/account-deletion';
+import { sendPushToUser } from '../services/web-push';
 
 export const userRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -292,9 +293,12 @@ userRoutes.put('/:username/follow', async (c) => {
     VALUES (?, ?, ?) ON CONFLICT(follower_user_id, followed_user_id) DO NOTHING`)
     .bind(viewer.id, target.id, new Date().toISOString()).run();
   const rewardId = crypto.randomUUID(); const now = new Date().toISOString();
-  if ((follow.meta.changes ?? 0) === 1) await c.env.DB.prepare(`INSERT OR IGNORE INTO notifications
-    (id, user_id, actor_user_id, type, entity_id, message, dedupe_key, created_at)
-    VALUES (?, ?, ?, 'follow', ?, 'подписался на вас', ?, ?)`).bind(crypto.randomUUID(), target.id, viewer.id, viewer.id, `follow:${viewer.id}:${target.id}`, now).run();
+  if ((follow.meta.changes ?? 0) === 1) {
+    await c.env.DB.prepare(`INSERT OR IGNORE INTO notifications
+      (id, user_id, actor_user_id, type, entity_id, message, dedupe_key, created_at)
+      VALUES (?, ?, ?, 'follow', ?, 'подписался на вас', ?, ?)`).bind(crypto.randomUUID(), target.id, viewer.id, viewer.id, `follow:${viewer.id}:${target.id}`, now).run();
+    c.executionCtx.waitUntil(sendPushToUser(c.env, target.id, { title: 'Новая подписка', body: `${viewer.displayName} подписался на вас`, url: `/profile/${viewer.username}`, tag: `follow-${viewer.id}` }));
+  }
   const reward = (follow.meta.changes ?? 0) === 1 ? await c.env.DB.prepare(`INSERT OR IGNORE INTO follow_reward_claims (follower_user_id, followed_user_id, rewarded_at) VALUES (?, ?, ?)`)
     .bind(viewer.id, target.id, now).run() : null;
   if ((reward?.meta.changes ?? 0) === 1) await c.env.DB.batch([

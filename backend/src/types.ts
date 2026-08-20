@@ -16,6 +16,9 @@ export interface Env {
   TELEGRAM_OIDC_CLIENT_SECRET?: string;
   TELEGRAM_OIDC_REDIRECT_URI: string;
   FRONTEND_URL: string;
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
 }
 
 export interface AppVariables {
