@@ -13,6 +13,7 @@ import { TelegramCallbackPage } from './pages/TelegramCallbackPage';
 import { AdminPage } from './pages/AdminPage';
 import { GiftsPage } from './pages/GiftsPage';
 import { EarnDiamondsPage } from './pages/EarnDiamondsPage';
+import { DiamondsPage } from './pages/DiamondsPage';
 
 const MessagesPage = lazy(() => import('./pages/MessagesPage').then((module) => ({ default: module.MessagesPage })));
 const AiPage = lazy(() => import('./pages/AiPage').then((module) => ({ default: module.AiPage })));
@@ -36,7 +37,8 @@ function ProductRoutes() {
         <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
         <Route path="/company" element={<RequireAuth><PlaceholderPage kind="company" /></RequireAuth>} />
         <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
-        <Route path="/gifts" element={<RequireAuth><GiftsPage /></RequireAuth>} />
+        <Route path="/gifts" element={<RequireAuth><DiamondsPage /></RequireAuth>} />
+        <Route path="/gift-shop" element={<RequireAuth><GiftsPage /></RequireAuth>} />
         <Route path="/earn" element={<RequireAuth><EarnDiamondsPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
