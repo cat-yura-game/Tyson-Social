@@ -90,6 +90,11 @@ giftRoutes.get('/gift-market', async (c) => {
 
 giftRoutes.post('/gifts/:giftId/buy', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
+  let recipientUsername = user.username;
+  try { const body = await c.req.json<{ recipientUsername?: unknown }>(); if (body.recipientUsername !== undefined) recipientUsername = String(body.recipientUsername).trim().replace(/^@/, '').toLowerCase(); } catch { /* Empty body means buy for self. */ }
+  if (!/^[a-z0-9_]{3,30}$/.test(recipientUsername)) return fail(c, 422, 'VALIDATION_ERROR', 'Recipient username is invalid.');
+  const recipient = await c.env.DB.prepare("SELECT id, username FROM users WHERE username = ? AND status = 'active'").bind(recipientUsername).first<{ id: string; username: string }>();
+  if (!recipient) return fail(c, 422, 'RECIPIENT_NOT_FOUND', 'Recipient is unavailable.');
   const giftTypeId = c.req.param('giftId');
   const type = await c.env.DB.prepare(`SELECT id, slug, title, base_price AS basePrice, upgrade_price AS upgradePrice, max_supply AS maxSupply,
     sold_count AS soldCount, base_image AS baseImage, collectible_variants_json AS collectibleVariantsJson, active FROM gift_types WHERE id = ?`).bind(giftTypeId).first<GiftType>();
@@ -99,7 +104,7 @@ giftRoutes.post('/gifts/:giftId/buy', async (c) => {
   const result = await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO user_gifts (id, owner_user_id, gift_type_id, serial_number, purchased_at, created_at)
       SELECT ?, ?, g.id, g.sold_count + 1, ?, ? FROM gift_types g JOIN users u ON u.id = ?
-      WHERE g.id = ? AND g.active = 1 AND g.sold_count < g.max_supply AND u.diamond_balance >= g.base_price`).bind(giftId, user.id, now, now, user.id, giftTypeId),
+      WHERE g.id = ? AND g.active = 1 AND g.sold_count < g.max_supply AND u.diamond_balance >= g.base_price`).bind(giftId, recipient.id, now, now, user.id, giftTypeId),
     c.env.DB.prepare(`UPDATE gift_types SET sold_count = sold_count + 1 WHERE id = ? AND EXISTS (SELECT 1 FROM user_gifts WHERE id = ?)`).bind(giftTypeId, giftId),
     c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance - (SELECT base_price FROM gift_types WHERE id = ?)
       WHERE id = ? AND EXISTS (SELECT 1 FROM user_gifts WHERE id = ?)`).bind(giftTypeId, user.id, giftId),
@@ -116,7 +121,7 @@ giftRoutes.post('/gifts/:giftId/buy', async (c) => {
     ug.is_collectible AS isCollectible, ug.is_public AS isPublic, 0 AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.max_supply AS maxSupply,
     gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice, NULL AS activeListingId FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = ?`).bind(giftId).first<UserGift>();
   const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
-  return ok(c, { gift: gift ? giftDto(gift) : null, balance: balance?.balance ?? 0 }, 201);
+  return ok(c, { gift: gift ? giftDto(gift) : null, recipient: recipient.username, balance: balance?.balance ?? 0 }, 201);
 });
 
 giftRoutes.post('/gifts/:giftId/send', async (c) => {
