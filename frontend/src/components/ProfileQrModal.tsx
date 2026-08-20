@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 const SHORT_ORIGIN = 'https://tyso.eu.cc';
 
 export function ProfileQrModal({ username, onClose }: { username: string; onClose(): void }) {
-  const link = `${SHORT_ORIGIN}/u/${username}`;
+  const link = `${SHORT_ORIGIN}/?to=/profile/${username}`;
   const [qr, setQr] = useState('');
 
   useEffect(() => {

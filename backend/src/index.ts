@@ -17,10 +17,16 @@ function publicRedirect(requestUrl: string): string | null {
   const host = url.hostname.toLowerCase();
   if (host === '368240.lol' || host === 'www.368240.lol') return `${OFFICIAL_SITE_ORIGIN}${url.pathname}${url.search}`;
   if (host !== 'tyso.eu.cc' && host !== 'www.tyso.eu.cc') return null;
-  const post = /^\/p\/([0-9a-f-]{36})$/iu.exec(url.pathname);
-  if (post) return `${OFFICIAL_SITE_ORIGIN}/post/${post[1]}${url.search}`;
-  const profile = /^\/u\/([a-z0-9_]{3,30})$/iu.exec(url.pathname);
-  if (profile) return `${OFFICIAL_SITE_ORIGIN}/profile/${profile[1]}${url.search}`;
+  const destination = url.searchParams.get('to');
+  const profile = destination && /^\/profile\/([a-z0-9_]{3,30})$/iu.exec(destination);
+  if (profile) return `${OFFICIAL_SITE_ORIGIN}/profile/${profile[1]}`;
+  const post = destination && /^\/post\/([0-9a-f-]{36})$/iu.exec(destination);
+  if (post) return `${OFFICIAL_SITE_ORIGIN}/post/${post[1]}`;
+  // Previously issued compact links keep working, but new links use ?to=/….
+  const legacyPost = /^\/p\/([0-9a-f-]{36})$/iu.exec(url.pathname);
+  if (legacyPost) return `${OFFICIAL_SITE_ORIGIN}/post/${legacyPost[1]}${url.search}`;
+  const legacyProfile = /^\/u\/([a-z0-9_]{3,30})$/iu.exec(url.pathname);
+  if (legacyProfile) return `${OFFICIAL_SITE_ORIGIN}/profile/${legacyProfile[1]}${url.search}`;
   return '';
 }
 
