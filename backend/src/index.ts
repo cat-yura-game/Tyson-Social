@@ -10,6 +10,19 @@ import { deleteExpiredStories } from './routes/stories';
 import { deleteExpiredAiChatImages } from './routes/ai-chat';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
+const OFFICIAL_SITE_ORIGIN = 'https://tysonsocial.eu.cc';
+
+function publicRedirect(requestUrl: string): string | null {
+  const url = new URL(requestUrl);
+  const host = url.hostname.toLowerCase();
+  if (host === '368240.lol' || host === 'www.368240.lol') return `${OFFICIAL_SITE_ORIGIN}${url.pathname}${url.search}`;
+  if (host !== 'tyso.eu.cc' && host !== 'www.tyso.eu.cc') return null;
+  const post = /^\/p\/([0-9a-f-]{36})$/iu.exec(url.pathname);
+  if (post) return `${OFFICIAL_SITE_ORIGIN}/post/${post[1]}${url.search}`;
+  const profile = /^\/u\/([a-z0-9_]{3,30})$/iu.exec(url.pathname);
+  if (profile) return `${OFFICIAL_SITE_ORIGIN}/profile/${profile[1]}${url.search}`;
+  return '';
+}
 
 const defaultSecurityHeaders = secureHeaders();
 const publicMediaSecurityHeaders = secureHeaders({ crossOriginResourcePolicy: 'cross-origin' });
@@ -20,6 +33,12 @@ app.use('*', (c, next) => (
     ? publicMediaSecurityHeaders(c, next)
     : defaultSecurityHeaders(c, next)
 ));
+app.use('*', async (c, next) => {
+  const destination = publicRedirect(c.req.url);
+  if (destination === '') return c.text('Short link not found.', 404);
+  if (destination) return c.redirect(destination, 308);
+  return next();
+});
 app.use('/api/*', secureCors);
 app.use('/api/*', sessionContext);
 app.route('/api', api);

@@ -18,7 +18,7 @@ Cloudflare Worker API
   +--> Gemini API for moderation and summaries
 ```
 
-The static site and API should use sibling custom domains such as `tyson.example` and `api.tyson.example`. Cookies use `Secure`, `HttpOnly`, `SameSite=Lax`, a narrow path and opaque random session tokens. D1 stores only a SHA-256 digest of each session token.
+The official static site is `https://tysonsocial.eu.cc` on GitHub Pages; the API is a Cloudflare Worker. `https://tyso.eu.cc` is a restricted short-link host and `https://368240.lol` is a legacy redirect host. Cookies use `Secure`, `HttpOnly`, `SameSite=Lax`, a narrow path and opaque random session tokens. D1 stores only a SHA-256 digest of each session token.
 
 ## Repository structure
 

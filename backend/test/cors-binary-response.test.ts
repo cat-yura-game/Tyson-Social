@@ -12,11 +12,11 @@ describe('binary API responses', () => {
     }));
 
     const response = await app.request('/binary', {
-      headers: { origin: 'https://368240.lol' },
-    }, { ALLOWED_ORIGINS: 'https://368240.lol' } as Env);
+      headers: { origin: 'https://tysonsocial.eu.cc' },
+    }, { ALLOWED_ORIGINS: 'https://tysonsocial.eu.cc' } as Env);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('access-control-allow-origin')).toBe('https://368240.lol');
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://tysonsocial.eu.cc');
     expect(response.headers.get('access-control-allow-credentials')).toBe('true');
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
   });

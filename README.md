@@ -19,7 +19,7 @@ pnpm dev:frontend
 
 The frontend runs at `http://localhost:5173`; the Worker runs at `http://localhost:8787`. Run the full quality gate with `pnpm check`.
 
-The deployed development API is `https://tyson-api.clickerscatom.workers.dev`. Its public readiness endpoint is `/api/health`. Production remains intentionally undeployed until the real frontend origin and required secrets are configured.
+The deployed Worker API is `https://tyson-api.clickerscatom.workers.dev`. Its public readiness endpoint is `/api/health`.
 
 ## Cloudflare setup
 
@@ -46,7 +46,14 @@ The initial environment must stay within free tiers and must not require a payme
 
 Set the repository variable `VITE_API_URL` to the production Worker URL. Pushes to `main` trigger `.github/workflows/deploy-pages.yml`. The workflow publishes the static frontend and creates the SPA fallback required for direct route navigation.
 
-The production frontend domain is `368240.lol`; `frontend/public/CNAME` is already configured for GitHub Pages. Add the domain in the repository's Pages settings, configure its DNS records, and set the production frontend build to use `VITE_API_URL=https://api.368240.lol`. The Worker accepts credentialed browser requests only from `https://368240.lol` and `https://www.368240.lol`.
+Tyson uses the following public-domain scheme:
+
+- Official site: `https://tysonsocial.eu.cc` (GitHub Pages; `frontend/public/CNAME`).
+- Short links: `https://tyso.eu.cc` (Cloudflare Worker redirects only to allowlisted Tyson paths).
+- Legacy redirect: `https://368240.lol` redirects to the official site while preserving the path and query string.
+- Backend/API: `https://tyson-api.clickerscatom.workers.dev` (Cloudflare Workers).
+
+Set the repository variable `VITE_API_URL=https://tyson-api.clickerscatom.workers.dev`. The Worker accepts credentialed browser requests only from `https://tysonsocial.eu.cc`; the short-link host is intentionally not a privileged API origin. Configure `tyso.eu.cc` and `368240.lol` as Cloudflare custom domains/routes for the Worker (or equivalent Cloudflare redirect rules). Valid short paths are `/p/<post UUID>` and `/u/<username>`.
 
 ## Project map
 
