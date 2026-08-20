@@ -254,22 +254,22 @@ giftRoutes.post('/user-gifts/:id/exchange', async (c) => {
   const id = c.req.param('id'); const now = new Date().toISOString(); const exchangeId = crypto.randomUUID();
   const result = await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO gift_exchanges (id, gift_id, user_id, reward, created_at)
-      SELECT ?, ug.id, ?, 20, ? FROM user_gifts ug WHERE ug.id = ? AND ug.owner_user_id = ? AND ug.is_collectible = 0
+      SELECT ?, ug.id, ?, 21, ? FROM user_gifts ug WHERE ug.id = ? AND ug.owner_user_id = ? AND ug.is_collectible = 0
       AND ug.purchased_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days')
       AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active')`).bind(exchangeId, user.id, now, id, user.id),
     c.env.DB.prepare(`UPDATE gift_types SET sold_count = MAX(0, sold_count - 1) WHERE id =
       (SELECT gift_type_id FROM user_gifts WHERE id = ?) AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
       .bind(id, exchangeId),
     c.env.DB.prepare('DELETE FROM user_gifts WHERE id = ? AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)').bind(id, exchangeId),
-    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance + 20 WHERE id = ? AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
+    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance + 21 WHERE id = ? AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
       .bind(user.id, exchangeId),
     c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
-      SELECT ?, ?, 20, 'credit', 'gift_exchange', ?, ? WHERE EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
+      SELECT ?, ?, 21, 'credit', 'gift_exchange', ?, ? WHERE EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
       .bind(crypto.randomUUID(), user.id, id, now, exchangeId),
   ]);
   if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'GIFT_NOT_EXCHANGEABLE', 'Only an unlisted regular gift purchased within 7 days can be exchanged.');
   const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
-  return ok(c, { exchanged: true, reward: 20, balance: balance?.balance ?? 0 });
+  return ok(c, { exchanged: true, reward: 21, balance: balance?.balance ?? 0 });
 });
 
 giftRoutes.post('/user-gifts/:id/list', async (c) => {
