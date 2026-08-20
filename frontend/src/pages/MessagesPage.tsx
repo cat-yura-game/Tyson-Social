@@ -1,4 +1,4 @@
-import { Bookmark, ChevronLeft, Forward as ForwardIcon, LockKeyhole, Mic, Paperclip, Pencil, Plus, Send, Smile, Sparkles, Square, Trash2, X } from 'lucide-react';
+import { Bookmark, ChevronLeft, Forward as ForwardIcon, Gift, LockKeyhole, Mic, Paperclip, Pencil, Plus, Send, Smile, Sparkles, Square, Trash2, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRawRequest, apiRequest, mediaUrl } from '../api/client';
@@ -56,6 +56,7 @@ function MessageBody({ content }: { content: MessageContent }) {
       : sticker ? <img className="message-sticker" src={sticker.src} alt={sticker.accessibleLabel} />
           : value.type === 'post' ? <Link className="shared-post-message" to={`/post/${value.postId}`}><strong>Публикация Tyson</strong><span>Открыть публикацию</span></Link>
             : value.type === 'comment' ? <Link className="shared-post-message" to={`/post/${value.postId}`}><strong>Комментарий Tyson</strong><span>Открыть обсуждение</span></Link>
+              : value.type === 'gift' ? <div className="shared-post-message gift-message"><img src={value.image} alt="" /><strong>{value.title}</strong><span>{value.inscription || 'Подарок Tyson'}</span></div>
           : value.type === 'image' ? <EncryptedMessageImage attachmentId={value.attachmentId} encryptionKey={value.key} nonce={value.nonce} digest={value.digest} mimeType={value.mimeType} />
             : value.type === 'audio' ? <EncryptedMessageAudio attachmentId={value.attachmentId} encryptionKey={value.key} nonce={value.nonce} digest={value.digest} mimeType={value.mimeType} /> : null}
   </>;
@@ -73,6 +74,9 @@ export function MessagesPage() {
   const [secretChatsEnabled, setSecretChatsEnabled] = useState(false);
   const [startSecretChat, setStartSecretChat] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
+  const [showGifts, setShowGifts] = useState(false);
+  const [giftTypes, setGiftTypes] = useState<Array<{ id: string; title: string; basePrice: number; baseImage: string; remaining: number }>>([]);
+  const [giftInscription, setGiftInscription] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
@@ -286,6 +290,8 @@ export function MessagesPage() {
     setShowStickers(false);
     await sendContent({ type: 'sticker', stickerId });
   };
+  const openGiftPicker = async () => { if (!active || active.isSaved) return; setShowGifts(true); if (!giftTypes.length) { const result = await apiRequest<{ gifts: Array<{ id: string; title: string; basePrice: number; baseImage: string; remaining: number }> }>('/gifts'); setGiftTypes(result.gifts); } };
+  const sendGift = async (gift: { id: string; title: string; basePrice: number }) => { if (!active || active.isSaved || !window.confirm(`Отправить ${gift.title} пользователю @${active.otherUsername} за ${gift.basePrice} 💎?`)) return; const result = await apiRequest<{ gift: { id: string; title: string; image: string; inscription: string | null } }>(`/gifts/${gift.id}/send`, { method: 'POST', body: JSON.stringify({ recipientUsername: active.otherUsername, conversationId: active.id, inscription: giftInscription }) }); await sendContent({ type: 'gift', giftId: result.gift.id, title: result.gift.title, image: result.gift.image, inscription: result.gift.inscription }); setGiftInscription(''); setShowGifts(false); };
 
   const deleteMessage = async (message: PlainMessage) => {
     if (!active || message.senderUserId !== user?.id || deletingMessageId) return;
@@ -559,8 +565,10 @@ export function MessagesPage() {
         {editingMessage && <div className="message-edit-bar"><Pencil size={16} /><div><strong>Изменение сообщения</strong><small>Время отправки останется прежним</small></div><button type="button" aria-label="Отменить изменение" onClick={cancelEditing}><X /></button></div>}
         {(sharedPostId || sharedCommentId) && <div className="share-post-bar"><div><strong>{sharedCommentId ? 'Отправить комментарий' : 'Отправить публикацию'}</strong><small>{active.isSaved ? 'Сохранить в Избранное' : `Поделиться с @${active.otherUsername}`}</small></div><button type="button" disabled={sending} onClick={() => void (sharedCommentId ? sendSharedComment() : sendSharedPost())}><Send size={16} />Отправить</button></div>}
         {showStickers && <div className="sticker-picker" aria-label="Стикеры">{STICKERS.map((sticker) => <button key={sticker.id} type="button" disabled={sending} aria-label={sticker.accessibleLabel} onClick={() => void sendSticker(sticker.id)}><img src={sticker.src} alt="" /></button>)}</div>}
+        {showGifts && <div className="sticker-picker gift-picker" aria-label="Подарки"><input maxLength={140} value={giftInscription} onChange={(event) => setGiftInscription(event.target.value)} placeholder="Подпись к подарку (необязательно)" />{giftTypes.map((gift) => <button key={gift.id} type="button" disabled={sending || !gift.remaining} onClick={() => void sendGift(gift)}><img src={gift.baseImage} alt="" /><small>{gift.title} · {gift.basePrice} 💎</small></button>)}</div>}
         <form className="message-composer" onSubmit={(event) => void sendText(event)}>
           <button className="image-message-trigger" type="button" disabled={uploading || sending || recording} aria-label="Прикрепить изображение" onClick={() => imageInput.current?.click()}><Paperclip /></button><input ref={imageInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void sendImage(event)} />
+          <button className="sticker-trigger" type="button" disabled={sending || active.isSaved} aria-label="Отправить подарок" onClick={() => void openGiftPicker()}><Gift /></button>
           <div className="message-input-glass">
             {recording ? <div className="voice-recording-status" role="status"><span aria-hidden="true" />Запись {formatDuration(recordingSeconds)}</div> : <textarea ref={draftInput} rows={1} required maxLength={4000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Сообщение" />}
             <button className="sticker-trigger" type="button" disabled={recording} aria-label="Открыть стикеры" aria-expanded={showStickers} onClick={() => setShowStickers((shown) => !shown)}><Smile /></button>

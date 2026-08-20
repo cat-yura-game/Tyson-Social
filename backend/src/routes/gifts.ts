@@ -40,7 +40,7 @@ giftRoutes.get('/users/me/gifts', async (c) => {
 });
 
 giftRoutes.get('/users/:username/gifts', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.accent_color AS accentColor,
+  const rows = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.inscription, ug.accent_color AS accentColor,
     ug.is_collectible AS isCollectible, ug.is_public AS isPublic, CASE WHEN u.worn_gift_id = ug.id THEN 1 ELSE 0 END AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt,
     gt.title, gt.base_price AS basePrice, gt.max_supply AS maxSupply, gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice, NULL AS activeListingId
     FROM users u JOIN user_gifts ug ON ug.owner_user_id = u.id JOIN gift_types gt ON gt.id = ug.gift_type_id
@@ -89,6 +89,35 @@ giftRoutes.post('/gifts/:giftId/buy', async (c) => {
   return ok(c, { gift: gift ? giftDto(gift) : null, balance: balance?.balance ?? 0 }, 201);
 });
 
+giftRoutes.post('/gifts/:giftId/send', async (c) => {
+  const sender = requireUser(c); if (sender instanceof Response) return sender;
+  let recipientUsername = ''; let conversationId = ''; let inscription: string | null = null;
+  try { const body = await c.req.json<{ recipientUsername?: unknown; conversationId?: unknown; inscription?: unknown }>(); recipientUsername = String(body.recipientUsername ?? '').trim().toLowerCase(); conversationId = String(body.conversationId ?? '').trim(); inscription = typeof body.inscription === 'string' ? body.inscription.trim().slice(0, 140) || null : null; } catch { return fail(c, 400, 'JSON_REQUIRED', 'Content-Type application/json is required.'); }
+  if (!/^[a-z0-9_]{3,30}$/.test(recipientUsername)) return fail(c, 422, 'VALIDATION_ERROR', 'Recipient username is invalid.');
+  const recipient = await c.env.DB.prepare("SELECT id FROM users WHERE username = ? AND status = 'active'").bind(recipientUsername).first<{ id: string }>();
+  if (!recipient || recipient.id === sender.id) return fail(c, 422, 'RECIPIENT_NOT_FOUND', 'Recipient is unavailable.');
+  const dialog = await c.env.DB.prepare(`SELECT c.id FROM conversations c WHERE c.id = ? AND c.kind = 'direct'
+    AND (SELECT COUNT(*) FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.left_at IS NULL) = 2
+    AND EXISTS (SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ? AND cm.left_at IS NULL)
+    AND EXISTS (SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ? AND cm.left_at IS NULL)`).bind(conversationId, sender.id, recipient.id).first<{ id: string }>();
+  if (!dialog) return fail(c, 403, 'CONVERSATION_FORBIDDEN', 'Gift can only be sent in the active direct conversation.');
+  const type = await c.env.DB.prepare('SELECT id, title, base_price AS basePrice, max_supply AS maxSupply, sold_count AS soldCount, base_image AS baseImage FROM gift_types WHERE id = ? AND active = 1').bind(c.req.param('giftId')).first<{ id: string; title: string; basePrice: number; maxSupply: number; soldCount: number; baseImage: string }>();
+  if (!type || type.soldCount >= type.maxSupply) return fail(c, 409, 'SOLD_OUT', 'This gift is sold out.');
+  const id = crypto.randomUUID(); const now = new Date().toISOString();
+  const result = await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO user_gifts (id, owner_user_id, gift_type_id, serial_number, inscription, purchased_at, created_at)
+      SELECT ?, ?, g.id, g.sold_count + 1, ?, ?, ? FROM gift_types g JOIN users s ON s.id = ?
+      WHERE g.id = ? AND g.sold_count < g.max_supply AND s.diamond_balance >= g.base_price`).bind(id, recipient.id, inscription, now, now, sender.id, type.id),
+    c.env.DB.prepare('UPDATE gift_types SET sold_count = sold_count + 1 WHERE id = ? AND EXISTS (SELECT 1 FROM user_gifts WHERE id = ?)').bind(type.id, id),
+    c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance - ? WHERE id = ? AND EXISTS (SELECT 1 FROM user_gifts WHERE id = ?)').bind(type.basePrice, sender.id, id),
+    c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
+      SELECT ?, ?, ?, 'debit', 'gift_send_purchase', ?, ? WHERE EXISTS (SELECT 1 FROM user_gifts WHERE id = ?)`)
+      .bind(crypto.randomUUID(), sender.id, -type.basePrice, id, now, id),
+  ]);
+  if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'Not enough diamonds or gift is sold out.');
+  return ok(c, { gift: { id, title: type.title, image: type.baseImage, inscription, serialNumber: type.soldCount + 1 }, price: type.basePrice }, 201);
+});
+
 giftRoutes.post('/user-gifts/:id/upgrade', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const id = c.req.param('id');
@@ -111,6 +140,21 @@ giftRoutes.post('/user-gifts/:id/upgrade', async (c) => {
   if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'Not enough diamonds or gift is already upgraded.');
   const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
   return ok(c, { gift: giftDto({ ...gift, isCollectible: 1, accentColor, variant, upgradedAt: now }), balance: balance?.balance ?? 0 });
+});
+
+giftRoutes.delete('/user-gifts/:id/inscription', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const id = c.req.param('id'); const now = new Date().toISOString(); const operationId = crypto.randomUUID();
+  const result = await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE user_gifts SET inscription = NULL, last_transfer_id = ? WHERE id = ? AND owner_user_id = ? AND is_collectible = 1 AND inscription IS NOT NULL
+      AND EXISTS (SELECT 1 FROM users WHERE id = ? AND diamond_balance >= 25)`).bind(operationId, id, user.id, user.id),
+    c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance - 25 WHERE id = ? AND EXISTS (SELECT 1 FROM user_gifts WHERE id = ? AND last_transfer_id = ?)').bind(user.id, id, operationId),
+    c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
+      SELECT ?, ?, -25, 'debit', 'gift_inscription_removal', ?, ? WHERE EXISTS (SELECT 1 FROM user_gifts WHERE id = ? AND last_transfer_id = ?)`)
+      .bind(crypto.randomUUID(), user.id, id, now, id, operationId),
+  ]);
+  if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'INSCRIPTION_UNAVAILABLE', 'This inscription cannot be removed.');
+  return ok(c, { removed: true, fee: 25 });
 });
 
 giftRoutes.post('/user-gifts/:id/wear', async (c) => {

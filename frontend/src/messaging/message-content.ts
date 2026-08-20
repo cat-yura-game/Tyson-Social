@@ -5,6 +5,7 @@ export type BasicMessageContent =
   | { type: 'sticker'; stickerId: StickerId }
   | { type: 'post'; postId: string }
   | { type: 'comment'; commentId: string; postId: string }
+  | { type: 'gift'; giftId: string; title: string; image: string; inscription?: string | null }
   | { type: 'image'; attachmentId: string; key: string; nonce: string; digest?: string; mimeType: 'image/jpeg' | 'image/png' | 'image/webp' }
   | { type: 'audio'; attachmentId: string; key: string; nonce: string; digest?: string; mimeType: 'audio/webm' | 'audio/mp4' | 'audio/ogg'; durationMs: number };
 
@@ -25,6 +26,7 @@ function parseBasicMessageContent(payload: Record<string, unknown>): BasicMessag
     return { type: 'post', postId: payload.postId };
   }
   if (payload.type === 'comment' && typeof payload.commentId === 'string' && typeof payload.postId === 'string' && /^[0-9a-f-]{36}$/iu.test(payload.commentId) && /^[0-9a-f-]{36}$/iu.test(payload.postId)) return { type: 'comment', commentId: payload.commentId, postId: payload.postId };
+  if (payload.type === 'gift' && typeof payload.giftId === 'string' && /^[0-9a-f-]{36}$/iu.test(payload.giftId) && typeof payload.title === 'string' && payload.title.length <= 100 && typeof payload.image === 'string' && payload.image.startsWith('/gift/')) return { type: 'gift', giftId: payload.giftId, title: payload.title, image: payload.image, inscription: typeof payload.inscription === 'string' ? payload.inscription.slice(0, 140) : null };
   if (payload.type === 'image' && typeof payload.attachmentId === 'string' && /^[0-9a-f-]{36}$/iu.test(payload.attachmentId)
     && typeof payload.key === 'string' && /^[A-Za-z0-9+/=_-]{32,256}$/u.test(payload.key)
     && typeof payload.nonce === 'string' && /^[A-Za-z0-9+/=_-]{16,256}$/u.test(payload.nonce)
