@@ -106,6 +106,9 @@ authRoutes.post('/register', async (c) => {
     emailVerified: false,
     verified: false,
     usernameChangeAvailable: true,
+    lastSeenAt: now.toISOString(),
+    birthdayMonthDay: null,
+    birthdayYear: null,
     createdAt: now.toISOString(),
   };
 
@@ -189,6 +192,9 @@ authRoutes.post('/login', async (c) => {
     emailVerified: user.emailVerified,
     verified: user.verified,
     usernameChangeAvailable: user.usernameChangeAvailable,
+    lastSeenAt: user.lastSeenAt,
+    birthdayMonthDay: user.birthdayMonthDay,
+    birthdayYear: user.birthdayYear,
     createdAt: user.createdAt,
   };
   const now = new Date();

@@ -39,6 +39,9 @@ export interface AuthUser {
   emailVerified: boolean;
   verified: boolean;
   usernameChangeAvailable: boolean;
+  lastSeenAt: string | null;
+  birthdayMonthDay: string | null;
+  birthdayYear: number | null;
   createdAt: string;
 }
 

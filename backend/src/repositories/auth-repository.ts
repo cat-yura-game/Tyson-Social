@@ -17,6 +17,9 @@ interface UserRow {
   email_verified_at: string | null;
   is_verified: number;
   username_changed_at: string | null;
+  last_seen_at: string | null;
+  birthday_month_day: string | null;
+  birthday_year: number | null;
   created_at: string;
 }
 
@@ -33,12 +36,15 @@ function projectUser(row: UserRow): AuthUser {
     emailVerified: row.email_verified_at !== null,
     verified: row.is_verified === 1,
     usernameChangeAvailable: row.username_changed_at === null,
+    lastSeenAt: row.last_seen_at,
+    birthdayMonthDay: row.birthday_month_day,
+    birthdayYear: row.birthday_year,
     createdAt: row.created_at,
   };
 }
 
 const USER_COLUMNS = `id, email, username, display_name, avatar_key, bio, role, status,
-  email_verified_at, is_verified, username_changed_at, created_at`;
+  email_verified_at, is_verified, username_changed_at, last_seen_at, birthday_month_day, birthday_year, created_at`;
 
 export async function findUserByEmail(db: D1Database, email: string): Promise<UserWithPassword | null> {
   const row = await db.prepare(`SELECT ${USER_COLUMNS}, password_hash FROM users WHERE email = ? LIMIT 1`)
@@ -58,7 +64,7 @@ export async function findUserById(db: D1Database, userId: string): Promise<Auth
 }
 
 export async function findUserBySessionHash(db: D1Database, tokenHash: string, now: string): Promise<(AuthUser & { sessionId: string }) | null> {
-  const row = await db.prepare(`SELECT ${USER_COLUMNS.replaceAll(/\b(id|email|username|display_name|avatar_key|bio|role|status|email_verified_at|created_at)\b/g, 'u.$1')}, s.id AS session_id
+  const row = await db.prepare(`SELECT ${USER_COLUMNS.replaceAll(/\b(id|email|username|display_name|avatar_key|bio|role|status|email_verified_at|last_seen_at|birthday_month_day|birthday_year|created_at)\b/g, 'u.$1')}, s.id AS session_id
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ? AND u.status NOT IN ('suspended', 'deleted')
     LIMIT 1`).bind(tokenHash, now).first<UserRow & { session_id: string }>();
@@ -96,6 +102,8 @@ export async function updateProfile(db: D1Database, userId: string, input: {
   displayName?: string | undefined;
   bio?: string | undefined;
   username?: string | undefined;
+  birthdayMonthDay?: string | null | undefined;
+  birthdayYear?: number | null | undefined;
 }): Promise<AuthUser | null> {
   const now = new Date().toISOString();
   const result = await db.prepare(`UPDATE users SET
@@ -103,10 +111,14 @@ export async function updateProfile(db: D1Database, userId: string, input: {
     bio = COALESCE(?, bio),
     username = CASE WHEN ? IS NOT NULL AND username_changed_at IS NULL THEN ? ELSE username END,
     username_changed_at = CASE WHEN ? IS NOT NULL AND username_changed_at IS NULL THEN ? ELSE username_changed_at END,
+    birthday_month_day = CASE WHEN ? THEN ? ELSE birthday_month_day END,
+    birthday_year = CASE WHEN ? THEN ? ELSE birthday_year END,
     updated_at = ?
     WHERE id = ? AND (? IS NULL OR username_changed_at IS NULL)`)
     .bind(input.displayName ?? null, input.bio ?? null, input.username ?? null, input.username ?? null,
-      input.username ?? null, now, now, userId, input.username ?? null).run();
+      Object.hasOwn(input, 'birthdayMonthDay') ? 1 : 0, input.birthdayMonthDay ?? null,
+      Object.hasOwn(input, 'birthdayYear') ? 1 : 0, input.birthdayYear ?? null,
+      now, userId, input.username ?? null).run();
   if (!result.meta.changes) return null;
   const row = await db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).bind(userId).first<UserRow>();
   return row ? projectUser(row) : null;

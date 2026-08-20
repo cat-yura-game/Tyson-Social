@@ -22,6 +22,9 @@ export const sessionContext = createMiddleware<{
       const { sessionId, ...user } = session;
       c.set('authUser', user);
       c.set('sessionId', sessionId);
+      c.executionCtx.waitUntil(c.env.DB.prepare(`UPDATE users SET last_seen_at = ?
+        WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < ?)`)
+        .bind(new Date().toISOString(), user.id, new Date(Date.now() - 2 * 60_000).toISOString()).run());
     }
   }
 

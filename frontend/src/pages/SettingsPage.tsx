@@ -15,6 +15,8 @@ export function SettingsPage() {
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [username, setUsername] = useState(user?.username ?? '');
   const [bio, setBio] = useState(user?.bio ?? '');
+  const [birthdayMonthDay, setBirthdayMonthDay] = useState(user?.birthdayMonthDay ?? '');
+  const [birthdayYear, setBirthdayYear] = useState(user?.birthdayYear?.toString() ?? '');
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +65,9 @@ export function SettingsPage() {
     event.preventDefault(); setPending(true); setError(null); setMessage(null);
     const nextUsername = username.trim().toLowerCase();
     try {
-      const input: { displayName: string; bio: string; username?: string } = { displayName, bio };
+      const input: { displayName: string; bio: string; username?: string; birthdayMonthDay: string | null; birthdayYear: number | null } = {
+        displayName, bio, birthdayMonthDay: birthdayMonthDay || null, birthdayYear: birthdayYear ? Number(birthdayYear) : null,
+      };
       if (nextUsername !== user.username) input.username = nextUsername;
       const result = await apiRequest<{ user: AuthUser }>('/users/me', { method: 'PATCH', body: JSON.stringify(input) });
       await refresh();
@@ -185,6 +189,7 @@ export function SettingsPage() {
       <label><span>Отображаемое имя</span><input required maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
       <label><span>Имя пользователя</span><input required minLength={3} maxLength={30} pattern="[A-Za-z0-9_]+" disabled={!user.usernameChangeAvailable} value={username} onChange={(event) => setUsername(event.target.value)} /><small>{user.usernameChangeAvailable ? 'После регистрации username можно изменить только один раз.' : 'Вы уже использовали единственную смену username.'}</small></label>
       <label><span>О себе</span><textarea maxLength={500} value={bio} onChange={(event) => setBio(event.target.value)} /><small>{bio.length} / 500</small></label>
+      <fieldset className="birthday-settings"><legend>День рождения</legend><p>Год необязателен: без него в профиле будет виден только день и месяц.</p><div><label><span>День и месяц</span><input type="text" inputMode="numeric" placeholder="ДД-ММ, например 14-08" pattern="\d{2}-\d{2}" value={birthdayMonthDay} onChange={(event) => setBirthdayMonthDay(event.target.value.replace(/[^\d-]/gu, '').slice(0, 5))} /></label><label><span>Год (необязательно)</span><input type="number" min="1900" max={new Date().getFullYear()} placeholder="Например 2008" value={birthdayYear} onChange={(event) => setBirthdayYear(event.target.value)} /></label></div></fieldset>
       {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success">{message}</p>}
       <button className="primary-button" disabled={pending} type="submit"><Save size={17} />{pending ? 'Сохраняем…' : 'Сохранить'}</button>
     </form>

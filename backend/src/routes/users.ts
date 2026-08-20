@@ -31,6 +31,9 @@ function publicProfile(user: AuthUser) {
     bio: user.bio,
     emailVerified: user.emailVerified,
     verified: user.verified,
+    lastSeenAt: user.lastSeenAt,
+    birthdayMonthDay: user.birthdayMonthDay,
+    birthdayYear: user.birthdayYear,
     createdAt: user.createdAt,
   };
 }

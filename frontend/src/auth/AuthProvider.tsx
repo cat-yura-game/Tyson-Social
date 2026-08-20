@@ -14,6 +14,9 @@ export interface AuthUser {
   verified: boolean;
   usernameChangeAvailable: boolean;
   createdAt: string;
+  lastSeenAt: string | null;
+  birthdayMonthDay: string | null;
+  birthdayYear: number | null;
 }
 
 interface Credentials {

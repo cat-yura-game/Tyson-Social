@@ -8,7 +8,7 @@ import { GiftDetailsModal, type GiftDetails } from '../components/GiftDetailsMod
 import { ProfileQrModal } from '../components/ProfileQrModal';
 import type { Post } from '../types/content';
 
-type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarKey' | 'bio' | 'verified' | 'createdAt'> & {
+type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarKey' | 'bio' | 'verified' | 'createdAt' | 'lastSeenAt' | 'birthdayMonthDay' | 'birthdayYear'> & {
   followerCount: number;
   followingCount: number;
   viewerFollowing: boolean;
@@ -45,6 +45,18 @@ export function ProfilePage() {
   if (missing || !profile) return <section className="surface-page profile-state"><h1>Профиль не найден</h1><Link className="text-link" to="/">Вернуться в ленту</Link></section>;
 
   const joined = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(new Date(profile.createdAt));
+  const lastSeen = profile.lastSeenAt ? (() => {
+    const date = new Date(profile.lastSeenAt); const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60_000));
+    if (minutes < 3) return 'В сети недавно';
+    if (minutes < 60) return `Был(а) в сети ${minutes} мин. назад`;
+    return `Был(а) в сети ${new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(date)}`;
+  })() : 'Был(а) в сети недавно';
+  const birthday = profile.birthdayMonthDay ? (() => {
+    const [month, day] = profile.birthdayMonthDay.split('-').map(Number);
+    const date = new Date(profile.birthdayYear ?? 2000, month - 1, day);
+    const text = new Intl.DateTimeFormat('ru-RU', profile.birthdayYear ? { day: 'numeric', month: 'long', year: 'numeric' } : { day: 'numeric', month: 'long' }).format(date);
+    return `День рождения: ${text}`;
+  })() : null;
   const isOwner = user?.id === profile.id;
   const avatar = mediaUrl(profile.avatarKey);
   const openChat = async () => {
@@ -125,7 +137,7 @@ export function ProfilePage() {
       {avatar ? <img className="profile-avatar profile-avatar-image" src={avatar} alt="" /> : <div className="avatar profile-avatar">{profile.displayName.slice(0, 1).toUpperCase()}</div>}
       <div className="profile-controls">{isOwner && <Link className="secondary-button" to="/settings">Редактировать профиль</Link>}<button className="secondary-button profile-qr-trigger" type="button" onClick={() => setShowQr(true)}><QrCode size={17} />QR-код</button>{user && !isOwner && <><button className={profile.viewerFollowing ? 'secondary-button follow-button following' : 'secondary-button follow-button'} type="button" disabled={followPending} onClick={() => void toggleFollow()}>{profile.viewerFollowing ? <UserCheck size={17} /> : <UserPlus size={17} />}{followPending ? 'Подождите…' : profile.viewerFollowing ? 'Вы подписаны' : 'Подписаться'}</button><button className="secondary-button message-profile-button" type="button" disabled={openingChat} onClick={() => void openChat()}><MessageCircle size={17} />{openingChat ? 'Открываем…' : 'Написать'}</button></>}</div>
       {followError && <p className="profile-follow-error form-error" role="alert">{followError}</p>}
-      <div className="profile-copy"><h1>{profile.displayName}{profile.verified && <BadgeCheck className="verified" size={21} aria-label="Подтверждённый аккаунт" />}{gifts.find((gift) => gift.worn) && <img className="profile-worn-gift" src={gifts.find((gift) => gift.worn)?.image} alt="Надетый подарок" />}</h1><p>@{profile.username}</p><p className="profile-bio">{profile.bio || 'Пользователь пока ничего о себе не рассказал.'}</p><span><CalendarDays size={16} />В Tyson с {joined}</span></div>
+      <div className="profile-copy"><h1>{profile.displayName}{profile.verified && <BadgeCheck className="verified" size={21} aria-label="Подтверждённый аккаунт" />}{gifts.find((gift) => gift.worn) && <img className="profile-worn-gift" src={gifts.find((gift) => gift.worn)?.image} alt="Надетый подарок" />}</h1><p>@{profile.username}</p><small className="profile-last-seen">{lastSeen}</small><p className="profile-bio">{profile.bio || 'Пользователь пока ничего о себе не рассказал.'}</p>{birthday && <span><CalendarDays size={16} />{birthday}</span>}<span><CalendarDays size={16} />В Tyson с {joined}</span></div>
       <div className="profile-stats"><span><strong>{posts.length}</strong> публикаций</span><span><strong>{profile.followerCount}</strong> подписчиков</span><span><strong>{profile.followingCount}</strong> подписок</span></div>
     </header>
     <div className="profile-tabs" role="tablist" aria-label="Разделы профиля"><button className={profileTab === 'posts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'posts'} onClick={() => setProfileTab('posts')}>Публикации</button><button className={profileTab === 'gifts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'gifts'} onClick={() => setProfileTab('gifts')}><Gift size={17} />Подарки{gifts.length > 0 && <span>{gifts.length}</span>}</button></div>
