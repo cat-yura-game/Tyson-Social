@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 import { createAiProviders } from '../ai/providers';
 import { fail, ok } from '../lib/responses';
 import { commentBodySchema, extractLinks, postBodySchema, reactionSchema } from '../schemas/content';
@@ -73,6 +73,7 @@ const POST_SELECT = `SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.
   COALESCE((SELECT SUM(amount) FROM post_diamond_reactions dr WHERE dr.post_id = p.id), 0) AS diamondCount,
   EXISTS(SELECT 1 FROM post_diamond_reactions dr WHERE dr.post_id = p.id AND dr.sender_user_id = ?) AS viewerDiamondGiven
   FROM posts p JOIN users u ON u.id = p.author_user_id`;
+const diamondAmountSchema = z.object({ amount: z.number().int().min(1).max(1_000_000) }).strict();
 
 contentRoutes.get('/feed', async (c) => {
   const viewerId = c.get('authUser')?.id ?? '';
@@ -259,36 +260,33 @@ contentRoutes.put('/posts/:id/reaction', async (c) => {
 
 contentRoutes.post('/posts/:id/diamond', async (c) => {
   const auth = requireUser(c); if ('error' in auth) return auth.error;
+  const input = await json(c, diamondAmountSchema); if (input instanceof Response) return input;
   const postId = c.req.param('id');
   const post = await c.env.DB.prepare("SELECT author_user_id AS authorId FROM posts WHERE id = ? AND status = 'published'").bind(postId).first<{ authorId: string }>();
   if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
   if (post.authorId === auth.user.id) return fail(c, 422, 'SELF_DIAMOND', 'You cannot give diamonds to your own post.');
   const now = new Date().toISOString();
   const result = await c.env.DB.batch([
-    c.env.DB.prepare(`INSERT INTO post_diamond_reactions (post_id, sender_user_id, recipient_user_id, amount, created_at)
-      SELECT p.id, ?, p.author_user_id, 1, ? FROM posts p JOIN users s ON s.id = ?
-      WHERE p.id = ? AND p.status = 'published' AND p.author_user_id != ? AND s.diamond_balance >= 1
-        AND NOT EXISTS (SELECT 1 FROM post_diamond_reactions d WHERE d.post_id = p.id AND d.sender_user_id = ?)`)
-      .bind(auth.user.id, now, auth.user.id, postId, auth.user.id, auth.user.id),
-    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance - 1 WHERE id = ? AND EXISTS
-      (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ?)`)
-      .bind(auth.user.id, postId, auth.user.id, now),
-    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance + 1 WHERE id = ? AND EXISTS
-      (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ?)`)
-      .bind(post.authorId, postId, auth.user.id, now),
+    c.env.DB.prepare(`INSERT INTO post_diamond_reactions (id, post_id, sender_user_id, recipient_user_id, amount, created_at)
+      SELECT ?, p.id, ?, p.author_user_id, ?, ? FROM posts p JOIN users s ON s.id = ?
+      WHERE p.id = ? AND p.status = 'published' AND p.author_user_id != ? AND s.diamond_balance >= ?`)
+      .bind(crypto.randomUUID(), auth.user.id, input.amount, now, auth.user.id, postId, auth.user.id, input.amount),
+    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance - ? WHERE id = ? AND EXISTS
+      (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ? AND amount = ?)`)
+      .bind(input.amount, auth.user.id, postId, auth.user.id, now, input.amount),
+    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance + ? WHERE id = ? AND EXISTS
+      (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ? AND amount = ?)`)
+      .bind(input.amount, post.authorId, postId, auth.user.id, now, input.amount),
     c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
-      SELECT ?, ?, -1, 'debit', 'post_diamond_sent', ?, ? WHERE EXISTS
-      (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ?)`)
-      .bind(crypto.randomUUID(), auth.user.id, postId, now, postId, auth.user.id, now),
+      SELECT ?, ?, ?, 'debit', 'post_diamond_sent', ?, ? WHERE EXISTS
+      (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ? AND amount = ?)`)
+      .bind(crypto.randomUUID(), auth.user.id, -input.amount, postId, now, postId, auth.user.id, now, input.amount),
     c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
-      SELECT ?, ?, 1, 'credit', 'post_diamond_received', ?, ? WHERE EXISTS
-      (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ?)`)
-      .bind(crypto.randomUUID(), post.authorId, postId, now, postId, auth.user.id, now),
+      SELECT ?, ?, ?, 'credit', 'post_diamond_received', ?, ? WHERE EXISTS
+      (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ? AND amount = ?)`)
+      .bind(crypto.randomUUID(), post.authorId, input.amount, postId, now, postId, auth.user.id, now, input.amount),
   ]);
-  if ((result[0]?.meta.changes ?? 0) !== 1) {
-    const already = await c.env.DB.prepare('SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ?').bind(postId, auth.user.id).first();
-    return fail(c, 409, already ? 'ALREADY_GAVE_DIAMOND' : 'INSUFFICIENT_DIAMONDS', already ? 'You already gave a diamond to this post.' : 'Not enough diamonds.');
-  }
+  if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'Not enough diamonds.');
   const [count, balance] = await Promise.all([
     c.env.DB.prepare('SELECT COALESCE(SUM(amount), 0) AS diamondCount FROM post_diamond_reactions WHERE post_id = ?').bind(postId).first<{ diamondCount: number }>(),
     c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(auth.user.id).first<{ balance: number }>(),
