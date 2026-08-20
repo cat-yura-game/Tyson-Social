@@ -1,6 +1,6 @@
 import type { Env } from '../types';
 
-export const DAILY_TASKS = ['post', 'story', 'comment'] as const;
+export const DAILY_TASKS = ['post', 'story', 'comment', 'like'] as const;
 export type DailyTaskKey = typeof DAILY_TASKS[number];
 
 export function utcTaskDay(now = new Date()): string { return now.toISOString().slice(0, 10); }

@@ -257,6 +257,7 @@ contentRoutes.put('/posts/:id/reaction', async (c) => {
   statements.push(c.env.DB.prepare(`UPDATE posts SET like_count = MAX(0, like_count + ?) WHERE id = ?`).bind(delta, c.req.param('id')));
   if (input.reaction) statements.push(c.env.DB.prepare(`INSERT INTO recommendation_events (id, user_id, post_id, event_type, created_at) VALUES (?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), auth.user.id, c.req.param('id'), input.reaction, now));
   await c.env.DB.batch(statements);
+  if (input.reaction === 'like' && previous?.reaction !== 'like') await completeDailyTask(c.env, auth.user.id, 'like');
   const counts = await c.env.DB.prepare(`SELECT like_count AS likeCount FROM posts WHERE id = ?`).bind(c.req.param('id')).first();
   return ok(c, { reaction: input.reaction, ...counts });
 });
