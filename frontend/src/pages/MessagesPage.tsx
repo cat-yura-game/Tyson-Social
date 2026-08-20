@@ -54,7 +54,8 @@ function MessageBody({ content }: { content: MessageContent }) {
     {content.type === 'forwarded' && <span className="forwarded-message-label"><ForwardIcon size={13} />Переслано от {content.fromDisplayName}</span>}
     {value.type === 'text' ? <p>{value.text}</p>
       : sticker ? <img className="message-sticker" src={sticker.src} alt={sticker.accessibleLabel} />
-        : value.type === 'post' ? <Link className="shared-post-message" to={`/post/${value.postId}`}><strong>Публикация Tyson</strong><span>Открыть публикацию</span></Link>
+          : value.type === 'post' ? <Link className="shared-post-message" to={`/post/${value.postId}`}><strong>Публикация Tyson</strong><span>Открыть публикацию</span></Link>
+            : value.type === 'comment' ? <Link className="shared-post-message" to={`/post/${value.postId}`}><strong>Комментарий Tyson</strong><span>Открыть обсуждение</span></Link>
           : value.type === 'image' ? <EncryptedMessageImage attachmentId={value.attachmentId} encryptionKey={value.key} nonce={value.nonce} digest={value.digest} mimeType={value.mimeType} />
             : value.type === 'audio' ? <EncryptedMessageAudio attachmentId={value.attachmentId} encryptionKey={value.key} nonce={value.nonce} digest={value.digest} mimeType={value.mimeType} /> : null}
   </>;
@@ -95,6 +96,8 @@ export function MessagesPage() {
   const longPressTimer = useRef<number | null>(null);
   const active = conversations.find((conversation) => conversation.id === activeId) ?? null;
   const sharedPostId = searchParams.get('sharePost');
+  const sharedCommentId = searchParams.get('shareComment');
+  const sharedCommentPostId = searchParams.get('post');
 
   const loadConversations = useCallback(async () => {
     const result = await apiRequest<{ conversations: Conversation[] }>('/messages/conversations');
@@ -520,6 +523,7 @@ export function MessagesPage() {
     await sendContent({ type: 'post', postId: sharedPostId });
     if (active) setSearchParams({ conversation: active.id });
   };
+  const sendSharedComment = async () => { if (!sharedCommentId || !sharedCommentPostId || !/^[0-9a-f-]{36}$/iu.test(sharedCommentId) || !/^[0-9a-f-]{36}$/iu.test(sharedCommentPostId)) return; await sendContent({ type: 'comment', commentId: sharedCommentId, postId: sharedCommentPostId }); setSearchParams({ conversation: active?.id ?? '' }); };
 
   const closeMobileChat = () => {
     setActiveId(null);
@@ -553,7 +557,7 @@ export function MessagesPage() {
       })}{!messages.length && <div className="chat-empty"><LockKeyhole /><p>{active.securityMode === 'secret' ? 'Секретные сообщения шифруются только на устройствах участников.' : 'Сообщения синхронизируются со всеми вашими устройствами и шифруются при хранении.'}</p></div>}<div ref={messageEnd} aria-hidden="true" /></div>
       <div className="composer-area">
         {editingMessage && <div className="message-edit-bar"><Pencil size={16} /><div><strong>Изменение сообщения</strong><small>Время отправки останется прежним</small></div><button type="button" aria-label="Отменить изменение" onClick={cancelEditing}><X /></button></div>}
-        {sharedPostId && <div className="share-post-bar"><div><strong>Отправить публикацию</strong><small>{active.isSaved ? 'Сохранить в Избранное' : `Поделиться с @${active.otherUsername}`}</small></div><button type="button" disabled={sending} onClick={() => void sendSharedPost()}><Send size={16} />Отправить</button></div>}
+        {(sharedPostId || sharedCommentId) && <div className="share-post-bar"><div><strong>{sharedCommentId ? 'Отправить комментарий' : 'Отправить публикацию'}</strong><small>{active.isSaved ? 'Сохранить в Избранное' : `Поделиться с @${active.otherUsername}`}</small></div><button type="button" disabled={sending} onClick={() => void (sharedCommentId ? sendSharedComment() : sendSharedPost())}><Send size={16} />Отправить</button></div>}
         {showStickers && <div className="sticker-picker" aria-label="Стикеры">{STICKERS.map((sticker) => <button key={sticker.id} type="button" disabled={sending} aria-label={sticker.accessibleLabel} onClick={() => void sendSticker(sticker.id)}><img src={sticker.src} alt="" /></button>)}</div>}
         <form className="message-composer" onSubmit={(event) => void sendText(event)}>
           <button className="image-message-trigger" type="button" disabled={uploading || sending || recording} aria-label="Прикрепить изображение" onClick={() => imageInput.current?.click()}><Paperclip /></button><input ref={imageInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void sendImage(event)} />

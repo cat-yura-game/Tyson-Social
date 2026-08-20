@@ -24,4 +24,5 @@ export interface Comment {
   authorId: string;
   username: string;
   displayName: string;
+  diamondCount: number;
 }

@@ -295,8 +295,35 @@ contentRoutes.post('/posts/:id/diamond', async (c) => {
 });
 
 contentRoutes.get('/posts/:id/comments', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT c.id, c.body, c.created_at AS createdAt, u.id AS authorId, u.username, u.display_name AS displayName FROM comments c JOIN users u ON u.id = c.author_user_id WHERE c.post_id = ? AND c.status = 'published' ORDER BY c.created_at ASC LIMIT 200`).bind(c.req.param('id')).all();
+  const rows = await c.env.DB.prepare(`SELECT c.id, c.body, c.created_at AS createdAt, u.id AS authorId, u.username, u.display_name AS displayName,
+    COALESCE((SELECT SUM(amount) FROM comment_diamond_reactions d WHERE d.comment_id = c.id), 0) AS diamondCount
+    FROM comments c JOIN users u ON u.id = c.author_user_id WHERE c.post_id = ? AND c.status = 'published' ORDER BY c.created_at ASC LIMIT 200`).bind(c.req.param('id')).all();
   return ok(c, { comments: rows.results });
+});
+
+contentRoutes.post('/comments/:id/diamond', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  const input = await json(c, diamondAmountSchema); if (input instanceof Response) return input;
+  const comment = await c.env.DB.prepare("SELECT author_user_id AS authorId FROM comments WHERE id = ? AND status = 'published'").bind(c.req.param('id')).first<{ authorId: string }>();
+  if (!comment) return fail(c, 404, 'COMMENT_NOT_FOUND', 'Comment not found.');
+  if (comment.authorId === auth.user.id) return fail(c, 422, 'SELF_DIAMOND', 'You cannot give diamonds to your own comment.');
+  const now = new Date().toISOString(); const operationId = crypto.randomUUID();
+  const result = await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO comment_diamond_reactions (id, comment_id, sender_user_id, recipient_user_id, amount, created_at)
+      SELECT ?, c.id, ?, c.author_user_id, ?, ? FROM comments c JOIN users s ON s.id = ? WHERE c.id = ? AND c.status = 'published' AND s.diamond_balance >= ?`)
+      .bind(operationId, auth.user.id, input.amount, now, auth.user.id, c.req.param('id'), input.amount),
+    c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance - ? WHERE id = ? AND EXISTS (SELECT 1 FROM comment_diamond_reactions WHERE id = ?)').bind(input.amount, auth.user.id, operationId),
+    c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance + ? WHERE id = ? AND EXISTS (SELECT 1 FROM comment_diamond_reactions WHERE id = ?)').bind(input.amount, comment.authorId, operationId),
+    c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
+      SELECT ?, ?, ?, 'debit', 'comment_diamond_sent', ?, ? WHERE EXISTS (SELECT 1 FROM comment_diamond_reactions WHERE id = ?)`)
+      .bind(crypto.randomUUID(), auth.user.id, -input.amount, c.req.param('id'), now, operationId),
+    c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
+      SELECT ?, ?, ?, 'credit', 'comment_diamond_received', ?, ? WHERE EXISTS (SELECT 1 FROM comment_diamond_reactions WHERE id = ?)`)
+      .bind(crypto.randomUUID(), comment.authorId, input.amount, c.req.param('id'), now, operationId),
+  ]);
+  if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'Not enough diamonds.');
+  const count = await c.env.DB.prepare('SELECT COALESCE(SUM(amount), 0) AS diamondCount FROM comment_diamond_reactions WHERE comment_id = ?').bind(c.req.param('id')).first<{ diamondCount: number }>();
+  return ok(c, { diamondCount: count?.diamondCount ?? 0 });
 });
 
 contentRoutes.post('/posts/:id/comments', async (c) => {
