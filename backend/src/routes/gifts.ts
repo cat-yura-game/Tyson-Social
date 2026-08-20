@@ -7,13 +7,13 @@ type App = { Bindings: Env; Variables: AppVariables };
 export const giftRoutes = new Hono<App>();
 
 type GiftType = { id: string; slug: string; title: string; basePrice: number; upgradePrice: number; maxSupply: number; soldCount: number; baseImage: string; collectibleVariantsJson: string; active: number };
-type UserGift = { id: string; giftTypeId: string; serialNumber: number; variant: string | null; isCollectible: number; accentColor: string; worn: number; activeListingId: string | null; purchasedAt: string; upgradedAt: string | null; title: string; maxSupply: number; baseImage: string; collectibleVariantsJson: string; upgradePrice: number };
+type UserGift = { id: string; giftTypeId: string; serialNumber: number; variant: string | null; isCollectible: number; accentColor: string; isPublic: number; worn: number; activeListingId: string | null; purchasedAt: string; upgradedAt: string | null; title: string; maxSupply: number; baseImage: string; collectibleVariantsJson: string; upgradePrice: number };
 type MarketListing = UserGift & { listingId: string; price: number; sellerUsername: string; sellerDisplayName: string; sellerAvatarKey: string | null };
 
 function requireUser(c: Parameters<typeof fail>[0]): AuthUser | Response { return c.get('authUser') ?? fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.'); }
 function variants(raw: string): string[] { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) && parsed.every((item) => typeof item === 'string') ? parsed : []; } catch { return []; } }
 function typeDto(row: GiftType) { return { id: row.id, slug: row.slug, title: row.title, basePrice: row.basePrice, upgradePrice: row.upgradePrice, maxSupply: row.maxSupply, soldCount: row.soldCount, remaining: Math.max(0, row.maxSupply - row.soldCount), baseImage: row.baseImage, active: row.active === 1 }; }
-function giftDto(row: UserGift) { const collectibleVariants = variants(row.collectibleVariantsJson); return { id: row.id, giftTypeId: row.giftTypeId, title: row.title, serialNumber: row.serialNumber, maxSupply: row.maxSupply, isCollectible: row.isCollectible === 1, accentColor: row.accentColor ?? '#111111', worn: row.worn === 1, activeListingId: row.activeListingId ?? null, variant: row.variant, image: row.variant ?? row.baseImage, purchasedAt: row.purchasedAt, upgradedAt: row.upgradedAt, upgradePrice: row.upgradePrice, collectibleVariantNumber: row.variant ? collectibleVariants.indexOf(row.variant) + 1 : null }; }
+function giftDto(row: UserGift) { const collectibleVariants = variants(row.collectibleVariantsJson); return { id: row.id, giftTypeId: row.giftTypeId, title: row.title, serialNumber: row.serialNumber, maxSupply: row.maxSupply, isCollectible: row.isCollectible === 1, accentColor: row.accentColor ?? '#111111', isPublic: row.isPublic === 1, worn: row.worn === 1, activeListingId: row.activeListingId ?? null, variant: row.variant, image: row.variant ?? row.baseImage, purchasedAt: row.purchasedAt, upgradedAt: row.upgradedAt, upgradePrice: row.upgradePrice, collectibleVariantNumber: row.variant ? collectibleVariants.indexOf(row.variant) + 1 : null }; }
 function listingDto(row: MarketListing) { return { id: row.listingId, price: row.price, gift: giftDto(row), seller: { username: row.sellerUsername, displayName: row.sellerDisplayName, avatarKey: row.sellerAvatarKey } }; }
 const giftColors = ['#22b8ff', '#9d72ff', '#ff5d91', '#ffad31', '#25c98b'];
 
@@ -32,7 +32,7 @@ giftRoutes.get('/gifts', async (c) => {
 giftRoutes.get('/users/me/gifts', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const rows = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.accent_color AS accentColor,
-    ug.is_collectible AS isCollectible, CASE WHEN u.worn_gift_id = ug.id THEN 1 ELSE 0 END AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.max_supply AS maxSupply,
+    ug.is_collectible AS isCollectible, ug.is_public AS isPublic, CASE WHEN u.worn_gift_id = ug.id THEN 1 ELSE 0 END AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.max_supply AS maxSupply,
     gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice,
     (SELECT id FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active') AS activeListingId
     FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id JOIN users u ON u.id = ug.owner_user_id WHERE ug.owner_user_id = ? ORDER BY ug.purchased_at DESC`).bind(user.id).all<UserGift>();
@@ -41,16 +41,16 @@ giftRoutes.get('/users/me/gifts', async (c) => {
 
 giftRoutes.get('/users/:username/gifts', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.accent_color AS accentColor,
-    ug.is_collectible AS isCollectible, CASE WHEN u.worn_gift_id = ug.id THEN 1 ELSE 0 END AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt,
+    ug.is_collectible AS isCollectible, ug.is_public AS isPublic, CASE WHEN u.worn_gift_id = ug.id THEN 1 ELSE 0 END AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt,
     gt.title, gt.max_supply AS maxSupply, gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice, NULL AS activeListingId
     FROM users u JOIN user_gifts ug ON ug.owner_user_id = u.id JOIN gift_types gt ON gt.id = ug.gift_type_id
-    WHERE u.username = ? ORDER BY worn DESC, ug.purchased_at DESC`).bind(c.req.param('username')).all<UserGift>();
+    WHERE u.username = ? AND ug.is_public = 1 ORDER BY worn DESC, ug.purchased_at DESC`).bind(c.req.param('username')).all<UserGift>();
   return ok(c, { gifts: rows.results.map(giftDto) });
 });
 
 giftRoutes.get('/gift-market', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT ml.id AS listingId, ml.price, ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.accent_color AS accentColor,
-    ug.is_collectible AS isCollectible, 0 AS worn, NULL AS activeListingId, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.max_supply AS maxSupply,
+    ug.is_collectible AS isCollectible, ug.is_public AS isPublic, 0 AS worn, NULL AS activeListingId, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.max_supply AS maxSupply,
     gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice,
     u.username AS sellerUsername, u.display_name AS sellerDisplayName, u.avatar_key AS sellerAvatarKey
     FROM gift_market_listings ml JOIN user_gifts ug ON ug.id = ml.gift_id JOIN gift_types gt ON gt.id = ug.gift_type_id JOIN users u ON u.id = ml.seller_user_id
@@ -83,7 +83,7 @@ giftRoutes.post('/gifts/:giftId/buy', async (c) => {
     return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'Not enough diamonds.');
   }
   const gift = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.accent_color AS accentColor,
-    ug.is_collectible AS isCollectible, 0 AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.max_supply AS maxSupply,
+    ug.is_collectible AS isCollectible, ug.is_public AS isPublic, 0 AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.max_supply AS maxSupply,
     gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice, NULL AS activeListingId FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = ?`).bind(giftId).first<UserGift>();
   const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
   return ok(c, { gift: gift ? giftDto(gift) : null, balance: balance?.balance ?? 0 }, 201);
@@ -92,7 +92,7 @@ giftRoutes.post('/gifts/:giftId/buy', async (c) => {
 giftRoutes.post('/user-gifts/:id/upgrade', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const id = c.req.param('id');
-  const gift = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.accent_color AS accentColor, ug.is_collectible AS isCollectible, 0 AS worn,
+  const gift = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.accent_color AS accentColor, ug.is_collectible AS isCollectible, ug.is_public AS isPublic, 0 AS worn,
     ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.max_supply AS maxSupply, gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson,
     gt.upgrade_price AS upgradePrice, NULL AS activeListingId FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = ? AND ug.owner_user_id = ? AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active')`).bind(id, user.id).first<UserGift & { upgradePrice: number }>();
   if (!gift) return fail(c, 404, 'GIFT_NOT_FOUND', 'Gift not found.');
@@ -125,6 +125,18 @@ giftRoutes.delete('/users/me/worn-gift', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   await c.env.DB.prepare('UPDATE users SET worn_gift_id = NULL WHERE id = ?').bind(user.id).run();
   return ok(c, { wornGiftId: null });
+});
+
+giftRoutes.put('/user-gifts/:id/public', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  let isPublic = true;
+  try { isPublic = (await c.req.json<{ isPublic?: unknown }>()).isPublic === true; } catch { return fail(c, 400, 'JSON_REQUIRED', 'Content-Type application/json is required.'); }
+  const result = await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE users SET worn_gift_id = NULL WHERE id = ? AND worn_gift_id = ? AND ? = 0').bind(user.id, c.req.param('id'), isPublic ? 1 : 0),
+    c.env.DB.prepare('UPDATE user_gifts SET is_public = ? WHERE id = ? AND owner_user_id = ?').bind(isPublic ? 1 : 0, c.req.param('id'), user.id),
+  ]);
+  if ((result[1]?.meta.changes ?? 0) !== 1) return fail(c, 404, 'GIFT_NOT_FOUND', 'Gift not found.');
+  return ok(c, { isPublic });
 });
 
 giftRoutes.post('/user-gifts/:id/transfer', async (c) => {

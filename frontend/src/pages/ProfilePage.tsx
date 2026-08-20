@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
 import { useAuth, type AuthUser } from '../auth/AuthProvider';
 import { PostCard } from '../components/PostCard';
+import { GiftDetailsModal, type GiftDetails } from '../components/GiftDetailsModal';
 import type { Post } from '../types/content';
 
 type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarKey' | 'bio' | 'verified' | 'createdAt'> & {
@@ -25,6 +26,7 @@ export function ProfilePage() {
   const [openingChat, setOpeningChat] = useState(false);
   const [followPending, setFollowPending] = useState(false);
   const [followError, setFollowError] = useState<string | null>(null);
+  const [selectedGift, setSelectedGift] = useState<GiftDetails | null>(null);
 
   useEffect(() => {
     setLoading(true); setMissing(false);
@@ -77,8 +79,9 @@ export function ProfilePage() {
       <div className="profile-copy"><h1>{profile.displayName}{profile.verified && <BadgeCheck className="verified" size={21} aria-label="Подтверждённый аккаунт" />}{gifts.find((gift) => gift.worn) && <img className="profile-worn-gift" src={gifts.find((gift) => gift.worn)?.image} alt="Надетый подарок" />}</h1><p>@{profile.username}</p><p className="profile-bio">{profile.bio || 'Пользователь пока ничего о себе не рассказал.'}</p><span><CalendarDays size={16} />В Tyson с {joined}</span></div>
       <div className="profile-stats"><span><strong>{posts.length}</strong> публикаций</span><span><strong>{profile.followerCount}</strong> подписчиков</span><span><strong>{profile.followingCount}</strong> подписок</span></div>
     </header>
-    {gifts.length > 0 && <section className="profile-gifts"><div className="section-label">Подарки</div><div className="profile-gift-list">{gifts.map((gift) => <article className={gift.worn ? 'profile-gift worn' : 'profile-gift'} style={{ borderColor: gift.accentColor }} key={gift.id}><img src={gift.image} alt={gift.title} /><span>{gift.title}<small>#{gift.serialNumber} / {gift.maxSupply}</small></span></article>)}</div></section>}
+    {gifts.length > 0 && <section className="profile-gifts"><div className="section-label">Подарки</div><div className="profile-gift-list">{gifts.map((gift) => <button className={gift.worn ? 'profile-gift worn' : 'profile-gift'} style={{ borderColor: gift.accentColor }} type="button" onClick={() => setSelectedGift(gift)} key={gift.id}><img src={gift.image} alt={gift.title} /><span>{gift.title}<small>#{gift.serialNumber} / {gift.maxSupply}</small></span></button>)}</div></section>}
     <div className="section-label">Публикации</div>
     <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setPosts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div>
+    {selectedGift && <GiftDetailsModal gift={selectedGift} owner={{ username: profile.username, displayName: profile.displayName, avatarKey: profile.avatarKey }} onClose={() => setSelectedGift(null)} />}
   </section>;
 }
