@@ -203,7 +203,7 @@ giftRoutes.post('/user-gifts/:id/list', async (c) => {
     const result = await c.env.DB.batch([
       c.env.DB.prepare('UPDATE users SET worn_gift_id = NULL WHERE id = ? AND worn_gift_id = ?').bind(user.id, c.req.param('id')),
       c.env.DB.prepare(`INSERT INTO gift_market_listings (id, gift_id, seller_user_id, price, status, created_at)
-        SELECT ?, ug.id, ?, ?, 'active', ? FROM user_gifts ug WHERE ug.id = ? AND ug.owner_user_id = ?
+        SELECT ?, ug.id, ?, ?, 'active', ? FROM user_gifts ug WHERE ug.id = ? AND ug.owner_user_id = ? AND ug.is_collectible = 1
           AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active')`).bind(id, user.id, price, now, c.req.param('id'), user.id),
     ]);
     if ((result[1]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'GIFT_UNAVAILABLE', 'This gift cannot be listed.');
