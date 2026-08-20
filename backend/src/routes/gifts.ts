@@ -177,6 +177,9 @@ giftRoutes.post('/user-gifts/:id/exchange', async (c) => {
     c.env.DB.prepare(`INSERT INTO gift_exchanges (id, gift_id, user_id, reward, created_at)
       SELECT ?, ug.id, ?, 20, ? FROM user_gifts ug WHERE ug.id = ? AND ug.owner_user_id = ? AND ug.is_collectible = 0
       AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active')`).bind(exchangeId, user.id, now, id, user.id),
+    c.env.DB.prepare(`UPDATE gift_types SET sold_count = MAX(0, sold_count - 1) WHERE id =
+      (SELECT gift_type_id FROM user_gifts WHERE id = ?) AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
+      .bind(id, exchangeId),
     c.env.DB.prepare('DELETE FROM user_gifts WHERE id = ? AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)').bind(id, exchangeId),
     c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance + 20 WHERE id = ? AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
       .bind(user.id, exchangeId),
