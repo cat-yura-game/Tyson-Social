@@ -1,5 +1,6 @@
-import { Check, Circle, Diamond, Gift, ListChecks, Sparkles, X } from 'lucide-react';
+import { Diamond, Gift, ListChecks, Sparkles } from 'lucide-react';
 import { useEffect, useState, type CSSProperties } from 'react';
+import { Link } from 'react-router-dom';
 import { ApiError, apiRequest } from '../api/client';
 import { GiftDetailsModal, type GiftDetails, type GiftOwner } from '../components/GiftDetailsModal';
 import { useAuth } from '../auth/AuthProvider';
@@ -7,8 +8,6 @@ import { useAuth } from '../auth/AuthProvider';
 type GiftType = { id: string; title: string; basePrice: number; upgradePrice: number; maxSupply: number; soldCount: number; remaining: number; baseImage: string; active: boolean };
 type UserGift = GiftDetails & { worn: boolean; isPublic: boolean; activeListingId: string | null; purchasedAt: string; variant: string | null; upgradePrice: number; collectibleVariantNumber: number | null };
 type MarketListing = { id: string; price: number; gift: UserGift; seller: { username: string; displayName: string } };
-type DailyTask = { key: 'post' | 'story' | 'comment'; completed: boolean; claimed: boolean; reward: number };
-const taskNames: Record<DailyTask['key'], string> = { post: 'Опубликуйте пост', story: 'Добавьте сторис', comment: 'Напишите комментарий' };
 
 export function GiftsPage() {
   const { user } = useAuth();
@@ -19,10 +18,6 @@ export function GiftsPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ gift: GiftDetails; owner: GiftOwner; mine: boolean } | null>(null);
-  const [tasksOpen, setTasksOpen] = useState(false);
-  const [tasks, setTasks] = useState<DailyTask[]>([]);
-  const [tasksLoading, setTasksLoading] = useState(false);
-  const [taskPending, setTaskPending] = useState<DailyTask['key'] | null>(null);
   const load = async () => {
     const [balanceData, typesData, ownedData, marketData] = await Promise.all([
       apiRequest<{ balance: number }>('/diamonds/balance'), apiRequest<{ gifts: GiftType[] }>('/gifts'), apiRequest<{ gifts: UserGift[] }>('/users/me/gifts'), apiRequest<{ listings: MarketListing[] }>('/gift-market'),
@@ -30,22 +25,6 @@ export function GiftsPage() {
     setBalance(balanceData.balance); setTypes(typesData.gifts); setOwned(ownedData.gifts); setListings(marketData.listings);
   };
   useEffect(() => { void load().catch(() => setError('Не удалось загрузить подарки.')); }, []);
-  const openTasks = async () => {
-    setTasksOpen(true); setTasksLoading(true); setError(null);
-    try { const data = await apiRequest<{ tasks: DailyTask[] }>('/diamonds/tasks'); setTasks(data.tasks); }
-    catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось загрузить задания.'); }
-    finally { setTasksLoading(false); }
-  };
-  const claimTask = async (task: DailyTask) => {
-    if (!task.completed || task.claimed) return;
-    setTaskPending(task.key); setError(null);
-    try {
-      const data = await apiRequest<{ balance: number }>(`/diamonds/tasks/${task.key}/claim`, { method: 'POST' });
-      setBalance(data.balance); setTasks((current) => current.map((item) => item.key === task.key ? { ...item, claimed: true } : item));
-      window.dispatchEvent(new Event('diamonds-changed'));
-    } catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось получить награду.'); }
-    finally { setTaskPending(null); }
-  };
   const buy = async (gift: GiftType) => {
     if (!window.confirm(`Купить «${gift.title}» за ${gift.basePrice} 💎?`)) return;
     setPending(gift.id); setError(null);
@@ -122,12 +101,11 @@ export function GiftsPage() {
     finally { setPending(null); }
   };
   return <section className="gifts-page">
-    <header className="diamonds-hero"><div className="diamond-sparkles" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div><Diamond className="diamonds-hero-icon" fill="currentColor" /><h1>Алмазы Tyson</h1><p>Алмазы помогают дарить подарки, поддерживать авторов и участвовать в коллекции Tyson.</p><section className="diamonds-balance-card" aria-label="Ваш баланс"><Diamond fill="currentColor" /><strong>{balance}</strong><span>Ваш баланс</span></section><button className="diamonds-earn-button" type="button" onClick={() => void openTasks()}><ListChecks size={18} />Заработать</button></header>
+    <header className="diamonds-hero"><div className="diamond-sparkles" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div><Diamond className="diamonds-hero-icon" fill="currentColor" /><h1>Алмазы Tyson</h1><p>Алмазы помогают дарить подарки, поддерживать авторов и участвовать в коллекции Tyson.</p><section className="diamonds-balance-card" aria-label="Ваш баланс"><Diamond fill="currentColor" /><strong>{balance}</strong><span>Ваш баланс</span></section><Link className="diamonds-earn-button" to="/earn"><ListChecks size={18} />Заработать</Link></header>
     {error && <p className="form-error" role="alert">{error}</p>}
     <h2 className="gifts-title">Магазин</h2><div className="gift-shop-grid">{types.map((gift) => <article className="gift-card" key={gift.id}><img src={gift.baseImage} alt={gift.title} /><div><h3>{gift.title}</h3><p><Diamond size={15} />{gift.basePrice}</p><small>{gift.remaining ? `Осталось: ${gift.remaining} / ${gift.maxSupply}` : 'Распродано'}</small><button type="button" disabled={!gift.remaining || pending !== null} onClick={() => void buy(gift)}>{gift.remaining ? pending === gift.id ? 'Покупаем…' : 'Купить' : 'Распродано'}</button></div></article>)}</div>
     <h2 className="gifts-title">Вторичный рынок</h2><div className="gift-collection">{listings.length ? listings.map((listing) => { const mine = owned.some((gift) => gift.id === listing.gift.id && gift.activeListingId === listing.id); return <article className={listing.gift.isCollectible ? 'owned-gift collectible' : 'owned-gift'} style={{ '--gift-accent': listing.gift.accentColor } as CSSProperties} key={listing.id}><button className="gift-open" type="button" onClick={() => setSelected({ gift: listing.gift, owner: listing.seller, mine })}><img src={listing.gift.image} alt={listing.gift.title} /></button><div><h3>{listing.gift.title}</h3><p>Serial #{listing.gift.serialNumber} · @{listing.seller.username}</p><strong><Diamond size={15} />{listing.price}</strong>{mine ? <button type="button" disabled={pending !== null} onClick={() => void cancelListing(listing.id)}>Снять с продажи</button> : <button type="button" disabled={pending !== null} onClick={() => void buyListing(listing)}>{pending === listing.id ? 'Покупаем…' : 'Купить'}</button>}</div></article>; }) : <p className="empty-profile">На рынке пока нет подарков.</p>}</div>
     <h2 className="gifts-title">Моя коллекция</h2><div className="gift-collection">{owned.length ? owned.map((gift) => { const exchangeDeadline = new Date(new Date(gift.purchasedAt).getTime() + 7 * 86_400_000); const exchangeable = !gift.isCollectible && Date.now() < exchangeDeadline.getTime(); return <article className={gift.isCollectible ? 'owned-gift collectible' : 'owned-gift'} style={gift.isCollectible ? { '--gift-accent': gift.accentColor } as CSSProperties : undefined} key={gift.id}><button className="gift-open" type="button" onClick={() => setSelected({ gift, owner: { username: user?.username ?? '', displayName: user?.displayName ?? '' }, mine: true })}><img src={gift.image} alt={gift.title} /></button><div><h3>{gift.title}{gift.worn && <span className="worn-gift-label">Надет</span>}</h3><p>Serial #{gift.serialNumber} / {gift.maxSupply}</p>{gift.isCollectible ? <><strong><Sparkles size={15} />Collectible</strong><small>Variant #{gift.collectibleVariantNumber}</small></> : <><button type="button" disabled={pending !== null || Boolean(gift.activeListingId)} onClick={() => void upgrade(gift)}><Gift size={16} />Улучшить — {gift.upgradePrice} 💎</button>{exchangeable && <button className="gift-exchange-button" type="button" disabled={pending !== null || Boolean(gift.activeListingId)} onClick={() => void exchangeGift(gift)}>Обменять на 20 💎</button>}<small>{exchangeable ? `Обмен доступен до ${exchangeDeadline.toLocaleDateString('ru-RU')}` : 'Обмен недоступен после 7 дней или улучшения'}</small></>}<details className="gift-menu"><summary>•••</summary><div>{gift.activeListingId ? <button type="button" disabled={pending !== null} onClick={() => void cancelListing(gift.activeListingId!)}>Снять с рынка</button> : <>{gift.isCollectible && <><button type="button" disabled={pending !== null} onClick={() => void listGift(gift)}>Продать на рынке</button>{gift.worn ? <button type="button" disabled={pending !== null} onClick={() => void removeWear(gift)}>Снять</button> : <button type="button" disabled={pending !== null} onClick={() => void wear(gift)}>Надеть</button>}<button type="button" disabled={pending !== null} onClick={() => void transfer(gift)}>Передать · 5 💎</button></>}</>}</div></details></div></article>; }) : <p className="empty-profile">Здесь появятся купленные подарки.</p>}</div>
     {selected && <GiftDetailsModal gift={selected.gift} owner={selected.owner} mine={selected.mine} onClose={() => setSelected(null)} onTransfer={() => { const gift = owned.find((item) => item.id === selected.gift.id); if (gift) void transfer(gift); }} onWear={() => { const gift = owned.find((item) => item.id === selected.gift.id); if (gift) { setSelected(null); void (gift.worn ? removeWear(gift) : wear(gift)); } }} onVisibility={() => { const gift = owned.find((item) => item.id === selected.gift.id); if (gift) void toggleVisibility(gift); }} onSell={selected.gift.isCollectible ? () => { const gift = owned.find((item) => item.id === selected.gift.id); if (gift) void listGift(gift); } : undefined} onRemoveInscription={() => { const gift = owned.find((item) => item.id === selected.gift.id); if (gift) void removeInscription(gift); }} />}
-    {tasksOpen && <div className="diamond-tasks-backdrop" role="presentation" onMouseDown={() => setTasksOpen(false)}><section className="diamond-tasks-panel" role="dialog" aria-modal="true" aria-label="Ежедневные задания" onMouseDown={(event) => event.stopPropagation()}><button className="diamond-tasks-close" type="button" onClick={() => setTasksOpen(false)} aria-label="Закрыть"><X /></button><span>Ежедневные задания</span><h2>Заработайте до 3 💎</h2><p>Выполняйте действия в Tyson и забирайте по 1 алмазу за каждое.</p>{tasksLoading ? <p className="diamond-tasks-loading">Загружаем задания…</p> : <div className="diamond-task-list">{tasks.map((task) => <article key={task.key}><div className={task.completed ? 'diamond-task-icon complete' : 'diamond-task-icon'}>{task.claimed ? <Check /> : <Circle />}</div><div><strong>{taskNames[task.key]}</strong><small>Награда: {task.reward} 💎</small></div>{task.claimed ? <span className="diamond-task-status">Получено</span> : task.completed ? <button type="button" disabled={taskPending !== null} onClick={() => void claimTask(task)}>{taskPending === task.key ? '…' : 'Забрать'}</button> : <span className="diamond-task-status">Выполните</span>}</article>)}</div>}</section></div>}
   </section>;
 }
