@@ -49,7 +49,7 @@ export function GiftsPage() {
     finally { setPending(null); }
   };
   const transfer = async (gift: UserGift) => {
-    const recipientUsername = window.prompt('Кому передать подарок? Введите @username без @.')?.trim().replace(/^@/, '');
+    const recipientUsername = window.prompt('Кому передать подарок? Комиссия за передачу — 5 💎. Введите @username без @.')?.trim().replace(/^@/, '');
     if (!recipientUsername) return;
     setPending(gift.id); setError(null);
     try { await apiRequest(`/user-gifts/${gift.id}/transfer`, { method: 'POST', body: JSON.stringify({ recipientUsername }) }); await load(); }

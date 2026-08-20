@@ -135,7 +135,11 @@ giftRoutes.put('/user-gifts/:id/public', async (c) => {
     c.env.DB.prepare('UPDATE users SET worn_gift_id = NULL WHERE id = ? AND worn_gift_id = ? AND ? = 0').bind(user.id, c.req.param('id'), isPublic ? 1 : 0),
     c.env.DB.prepare('UPDATE user_gifts SET is_public = ? WHERE id = ? AND owner_user_id = ?').bind(isPublic ? 1 : 0, c.req.param('id'), user.id),
   ]);
-  if ((result[1]?.meta.changes ?? 0) !== 1) return fail(c, 404, 'GIFT_NOT_FOUND', 'Gift not found.');
+  if ((result[1]?.meta.changes ?? 0) !== 1) {
+    const balanceState = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
+    if ((balanceState?.balance ?? 0) < 5) return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'At least 5 diamonds are required to transfer a gift.');
+    return fail(c, 404, 'GIFT_NOT_FOUND', 'Gift not found.');
+  }
   return ok(c, { isPublic });
 });
 
@@ -147,13 +151,23 @@ giftRoutes.post('/user-gifts/:id/transfer', async (c) => {
   const recipient = await c.env.DB.prepare("SELECT id FROM users WHERE username = ? AND status = 'active'").bind(recipientUsername).first<{ id: string }>();
   if (!recipient) return fail(c, 404, 'RECIPIENT_NOT_FOUND', 'Recipient not found.');
   if (recipient.id === user.id) return fail(c, 422, 'SELF_TRANSFER', 'You already own this gift.');
+  const transferId = crypto.randomUUID(); const now = new Date().toISOString();
   const result = await c.env.DB.batch([
     c.env.DB.prepare('UPDATE users SET worn_gift_id = NULL WHERE id = ? AND worn_gift_id = ?').bind(user.id, c.req.param('id')),
-    c.env.DB.prepare(`UPDATE user_gifts SET owner_user_id = ? WHERE id = ? AND owner_user_id = ?
-      AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = user_gifts.id AND ml.status = 'active')`).bind(recipient.id, c.req.param('id'), user.id),
+    c.env.DB.prepare(`UPDATE user_gifts SET owner_user_id = ?, last_transfer_id = ? WHERE id = ? AND owner_user_id = ?
+      AND EXISTS (SELECT 1 FROM users WHERE id = ? AND diamond_balance >= 5)
+      AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = user_gifts.id AND ml.status = 'active')`).bind(recipient.id, transferId, c.req.param('id'), user.id, user.id),
+    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance - 5 WHERE id = ? AND EXISTS
+      (SELECT 1 FROM user_gifts WHERE id = ? AND last_transfer_id = ? AND owner_user_id = ?)`)
+      .bind(user.id, c.req.param('id'), transferId, recipient.id),
+    c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
+      SELECT ?, ?, -5, 'debit', 'gift_transfer_fee', ?, ? WHERE EXISTS
+      (SELECT 1 FROM user_gifts WHERE id = ? AND last_transfer_id = ? AND owner_user_id = ?)`)
+      .bind(crypto.randomUUID(), user.id, c.req.param('id'), now, c.req.param('id'), transferId, recipient.id),
   ]);
   if ((result[1]?.meta.changes ?? 0) !== 1) return fail(c, 404, 'GIFT_NOT_FOUND', 'Gift not found.');
-  return ok(c, { transferred: true });
+  const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
+  return ok(c, { transferred: true, fee: 5, balance: balance?.balance ?? 0 });
 });
 
 giftRoutes.post('/user-gifts/:id/list', async (c) => {
