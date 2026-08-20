@@ -33,7 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={mobileImmersive ? 'app-shell mobile-immersive' : 'app-shell'}>
-      <header className="mobile-header"><Brand /><button className="icon-button" type="button" aria-label="Уведомления"><Bell size={21} /></button></header>
+      <header className="mobile-header"><Brand /><span className="mobile-header-actions">{user && <NavLink className="mobile-diamonds" to="/gifts" aria-label="Подарки и алмазы"><Diamond size={17} />{diamonds ?? 0}</NavLink>}<button className="icon-button" type="button" aria-label="Уведомления"><Bell size={21} /></button></span></header>
       <aside className="sidebar">
         <Brand />
         <nav className="primary-nav" aria-label="Основная навигация">
