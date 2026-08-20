@@ -1,10 +1,11 @@
-import { BadgeCheck, CalendarDays, MessageCircle, UserCheck, UserPlus } from 'lucide-react';
+import { BadgeCheck, CalendarDays, MessageCircle, QrCode, UserCheck, UserPlus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
 import { useAuth, type AuthUser } from '../auth/AuthProvider';
 import { PostCard } from '../components/PostCard';
 import { GiftDetailsModal, type GiftDetails } from '../components/GiftDetailsModal';
+import { ProfileQrModal } from '../components/ProfileQrModal';
 import type { Post } from '../types/content';
 
 type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarKey' | 'bio' | 'verified' | 'createdAt'> & {
@@ -27,6 +28,7 @@ export function ProfilePage() {
   const [followPending, setFollowPending] = useState(false);
   const [followError, setFollowError] = useState<string | null>(null);
   const [selectedGift, setSelectedGift] = useState<GiftDetails | null>(null);
+  const [showQr, setShowQr] = useState(false);
 
   useEffect(() => {
     setLoading(true); setMissing(false);
@@ -74,7 +76,7 @@ export function ProfilePage() {
     <div className="profile-cover" />
     <header className="profile-header">
       {avatar ? <img className="profile-avatar profile-avatar-image" src={avatar} alt="" /> : <div className="avatar profile-avatar">{profile.displayName.slice(0, 1).toUpperCase()}</div>}
-      <div className="profile-controls">{isOwner && <Link className="secondary-button" to="/settings">Редактировать профиль</Link>}{user && !isOwner && <><button className={profile.viewerFollowing ? 'secondary-button follow-button following' : 'secondary-button follow-button'} type="button" disabled={followPending} onClick={() => void toggleFollow()}>{profile.viewerFollowing ? <UserCheck size={17} /> : <UserPlus size={17} />}{followPending ? 'Подождите…' : profile.viewerFollowing ? 'Вы подписаны' : 'Подписаться'}</button><button className="secondary-button message-profile-button" type="button" disabled={openingChat} onClick={() => void openChat()}><MessageCircle size={17} />{openingChat ? 'Открываем…' : 'Написать'}</button></>}</div>
+      <div className="profile-controls">{isOwner && <Link className="secondary-button" to="/settings">Редактировать профиль</Link>}<button className="secondary-button profile-qr-trigger" type="button" onClick={() => setShowQr(true)}><QrCode size={17} />QR-код</button>{user && !isOwner && <><button className={profile.viewerFollowing ? 'secondary-button follow-button following' : 'secondary-button follow-button'} type="button" disabled={followPending} onClick={() => void toggleFollow()}>{profile.viewerFollowing ? <UserCheck size={17} /> : <UserPlus size={17} />}{followPending ? 'Подождите…' : profile.viewerFollowing ? 'Вы подписаны' : 'Подписаться'}</button><button className="secondary-button message-profile-button" type="button" disabled={openingChat} onClick={() => void openChat()}><MessageCircle size={17} />{openingChat ? 'Открываем…' : 'Написать'}</button></>}</div>
       {followError && <p className="profile-follow-error form-error" role="alert">{followError}</p>}
       <div className="profile-copy"><h1>{profile.displayName}{profile.verified && <BadgeCheck className="verified" size={21} aria-label="Подтверждённый аккаунт" />}{gifts.find((gift) => gift.worn) && <img className="profile-worn-gift" src={gifts.find((gift) => gift.worn)?.image} alt="Надетый подарок" />}</h1><p>@{profile.username}</p><p className="profile-bio">{profile.bio || 'Пользователь пока ничего о себе не рассказал.'}</p><span><CalendarDays size={16} />В Tyson с {joined}</span></div>
       <div className="profile-stats"><span><strong>{posts.length}</strong> публикаций</span><span><strong>{profile.followerCount}</strong> подписчиков</span><span><strong>{profile.followingCount}</strong> подписок</span></div>
@@ -83,5 +85,6 @@ export function ProfilePage() {
     <div className="section-label">Публикации</div>
     <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setPosts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div>
     {selectedGift && <GiftDetailsModal gift={selectedGift} owner={{ username: profile.username, displayName: profile.displayName, avatarKey: profile.avatarKey }} onClose={() => setSelectedGift(null)} />}
+    {showQr && <ProfileQrModal username={profile.username} onClose={() => setShowQr(false)} />}
   </section>;
 }
