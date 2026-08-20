@@ -7,13 +7,13 @@ type App = { Bindings: Env; Variables: AppVariables };
 export const giftRoutes = new Hono<App>();
 
 type GiftType = { id: string; slug: string; title: string; basePrice: number; upgradePrice: number; maxSupply: number; soldCount: number; baseImage: string; collectibleVariantsJson: string; active: number };
-type UserGift = { id: string; giftTypeId: string; serialNumber: number; variant: string | null; isCollectible: number; accentColor: string; isPublic: number; worn: number; activeListingId: string | null; purchasedAt: string; upgradedAt: string | null; title: string; maxSupply: number; baseImage: string; collectibleVariantsJson: string; upgradePrice: number };
+type UserGift = { id: string; giftTypeId: string; serialNumber: number; variant: string | null; inscription: string | null; isCollectible: number; accentColor: string; isPublic: number; worn: number; activeListingId: string | null; purchasedAt: string; upgradedAt: string | null; title: string; maxSupply: number; baseImage: string; collectibleVariantsJson: string; upgradePrice: number };
 type MarketListing = UserGift & { listingId: string; price: number; sellerUsername: string; sellerDisplayName: string; sellerAvatarKey: string | null };
 
 function requireUser(c: Parameters<typeof fail>[0]): AuthUser | Response { return c.get('authUser') ?? fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.'); }
 function variants(raw: string): string[] { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) && parsed.every((item) => typeof item === 'string') ? parsed : []; } catch { return []; } }
 function typeDto(row: GiftType) { return { id: row.id, slug: row.slug, title: row.title, basePrice: row.basePrice, upgradePrice: row.upgradePrice, maxSupply: row.maxSupply, soldCount: row.soldCount, remaining: Math.max(0, row.maxSupply - row.soldCount), baseImage: row.baseImage, active: row.active === 1 }; }
-function giftDto(row: UserGift) { const collectibleVariants = variants(row.collectibleVariantsJson); return { id: row.id, giftTypeId: row.giftTypeId, title: row.title, serialNumber: row.serialNumber, maxSupply: row.maxSupply, isCollectible: row.isCollectible === 1, accentColor: row.accentColor ?? '#111111', isPublic: row.isPublic === 1, worn: row.worn === 1, activeListingId: row.activeListingId ?? null, variant: row.variant, image: row.variant ?? row.baseImage, purchasedAt: row.purchasedAt, upgradedAt: row.upgradedAt, upgradePrice: row.upgradePrice, collectibleVariantNumber: row.variant ? collectibleVariants.indexOf(row.variant) + 1 : null }; }
+function giftDto(row: UserGift) { const collectibleVariants = variants(row.collectibleVariantsJson); return { id: row.id, giftTypeId: row.giftTypeId, title: row.title, serialNumber: row.serialNumber, maxSupply: row.maxSupply, inscription: row.inscription ?? null, isCollectible: row.isCollectible === 1, accentColor: row.accentColor ?? '#111111', isPublic: row.isPublic === 1, worn: row.worn === 1, activeListingId: row.activeListingId ?? null, variant: row.variant, image: row.variant ?? row.baseImage, purchasedAt: row.purchasedAt, upgradedAt: row.upgradedAt, upgradePrice: row.upgradePrice, collectibleVariantNumber: row.variant ? collectibleVariants.indexOf(row.variant) + 1 : null }; }
 function listingDto(row: MarketListing) { return { id: row.listingId, price: row.price, gift: giftDto(row), seller: { username: row.sellerUsername, displayName: row.sellerDisplayName, avatarKey: row.sellerAvatarKey } }; }
 const giftColors = ['#22b8ff', '#9d72ff', '#ff5d91', '#ffad31', '#25c98b'];
 
@@ -31,7 +31,7 @@ giftRoutes.get('/gifts', async (c) => {
 
 giftRoutes.get('/users/me/gifts', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
-  const rows = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.accent_color AS accentColor,
+  const rows = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.inscription, ug.accent_color AS accentColor,
     ug.is_collectible AS isCollectible, ug.is_public AS isPublic, CASE WHEN u.worn_gift_id = ug.id THEN 1 ELSE 0 END AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.max_supply AS maxSupply,
     gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice,
     (SELECT id FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active') AS activeListingId
@@ -116,7 +116,7 @@ giftRoutes.post('/user-gifts/:id/upgrade', async (c) => {
 giftRoutes.post('/user-gifts/:id/wear', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const result = await c.env.DB.prepare(`UPDATE users SET worn_gift_id = ? WHERE id = ? AND EXISTS
-    (SELECT 1 FROM user_gifts WHERE id = ? AND owner_user_id = ? AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ? AND ml.status = 'active'))`).bind(c.req.param('id'), user.id, c.req.param('id'), user.id, c.req.param('id')).run();
+    (SELECT 1 FROM user_gifts WHERE id = ? AND owner_user_id = ? AND is_collectible = 1 AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ? AND ml.status = 'active'))`).bind(c.req.param('id'), user.id, c.req.param('id'), user.id, c.req.param('id')).run();
   if ((result.meta.changes ?? 0) !== 1) return fail(c, 404, 'GIFT_NOT_FOUND', 'Gift not found.');
   return ok(c, { wornGiftId: c.req.param('id') });
 });
@@ -154,7 +154,7 @@ giftRoutes.post('/user-gifts/:id/transfer', async (c) => {
   const transferId = crypto.randomUUID(); const now = new Date().toISOString();
   const result = await c.env.DB.batch([
     c.env.DB.prepare('UPDATE users SET worn_gift_id = NULL WHERE id = ? AND worn_gift_id = ?').bind(user.id, c.req.param('id')),
-    c.env.DB.prepare(`UPDATE user_gifts SET owner_user_id = ?, last_transfer_id = ? WHERE id = ? AND owner_user_id = ?
+    c.env.DB.prepare(`UPDATE user_gifts SET owner_user_id = ?, last_transfer_id = ? WHERE id = ? AND owner_user_id = ? AND is_collectible = 1
       AND EXISTS (SELECT 1 FROM users WHERE id = ? AND diamond_balance >= 5)
       AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = user_gifts.id AND ml.status = 'active')`).bind(recipient.id, transferId, c.req.param('id'), user.id, user.id),
     c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance - 5 WHERE id = ? AND EXISTS
@@ -168,6 +168,25 @@ giftRoutes.post('/user-gifts/:id/transfer', async (c) => {
   if ((result[1]?.meta.changes ?? 0) !== 1) return fail(c, 404, 'GIFT_NOT_FOUND', 'Gift not found.');
   const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
   return ok(c, { transferred: true, fee: 5, balance: balance?.balance ?? 0 });
+});
+
+giftRoutes.post('/user-gifts/:id/exchange', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const id = c.req.param('id'); const now = new Date().toISOString(); const exchangeId = crypto.randomUUID();
+  const result = await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO gift_exchanges (id, gift_id, user_id, reward, created_at)
+      SELECT ?, ug.id, ?, 20, ? FROM user_gifts ug WHERE ug.id = ? AND ug.owner_user_id = ? AND ug.is_collectible = 0
+      AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active')`).bind(exchangeId, user.id, now, id, user.id),
+    c.env.DB.prepare('DELETE FROM user_gifts WHERE id = ? AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)').bind(id, exchangeId),
+    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance + 20 WHERE id = ? AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
+      .bind(user.id, exchangeId),
+    c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
+      SELECT ?, ?, 20, 'credit', 'gift_exchange', ?, ? WHERE EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
+      .bind(crypto.randomUUID(), user.id, id, now, exchangeId),
+  ]);
+  if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'GIFT_NOT_EXCHANGEABLE', 'Only an unlisted regular gift can be exchanged.');
+  const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
+  return ok(c, { exchanged: true, reward: 20, balance: balance?.balance ?? 0 });
 });
 
 giftRoutes.post('/user-gifts/:id/list', async (c) => {
