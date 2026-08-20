@@ -193,7 +193,13 @@ contentRoutes.post('/posts', async (c) => {
     throw error;
   }
   if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Publication was blocked by safety checks.');
-  if (status === 'published') await completeDailyTask(c.env, auth.user.id, 'post');
+  if (status === 'published') {
+    await completeDailyTask(c.env, auth.user.id, 'post');
+    c.executionCtx.waitUntil((async () => {
+      const subscribers = await c.env.DB.prepare('SELECT user_id AS userId FROM author_push_preferences WHERE author_user_id = ?').bind(auth.user.id).all<{ userId: string }>();
+      await Promise.all(subscribers.results.map((subscriber) => sendPushToUser(c.env, subscriber.userId, { title: auth.user.displayName, body: 'Опубликовал новую запись', url: `/post/${postId}`, tag: `post-${postId}` })));
+    })());
+  }
   return ok(c, { id: postId, status }, 201);
 });
 

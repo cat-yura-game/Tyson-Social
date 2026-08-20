@@ -15,6 +15,7 @@ import { hashPassword, verifyPassword } from '../security/passwords';
 import { keyedHash, randomToken, sha256 } from '../security/tokens';
 import type { AppVariables, AuthUser, Env } from '../types';
 import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
+import { sendPushToUser } from '../services/web-push';
 
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
 const VERIFICATION_SECONDS = 60 * 60 * 24;
@@ -201,6 +202,11 @@ authRoutes.post('/login', async (c) => {
     expiresAt: new Date(now.getTime() + SESSION_SECONDS * 1000).toISOString(),
     now: now.toISOString(),
   });
+  await c.env.DB.prepare(`INSERT INTO security_events
+    (id, user_id, event_type, severity, action, risk_score, ip_hash, metadata_json, created_at)
+    VALUES (?, ?, 'account_login', 'info', 'observe', 0, ?, ?, ?)`)
+    .bind(crypto.randomUUID(), user.id, ipHash, JSON.stringify({ userAgent: c.req.header('user-agent')?.slice(0, 200) ?? null }), now.toISOString()).run();
+  c.executionCtx.waitUntil(sendPushToUser(c.env, user.id, { title: 'Безопасность Tyson', body: `Выполнен новый вход в @${user.username}`, url: '/settings', tag: `login-${now.toISOString()}` }));
   setSessionCookie(c, sessionToken);
   return ok(c, sessionPayload(safeUser, sessionToken));
 });

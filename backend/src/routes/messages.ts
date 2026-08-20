@@ -6,6 +6,7 @@ import type { AppVariables, AuthUser, Env } from '../types';
 import { decryptCloudMessage, encryptCloudMessage } from '../services/cloud-message-crypto';
 import { uploadLimitForUser } from '../services/upload-limits';
 import { canDeleteMessage, canEditMessage } from '../services/message-permissions';
+import { sendPushToUser } from '../services/web-push';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const messageRoutes = new Hono<App>();
@@ -26,6 +27,14 @@ async function parse<T>(c: Parameters<typeof fail>[0], schema: { parse(value: un
 
 async function isMember(db: D1Database, conversationId: string, userId: string): Promise<boolean> {
   return Boolean(await db.prepare(`SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL`).bind(conversationId, userId).first());
+}
+
+async function pushNewMessage(c: Parameters<typeof fail>[0], conversationId: string, sender: AuthUser): Promise<void> {
+  const recipients = await c.env.DB.prepare(`SELECT user_id AS userId FROM conversation_members
+    WHERE conversation_id = ? AND user_id != ? AND left_at IS NULL`).bind(conversationId, sender.id).all<{ userId: string }>();
+  await Promise.all(recipients.results.map((recipient) => sendPushToUser(c.env, recipient.userId, {
+    title: 'Tyson Messenger', body: `Новое сообщение от ${sender.displayName}`, url: `/messages?conversation=${encodeURIComponent(conversationId)}`, tag: `message-${conversationId}`,
+  })));
 }
 
 function attachmentIdFromContent(content: unknown): string | undefined {
@@ -267,6 +276,7 @@ messageRoutes.post('/conversations/:id/messages', async (c) => {
         VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), conversationId, user.id, encrypted.ciphertext, encrypted.nonce, now, now),
       c.env.DB.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').bind(now, conversationId),
     ]);
+    c.executionCtx.waitUntil(pushNewMessage(c, conversationId, user));
     return ok(c, { sent: true, sentAt: now }, 201);
   }
   const input = await parse(c, messageBatchSchema); if (input instanceof Response) return input;
@@ -287,6 +297,7 @@ messageRoutes.post('/conversations/:id/messages', async (c) => {
       envelope.recipientDeviceId, envelope.ciphertext, envelope.clientMessageId, now, now));
   statements.push(c.env.DB.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').bind(now, conversationId));
   await c.env.DB.batch(statements);
+  c.executionCtx.waitUntil(pushNewMessage(c, conversationId, user));
   return ok(c, { sent: true, sentAt: now }, 201);
 });
 

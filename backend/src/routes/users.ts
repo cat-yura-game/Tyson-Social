@@ -20,6 +20,7 @@ import { deleteUserAccount } from '../services/account-deletion';
 import { sendPushToUser } from '../services/web-push';
 
 export const userRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
+const authorPushPreferenceSchema = z.object({ authorUserId: z.string().uuid(), enabled: z.boolean() }).strict();
 
 function publicProfile(user: AuthUser) {
   return {
@@ -33,6 +34,28 @@ function publicProfile(user: AuthUser) {
     createdAt: user.createdAt,
   };
 }
+
+userRoutes.get('/me/post-notification-authors', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const rows = await c.env.DB.prepare(`SELECT u.id, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey,
+    EXISTS(SELECT 1 FROM author_push_preferences p WHERE p.user_id = ? AND p.author_user_id = u.id) AS enabled
+    FROM user_follows f JOIN users u ON u.id = f.followed_user_id WHERE f.follower_user_id = ?
+    ORDER BY u.display_name COLLATE NOCASE LIMIT 200`).bind(user.id, user.id).all();
+  return ok(c, { authors: rows.results });
+});
+
+userRoutes.put('/me/post-notification-authors', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  let input: z.infer<typeof authorPushPreferenceSchema>;
+  try { input = authorPushPreferenceSchema.parse(await c.req.json()); }
+  catch (error) { return fail(c, 422, 'VALIDATION_ERROR', 'Invalid notification preference.', error instanceof z.ZodError ? error.flatten() : undefined); }
+  if (input.enabled) {
+    const following = await c.env.DB.prepare('SELECT 1 FROM user_follows WHERE follower_user_id = ? AND followed_user_id = ?').bind(user.id, input.authorUserId).first();
+    if (!following) return fail(c, 422, 'FOLLOW_REQUIRED', 'Follow this author first.');
+    await c.env.DB.prepare('INSERT OR IGNORE INTO author_push_preferences (user_id, author_user_id, created_at) VALUES (?, ?, ?)').bind(user.id, input.authorUserId, new Date().toISOString()).run();
+  } else await c.env.DB.prepare('DELETE FROM author_push_preferences WHERE user_id = ? AND author_user_id = ?').bind(user.id, input.authorUserId).run();
+  return ok(c, { enabled: input.enabled });
+});
 
 userRoutes.get('/me', (c) => {
   const user = c.get('authUser');
@@ -318,6 +341,8 @@ userRoutes.delete('/:username/follow', async (c) => {
   if (!target) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
   if (target.id === viewer.id) return fail(c, 422, 'SELF_FOLLOW', 'You cannot follow yourself.');
   await c.env.DB.prepare('DELETE FROM user_follows WHERE follower_user_id = ? AND followed_user_id = ?')
+    .bind(viewer.id, target.id).run();
+  await c.env.DB.prepare('DELETE FROM author_push_preferences WHERE user_id = ? AND author_user_id = ?')
     .bind(viewer.id, target.id).run();
   const count = await c.env.DB.prepare('SELECT COUNT(*) AS followerCount FROM user_follows WHERE followed_user_id = ?')
     .bind(target.id).first<{ followerCount: number }>();
