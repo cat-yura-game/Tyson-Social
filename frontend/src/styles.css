@@ -173,7 +173,7 @@ button { color: inherit; }
 .comments-panel h2 { margin-top: 0; font-size: 19px; }
 .comment-form { display: flex; gap: 8px; margin-bottom: 20px; }
 .comment-form input { flex: 1; min-width: 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: 11px; outline: none; }
-.comment { padding: 14px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.comment { padding: 14px 0; border-top: 1px solid var(--line); font-size: 13px; }.comment-header { display: flex; align-items: center; gap: 9px; }.comment-header > div { display: grid; gap: 2px; }.comment-author-link { display: inline-flex; align-items: center; gap: 5px; width: fit-content; color: var(--ink); }.comment-author-link:hover { text-decoration: underline; }.author-worn-gift { width: 24px; height: 24px; object-fit: contain; vertical-align: middle; }
 .comment small { color: var(--muted); font-weight: 500; }
 .comment p { margin: 7px 0 0; line-height: 1.55; white-space: pre-wrap; }
 .surface-page { min-height: 520px; padding: 40px; border: 1px solid var(--line); border-radius: var(--radius); background: white; }

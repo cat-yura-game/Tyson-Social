@@ -68,6 +68,7 @@ async function json<T>(c: Parameters<typeof fail>[0], schema: { parse(value: unk
 const POST_SELECT = `SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.comment_count AS commentCount,
   p.published_at AS publishedAt, p.updated_at AS updatedAt,
   u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
+  (SELECT COALESCE(ug.variant, gt.base_image) FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = u.worn_gift_id) AS wornGiftImage,
   (SELECT pm.storage_key FROM post_media pm WHERE pm.post_id = p.id ORDER BY pm.sort_order LIMIT 1) AS mediaKey,
   COALESCE((SELECT reaction FROM post_reactions r WHERE r.post_id = p.id AND r.user_id = ?), '') AS viewerReaction,
   COALESCE((SELECT SUM(amount) FROM post_diamond_reactions dr WHERE dr.post_id = p.id), 0) AS diamondCount,
@@ -295,7 +296,8 @@ contentRoutes.post('/posts/:id/diamond', async (c) => {
 });
 
 contentRoutes.get('/posts/:id/comments', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT c.id, c.body, c.created_at AS createdAt, u.id AS authorId, u.username, u.display_name AS displayName,
+  const rows = await c.env.DB.prepare(`SELECT c.id, c.body, c.created_at AS createdAt, u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey,
+    (SELECT COALESCE(ug.variant, gt.base_image) FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = u.worn_gift_id) AS wornGiftImage,
     COALESCE((SELECT SUM(amount) FROM comment_diamond_reactions d WHERE d.comment_id = c.id), 0) AS diamondCount
     FROM comments c JOIN users u ON u.id = c.author_user_id WHERE c.post_id = ? AND c.status = 'published' ORDER BY c.created_at ASC LIMIT 200`).bind(c.req.param('id')).all();
   return ok(c, { comments: rows.results });
