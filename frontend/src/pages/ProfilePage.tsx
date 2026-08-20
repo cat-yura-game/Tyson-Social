@@ -13,7 +13,7 @@ type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarK
   followingCount: number;
   viewerFollowing: boolean;
 };
-type ProfileGift = { id: string; title: string; serialNumber: number; maxSupply: number; basePrice: number; image: string; accentColor: string; worn: boolean; isCollectible: boolean };
+type ProfileGift = GiftDetails;
 
 export function ProfilePage() {
   const { username = '' } = useParams();
@@ -73,6 +73,13 @@ export function ProfilePage() {
       setFollowPending(false);
     }
   };
+  const exchangeGift = async () => {
+    if (!selectedGift || !window.confirm(`Обменять подарок на ${selectedGift.exchangeReward} 💎? Подарок будет удалён.`)) return;
+    await apiRequest(`/user-gifts/${selectedGift.id}/exchange`, { method: 'POST' });
+    setGifts((current) => current.filter((gift) => gift.id !== selectedGift.id));
+    setSelectedGift(null);
+    window.dispatchEvent(new Event('diamonds-changed'));
+  };
   return <section className="profile-page">
     <div className="profile-cover" />
     <header className="profile-header">
@@ -84,7 +91,7 @@ export function ProfilePage() {
     </header>
     <div className="profile-tabs" role="tablist" aria-label="Разделы профиля"><button className={profileTab === 'posts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'posts'} onClick={() => setProfileTab('posts')}>Публикации</button><button className={profileTab === 'gifts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'gifts'} onClick={() => setProfileTab('gifts')}><Gift size={17} />Подарки{gifts.length > 0 && <span>{gifts.length}</span>}</button></div>
     {profileTab === 'posts' ? <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setPosts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div> : <section className="profile-gift-gallery" aria-label="Подарки профиля">{gifts.length ? gifts.map((gift) => <button className={gift.worn ? 'profile-gift-tile worn' : 'profile-gift-tile'} style={{ '--gift-accent': gift.accentColor } as CSSProperties} type="button" onClick={() => setSelectedGift(gift)} key={gift.id}><img src={gift.image} alt={gift.title} />{gift.worn && <span>Надет</span>}</button>) : <div className="empty-profile">У пользователя пока нет подарков.</div>}</section>}
-    {selectedGift && <GiftDetailsModal gift={selectedGift} owner={{ username: profile.username, displayName: profile.displayName, avatarKey: profile.avatarKey }} onClose={() => setSelectedGift(null)} />}
+    {selectedGift && <GiftDetailsModal gift={selectedGift} owner={{ username: profile.username, displayName: profile.displayName, avatarKey: profile.avatarKey }} mine={isOwner} onExchange={isOwner ? () => void exchangeGift() : undefined} onClose={() => setSelectedGift(null)} />}
     {showQr && <ProfileQrModal username={profile.username} onClose={() => setShowQr(false)} />}
   </section>;
 }

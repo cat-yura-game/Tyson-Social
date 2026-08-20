@@ -75,7 +75,7 @@ export function MessagesPage() {
   const [startSecretChat, setStartSecretChat] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [showGifts, setShowGifts] = useState(false);
-  const [giftTypes, setGiftTypes] = useState<Array<{ id: string; title: string; basePrice: number; baseImage: string; remaining: number }>>([]);
+  const [giftTypes, setGiftTypes] = useState<Array<{ id: string; title: string; basePrice: number; baseImage: string; remaining: number; canTransfer: boolean }>>([]);
   const [giftInscription, setGiftInscription] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -290,7 +290,7 @@ export function MessagesPage() {
     setShowStickers(false);
     await sendContent({ type: 'sticker', stickerId });
   };
-  const openGiftPicker = async () => { if (!active || active.isSaved) return; setShowGifts(true); if (!giftTypes.length) { const result = await apiRequest<{ gifts: Array<{ id: string; title: string; basePrice: number; baseImage: string; remaining: number }> }>('/gifts'); setGiftTypes(result.gifts); } };
+  const openGiftPicker = async () => { if (!active || active.isSaved) return; setShowGifts(true); if (!giftTypes.length) { const result = await apiRequest<{ gifts: Array<{ id: string; title: string; basePrice: number; baseImage: string; remaining: number; canTransfer: boolean }> }>('/gifts'); setGiftTypes(result.gifts.filter((gift) => gift.canTransfer)); } };
   const sendGift = async (gift: { id: string; title: string; basePrice: number }) => { if (!active || active.isSaved || !window.confirm(`Отправить ${gift.title} пользователю @${active.otherUsername} за ${gift.basePrice} 💎?`)) return; const result = await apiRequest<{ gift: { id: string; title: string; image: string; inscription: string | null } }>(`/gifts/${gift.id}/send`, { method: 'POST', body: JSON.stringify({ recipientUsername: active.otherUsername, conversationId: active.id, inscription: giftInscription }) }); await sendContent({ type: 'gift', giftId: result.gift.id, title: result.gift.title, image: result.gift.image, inscription: result.gift.inscription }); setGiftInscription(''); setShowGifts(false); };
 
   const deleteMessage = async (message: PlainMessage) => {

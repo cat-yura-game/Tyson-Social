@@ -7,14 +7,14 @@ import { DAILY_TASKS, utcTaskDay, type DailyTaskKey } from '../services/daily-ta
 type App = { Bindings: Env; Variables: AppVariables };
 export const giftRoutes = new Hono<App>();
 
-type GiftType = { id: string; slug: string; title: string; basePrice: number; upgradePrice: number; maxSupply: number; soldCount: number; baseImage: string; collectibleVariantsJson: string; isLimited: number; active: number };
-type UserGift = { id: string; giftTypeId: string; serialNumber: number; variant: string | null; inscription: string | null; isCollectible: number; accentColor: string; isPublic: number; worn: number; activeListingId: string | null; purchasedAt: string; upgradedAt: string | null; title: string; basePrice: number; maxSupply: number; baseImage: string; collectibleVariantsJson: string; upgradePrice: number };
+type GiftType = { id: string; slug: string; title: string; basePrice: number; upgradePrice: number; maxSupply: number; soldCount: number; baseImage: string; collectibleVariantsJson: string; isLimited: number; isUnlimited: number; canUpgrade: number; canTransfer: number; canWear: number; exchangeReward: number; exchangeWindowDays: number | null; active: number };
+type UserGift = { id: string; giftTypeId: string; serialNumber: number; variant: string | null; inscription: string | null; isCollectible: number; accentColor: string; isPublic: number; worn: number; activeListingId: string | null; purchasedAt: string; upgradedAt: string | null; title: string; basePrice: number; maxSupply: number; baseImage: string; collectibleVariantsJson: string; upgradePrice: number; isLimited: number; isUnlimited: number; canUpgrade: number; canTransfer: number; canWear: number; exchangeReward: number; exchangeWindowDays: number | null };
 type MarketListing = UserGift & { listingId: string; price: number; sellerUsername: string; sellerDisplayName: string; sellerAvatarKey: string | null };
 
 function requireUser(c: Parameters<typeof fail>[0]): AuthUser | Response { return c.get('authUser') ?? fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.'); }
 function variants(raw: string): string[] { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) && parsed.every((item) => typeof item === 'string') ? parsed : []; } catch { return []; } }
-function typeDto(row: GiftType) { return { id: row.id, slug: row.slug, title: row.title, basePrice: row.basePrice, upgradePrice: row.upgradePrice, maxSupply: row.maxSupply, soldCount: row.soldCount, remaining: Math.max(0, row.maxSupply - row.soldCount), baseImage: row.baseImage, isLimited: row.isLimited === 1, active: row.active === 1 }; }
-function giftDto(row: UserGift) { const collectibleVariants = variants(row.collectibleVariantsJson); return { id: row.id, giftTypeId: row.giftTypeId, title: row.title, serialNumber: row.serialNumber, maxSupply: row.maxSupply, basePrice: row.basePrice, inscription: row.inscription ?? null, isCollectible: row.isCollectible === 1, accentColor: row.accentColor ?? '#111111', isPublic: row.isPublic === 1, worn: row.worn === 1, activeListingId: row.activeListingId ?? null, variant: row.variant, image: row.variant ?? row.baseImage, purchasedAt: row.purchasedAt, upgradedAt: row.upgradedAt, upgradePrice: row.upgradePrice, collectibleVariantNumber: row.variant ? collectibleVariants.indexOf(row.variant) + 1 : null }; }
+function typeDto(row: GiftType) { return { id: row.id, slug: row.slug, title: row.title, basePrice: row.basePrice, upgradePrice: row.upgradePrice, maxSupply: row.maxSupply, soldCount: row.soldCount, remaining: Math.max(0, row.maxSupply - row.soldCount), baseImage: row.baseImage, isLimited: row.isLimited === 1, isUnlimited: row.isUnlimited === 1, canUpgrade: row.canUpgrade === 1, canTransfer: row.canTransfer === 1, canWear: row.canWear === 1, exchangeReward: row.exchangeReward, exchangeWindowDays: row.exchangeWindowDays, active: row.active === 1 }; }
+function giftDto(row: UserGift) { const collectibleVariants = variants(row.collectibleVariantsJson); return { id: row.id, giftTypeId: row.giftTypeId, title: row.title, serialNumber: row.serialNumber, maxSupply: row.maxSupply, basePrice: row.basePrice, inscription: row.inscription ?? null, isCollectible: row.isCollectible === 1, accentColor: row.accentColor ?? '#111111', isPublic: row.isPublic === 1, worn: row.worn === 1, activeListingId: row.activeListingId ?? null, variant: row.variant, image: row.variant ?? row.baseImage, purchasedAt: row.purchasedAt, upgradedAt: row.upgradedAt, upgradePrice: row.upgradePrice, isLimited: row.isLimited === 1, isUnlimited: row.isUnlimited === 1, canUpgrade: row.canUpgrade === 1, canTransfer: row.canTransfer === 1, canWear: row.canWear === 1, exchangeReward: row.exchangeReward, exchangeWindowDays: row.exchangeWindowDays, collectibleVariantNumber: row.variant ? collectibleVariants.indexOf(row.variant) + 1 : null }; }
 function listingDto(row: MarketListing) { return { id: row.listingId, price: row.price, gift: giftDto(row), seller: { username: row.sellerUsername, displayName: row.sellerDisplayName, avatarKey: row.sellerAvatarKey } }; }
 const giftColors = ['#22b8ff', '#9d72ff', '#ff5d91', '#ffad31', '#25c98b'];
 
@@ -55,7 +55,7 @@ giftRoutes.post('/diamonds/tasks/:taskKey/claim', async (c) => {
 
 giftRoutes.get('/gifts', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT id, slug, title, base_price AS basePrice, upgrade_price AS upgradePrice, max_supply AS maxSupply,
-    sold_count AS soldCount, base_image AS baseImage, collectible_variants_json AS collectibleVariantsJson, is_limited AS isLimited, active FROM gift_types WHERE active = 1 ORDER BY title`).all<GiftType>();
+    sold_count AS soldCount, base_image AS baseImage, collectible_variants_json AS collectibleVariantsJson, is_limited AS isLimited, is_unlimited AS isUnlimited, can_upgrade AS canUpgrade, can_transfer AS canTransfer, can_wear AS canWear, exchange_reward AS exchangeReward, exchange_window_days AS exchangeWindowDays, active FROM gift_types WHERE active = 1 ORDER BY title`).all<GiftType>();
   return ok(c, { gifts: rows.results.map(typeDto) });
 });
 
@@ -63,7 +63,7 @@ giftRoutes.get('/users/me/gifts', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const rows = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.inscription, ug.accent_color AS accentColor,
     ug.is_collectible AS isCollectible, ug.is_public AS isPublic, CASE WHEN u.worn_gift_id = ug.id THEN 1 ELSE 0 END AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.base_price AS basePrice, gt.max_supply AS maxSupply,
-    gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice,
+    gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice, gt.is_limited AS isLimited, gt.is_unlimited AS isUnlimited, gt.can_upgrade AS canUpgrade, gt.can_transfer AS canTransfer, gt.can_wear AS canWear, gt.exchange_reward AS exchangeReward, gt.exchange_window_days AS exchangeWindowDays,
     (SELECT id FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active') AS activeListingId
     FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id JOIN users u ON u.id = ug.owner_user_id WHERE ug.owner_user_id = ? ORDER BY ug.purchased_at DESC`).bind(user.id).all<UserGift>();
   return ok(c, { gifts: rows.results.map(giftDto) });
@@ -72,7 +72,7 @@ giftRoutes.get('/users/me/gifts', async (c) => {
 giftRoutes.get('/users/:username/gifts', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.inscription, ug.accent_color AS accentColor,
     ug.is_collectible AS isCollectible, ug.is_public AS isPublic, CASE WHEN u.worn_gift_id = ug.id THEN 1 ELSE 0 END AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt,
-    gt.title, gt.base_price AS basePrice, gt.max_supply AS maxSupply, gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice, NULL AS activeListingId
+    gt.title, gt.base_price AS basePrice, gt.max_supply AS maxSupply, gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice, gt.is_limited AS isLimited, gt.is_unlimited AS isUnlimited, gt.can_upgrade AS canUpgrade, gt.can_transfer AS canTransfer, gt.can_wear AS canWear, gt.exchange_reward AS exchangeReward, gt.exchange_window_days AS exchangeWindowDays, NULL AS activeListingId
     FROM users u JOIN user_gifts ug ON ug.owner_user_id = u.id JOIN gift_types gt ON gt.id = ug.gift_type_id
     WHERE u.username = ? AND ug.is_public = 1 ORDER BY worn DESC, ug.purchased_at DESC`).bind(c.req.param('username')).all<UserGift>();
   return ok(c, { gifts: rows.results.map(giftDto) });
@@ -81,7 +81,7 @@ giftRoutes.get('/users/:username/gifts', async (c) => {
 giftRoutes.get('/gift-market', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT ml.id AS listingId, ml.price, ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.accent_color AS accentColor,
     ug.is_collectible AS isCollectible, ug.is_public AS isPublic, 0 AS worn, NULL AS activeListingId, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.base_price AS basePrice, gt.max_supply AS maxSupply,
-    gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice,
+    gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice, gt.is_limited AS isLimited, gt.is_unlimited AS isUnlimited, gt.can_upgrade AS canUpgrade, gt.can_transfer AS canTransfer, gt.can_wear AS canWear, gt.exchange_reward AS exchangeReward, gt.exchange_window_days AS exchangeWindowDays,
     u.username AS sellerUsername, u.display_name AS sellerDisplayName, u.avatar_key AS sellerAvatarKey
     FROM gift_market_listings ml JOIN user_gifts ug ON ug.id = ml.gift_id JOIN gift_types gt ON gt.id = ug.gift_type_id JOIN users u ON u.id = ml.seller_user_id
     WHERE ml.status = 'active' AND ug.owner_user_id = ml.seller_user_id ORDER BY ml.created_at DESC LIMIT 100`).all<MarketListing>();
@@ -97,14 +97,15 @@ giftRoutes.post('/gifts/:giftId/buy', async (c) => {
   if (!recipient) return fail(c, 422, 'RECIPIENT_NOT_FOUND', 'Recipient is unavailable.');
   const giftTypeId = c.req.param('giftId');
   const type = await c.env.DB.prepare(`SELECT id, slug, title, base_price AS basePrice, upgrade_price AS upgradePrice, max_supply AS maxSupply,
-    sold_count AS soldCount, base_image AS baseImage, collectible_variants_json AS collectibleVariantsJson, active FROM gift_types WHERE id = ?`).bind(giftTypeId).first<GiftType>();
+    sold_count AS soldCount, base_image AS baseImage, collectible_variants_json AS collectibleVariantsJson, is_limited AS isLimited, is_unlimited AS isUnlimited, can_upgrade AS canUpgrade, can_transfer AS canTransfer, can_wear AS canWear, exchange_reward AS exchangeReward, exchange_window_days AS exchangeWindowDays, active FROM gift_types WHERE id = ?`).bind(giftTypeId).first<GiftType>();
   if (!type || type.active !== 1) return fail(c, 404, 'GIFT_NOT_FOUND', 'Gift not found.');
-  if (type.soldCount >= type.maxSupply) return fail(c, 409, 'SOLD_OUT', 'This gift is sold out.');
+  if (type.isUnlimited !== 1 && type.soldCount >= type.maxSupply) return fail(c, 409, 'SOLD_OUT', 'This gift is sold out.');
+  if (type.canTransfer !== 1 && recipient.id !== user.id) return fail(c, 409, 'GIFT_NOT_TRANSFERABLE', 'This gift can only be purchased for your own profile.');
   const giftId = crypto.randomUUID(); const now = new Date().toISOString();
   const result = await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO user_gifts (id, owner_user_id, gift_type_id, serial_number, purchased_at, created_at)
       SELECT ?, ?, g.id, g.sold_count + 1, ?, ? FROM gift_types g JOIN users u ON u.id = ?
-      WHERE g.id = ? AND g.active = 1 AND g.sold_count < g.max_supply AND u.diamond_balance >= g.base_price`).bind(giftId, recipient.id, now, now, user.id, giftTypeId),
+      WHERE g.id = ? AND g.active = 1 AND (g.is_unlimited = 1 OR g.sold_count < g.max_supply) AND u.diamond_balance >= g.base_price`).bind(giftId, recipient.id, now, now, user.id, giftTypeId),
     c.env.DB.prepare(`UPDATE gift_types SET sold_count = sold_count + 1 WHERE id = ? AND EXISTS (SELECT 1 FROM user_gifts WHERE id = ?)`).bind(giftTypeId, giftId),
     c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance - (SELECT base_price FROM gift_types WHERE id = ?)
       WHERE id = ? AND EXISTS (SELECT 1 FROM user_gifts WHERE id = ?)`).bind(giftTypeId, user.id, giftId),
@@ -119,7 +120,7 @@ giftRoutes.post('/gifts/:giftId/buy', async (c) => {
   }
   const gift = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.accent_color AS accentColor,
     ug.is_collectible AS isCollectible, ug.is_public AS isPublic, 0 AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.max_supply AS maxSupply,
-    gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice, NULL AS activeListingId FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = ?`).bind(giftId).first<UserGift>();
+    gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice, gt.is_limited AS isLimited, gt.is_unlimited AS isUnlimited, gt.can_upgrade AS canUpgrade, gt.can_transfer AS canTransfer, gt.can_wear AS canWear, gt.exchange_reward AS exchangeReward, gt.exchange_window_days AS exchangeWindowDays, NULL AS activeListingId FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = ?`).bind(giftId).first<UserGift>();
   const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
   return ok(c, { gift: gift ? giftDto(gift) : null, recipient: recipient.username, balance: balance?.balance ?? 0 }, 201);
 });
@@ -136,13 +137,14 @@ giftRoutes.post('/gifts/:giftId/send', async (c) => {
     AND EXISTS (SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ? AND cm.left_at IS NULL)
     AND EXISTS (SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ? AND cm.left_at IS NULL)`).bind(conversationId, sender.id, recipient.id).first<{ id: string }>();
   if (!dialog) return fail(c, 403, 'CONVERSATION_FORBIDDEN', 'Gift can only be sent in the active direct conversation.');
-  const type = await c.env.DB.prepare('SELECT id, title, base_price AS basePrice, max_supply AS maxSupply, sold_count AS soldCount, base_image AS baseImage FROM gift_types WHERE id = ? AND active = 1').bind(c.req.param('giftId')).first<{ id: string; title: string; basePrice: number; maxSupply: number; soldCount: number; baseImage: string }>();
-  if (!type || type.soldCount >= type.maxSupply) return fail(c, 409, 'SOLD_OUT', 'This gift is sold out.');
+  const type = await c.env.DB.prepare('SELECT id, title, base_price AS basePrice, max_supply AS maxSupply, sold_count AS soldCount, base_image AS baseImage, is_unlimited AS isUnlimited, can_transfer AS canTransfer FROM gift_types WHERE id = ? AND active = 1').bind(c.req.param('giftId')).first<{ id: string; title: string; basePrice: number; maxSupply: number; soldCount: number; baseImage: string; isUnlimited: number; canTransfer: number }>();
+  if (!type || type.canTransfer !== 1) return fail(c, 409, 'GIFT_NOT_TRANSFERABLE', 'This gift cannot be sent to another user.');
+  if (type.isUnlimited !== 1 && type.soldCount >= type.maxSupply) return fail(c, 409, 'SOLD_OUT', 'This gift is sold out.');
   const id = crypto.randomUUID(); const now = new Date().toISOString();
   const result = await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO user_gifts (id, owner_user_id, gift_type_id, serial_number, inscription, purchased_at, created_at)
       SELECT ?, ?, g.id, g.sold_count + 1, ?, ?, ? FROM gift_types g JOIN users s ON s.id = ?
-      WHERE g.id = ? AND g.sold_count < g.max_supply AND s.diamond_balance >= g.base_price`).bind(id, recipient.id, inscription, now, now, sender.id, type.id),
+      WHERE g.id = ? AND (g.is_unlimited = 1 OR g.sold_count < g.max_supply) AND s.diamond_balance >= g.base_price`).bind(id, recipient.id, inscription, now, now, sender.id, type.id),
     c.env.DB.prepare('UPDATE gift_types SET sold_count = sold_count + 1 WHERE id = ? AND EXISTS (SELECT 1 FROM user_gifts WHERE id = ?)').bind(type.id, id),
     c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance - ? WHERE id = ? AND EXISTS (SELECT 1 FROM user_gifts WHERE id = ?)').bind(type.basePrice, sender.id, id),
     c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
@@ -158,8 +160,9 @@ giftRoutes.post('/user-gifts/:id/upgrade', async (c) => {
   const id = c.req.param('id');
   const gift = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.accent_color AS accentColor, ug.is_collectible AS isCollectible, ug.is_public AS isPublic, 0 AS worn,
     ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt, gt.title, gt.max_supply AS maxSupply, gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson,
-    gt.upgrade_price AS upgradePrice, NULL AS activeListingId FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = ? AND ug.owner_user_id = ? AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active')`).bind(id, user.id).first<UserGift & { upgradePrice: number }>();
+    gt.upgrade_price AS upgradePrice, gt.is_limited AS isLimited, gt.is_unlimited AS isUnlimited, gt.can_upgrade AS canUpgrade, gt.can_transfer AS canTransfer, gt.can_wear AS canWear, gt.exchange_reward AS exchangeReward, gt.exchange_window_days AS exchangeWindowDays, NULL AS activeListingId FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = ? AND ug.owner_user_id = ? AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active')`).bind(id, user.id).first<UserGift & { upgradePrice: number }>();
   if (!gift) return fail(c, 404, 'GIFT_NOT_FOUND', 'Gift not found.');
+  if (gift.canUpgrade !== 1) return fail(c, 409, 'GIFT_NOT_UPGRADEABLE', 'This gift cannot be upgraded.');
   if (gift.isCollectible === 1) return fail(c, 409, 'ALREADY_COLLECTIBLE', 'Gift is already collectible.');
   const options = variants(gift.collectibleVariantsJson); if (!options.length) return fail(c, 500, 'GIFT_VARIANTS_UNAVAILABLE', 'Collectible variants are unavailable.');
   const variant = selectCollectibleVariant(options); const accentColor = giftColors[Math.floor(Math.random() * giftColors.length)] ?? '#111111'; const now = new Date().toISOString();
@@ -195,7 +198,7 @@ giftRoutes.delete('/user-gifts/:id/inscription', async (c) => {
 giftRoutes.post('/user-gifts/:id/wear', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const result = await c.env.DB.prepare(`UPDATE users SET worn_gift_id = ? WHERE id = ? AND EXISTS
-    (SELECT 1 FROM user_gifts WHERE id = ? AND owner_user_id = ? AND is_collectible = 1 AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ? AND ml.status = 'active'))`).bind(c.req.param('id'), user.id, c.req.param('id'), user.id, c.req.param('id')).run();
+    (SELECT 1 FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = ? AND ug.owner_user_id = ? AND ug.is_collectible = 1 AND gt.can_wear = 1 AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ? AND ml.status = 'active'))`).bind(c.req.param('id'), user.id, c.req.param('id'), user.id, c.req.param('id')).run();
   if ((result.meta.changes ?? 0) !== 1) return fail(c, 404, 'GIFT_NOT_FOUND', 'Gift not found.');
   return ok(c, { wornGiftId: c.req.param('id') });
 });
@@ -234,6 +237,7 @@ giftRoutes.post('/user-gifts/:id/transfer', async (c) => {
   const result = await c.env.DB.batch([
     c.env.DB.prepare('UPDATE users SET worn_gift_id = NULL WHERE id = ? AND worn_gift_id = ?').bind(user.id, c.req.param('id')),
     c.env.DB.prepare(`UPDATE user_gifts SET owner_user_id = ?, last_transfer_id = ? WHERE id = ? AND owner_user_id = ? AND is_collectible = 1
+      AND EXISTS (SELECT 1 FROM gift_types gt WHERE gt.id = user_gifts.gift_type_id AND gt.can_transfer = 1)
       AND EXISTS (SELECT 1 FROM users WHERE id = ? AND diamond_balance >= 5)
       AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = user_gifts.id AND ml.status = 'active')`).bind(recipient.id, transferId, c.req.param('id'), user.id, user.id),
     c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance - 5 WHERE id = ? AND EXISTS
@@ -252,24 +256,28 @@ giftRoutes.post('/user-gifts/:id/transfer', async (c) => {
 giftRoutes.post('/user-gifts/:id/exchange', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const id = c.req.param('id'); const now = new Date().toISOString(); const exchangeId = crypto.randomUUID();
+  const exchangeable = await c.env.DB.prepare(`SELECT gt.exchange_reward AS reward FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id
+    WHERE ug.id = ? AND ug.owner_user_id = ? AND ug.is_collectible = 0 AND gt.exchange_reward > 0
+      AND (gt.exchange_window_days IS NULL OR ug.purchased_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-' || gt.exchange_window_days || ' days'))
+      AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active')`).bind(id, user.id).first<{ reward: number }>();
+  if (!exchangeable) return fail(c, 409, 'GIFT_NOT_EXCHANGEABLE', 'This gift cannot be exchanged.');
   const result = await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO gift_exchanges (id, gift_id, user_id, reward, created_at)
-      SELECT ?, ug.id, ?, 21, ? FROM user_gifts ug WHERE ug.id = ? AND ug.owner_user_id = ? AND ug.is_collectible = 0
-      AND ug.purchased_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days')
-      AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active')`).bind(exchangeId, user.id, now, id, user.id),
+      SELECT ?, ug.id, ?, ?, ? FROM user_gifts ug WHERE ug.id = ? AND ug.owner_user_id = ? AND ug.is_collectible = 0
+      AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active')`).bind(exchangeId, user.id, exchangeable.reward, now, id, user.id),
     c.env.DB.prepare(`UPDATE gift_types SET sold_count = MAX(0, sold_count - 1) WHERE id =
       (SELECT gift_type_id FROM user_gifts WHERE id = ?) AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
       .bind(id, exchangeId),
     c.env.DB.prepare('DELETE FROM user_gifts WHERE id = ? AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)').bind(id, exchangeId),
-    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance + 21 WHERE id = ? AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
-      .bind(user.id, exchangeId),
+    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance + ? WHERE id = ? AND EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
+      .bind(exchangeable.reward, user.id, exchangeId),
     c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
-      SELECT ?, ?, 21, 'credit', 'gift_exchange', ?, ? WHERE EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
-      .bind(crypto.randomUUID(), user.id, id, now, exchangeId),
+      SELECT ?, ?, ?, 'credit', 'gift_exchange', ?, ? WHERE EXISTS (SELECT 1 FROM gift_exchanges WHERE id = ?)`)
+      .bind(crypto.randomUUID(), user.id, exchangeable.reward, id, now, exchangeId),
   ]);
-  if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'GIFT_NOT_EXCHANGEABLE', 'Only an unlisted regular gift purchased within 7 days can be exchanged.');
+  if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'GIFT_NOT_EXCHANGEABLE', 'This gift cannot be exchanged.');
   const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
-  return ok(c, { exchanged: true, reward: 21, balance: balance?.balance ?? 0 });
+  return ok(c, { exchanged: true, reward: exchangeable.reward, balance: balance?.balance ?? 0 });
 });
 
 giftRoutes.post('/user-gifts/:id/list', async (c) => {
@@ -283,6 +291,7 @@ giftRoutes.post('/user-gifts/:id/list', async (c) => {
       c.env.DB.prepare('UPDATE users SET worn_gift_id = NULL WHERE id = ? AND worn_gift_id = ?').bind(user.id, c.req.param('id')),
       c.env.DB.prepare(`INSERT INTO gift_market_listings (id, gift_id, seller_user_id, price, status, created_at)
         SELECT ?, ug.id, ?, ?, 'active', ? FROM user_gifts ug WHERE ug.id = ? AND ug.owner_user_id = ? AND ug.is_collectible = 1
+          AND EXISTS (SELECT 1 FROM gift_types gt WHERE gt.id = ug.gift_type_id AND gt.can_transfer = 1)
           AND NOT EXISTS (SELECT 1 FROM gift_market_listings ml WHERE ml.gift_id = ug.id AND ml.status = 'active')`).bind(id, user.id, price, now, c.req.param('id'), user.id),
     ]);
     if ((result[1]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'GIFT_UNAVAILABLE', 'This gift cannot be listed.');
