@@ -1,4 +1,4 @@
-import { ArrowLeft, BadgeCheck, BatteryMedium, BellRing, Camera, ChevronRight, Database, LockKeyhole, Monitor, Moon, RefreshCw, Save, Send, ShieldCheck, Sun, Trash2, Unlink, UserPlus, Volume2 } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, BatteryMedium, BellRing, Camera, ChevronRight, Database, Gift, LockKeyhole, Monitor, Moon, QrCode, RefreshCw, Save, Send, ShieldCheck, Sun, Trash2, Unlink, UserPlus, Volume2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest, mediaUrl, setAccessToken } from '../api/client';
@@ -8,6 +8,8 @@ import { getThemePreference, setThemePreference, type ThemePreference } from '..
 import { PushNotificationSettings } from '../components/PushNotificationSettings';
 import { AuthorNotificationSettings } from '../components/AuthorNotificationSettings';
 import { applyPowerSavingSettings, type PowerSavingSettings } from '../performance';
+import { ProfileQrModal } from '../components/ProfileQrModal';
+import { DiamondIcon } from '../components/DiamondIcon';
 
 export function SettingsPage() {
   const { user, refresh, switchAccount } = useAuth();
@@ -40,6 +42,7 @@ export function SettingsPage() {
   const [powerSaving, setPowerSaving] = useState<PowerSavingSettings>({ powerSavingEnabled: false, blockImagesEnabled: false });
   const [powerSavingPending, setPowerSavingPending] = useState(false);
   const [siteRefreshPending, setSiteRefreshPending] = useState(false);
+  const [showQr, setShowQr] = useState(false);
   const [deleteUsername, setDeleteUsername] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
   const [deletePending, setDeletePending] = useState(false);
@@ -227,8 +230,13 @@ export function SettingsPage() {
   ] as const;
   if (!settingsCategory) return <section className="surface-page narrow-page settings-page settings-directory">
     <header className="page-heading"><div><p className="eyebrow">Tyson</p><h1>Настройки</h1></div></header>
-    <button className="settings-my-profile" type="button" onClick={() => navigate(`/profile/${user.username}`)}><span className="avatar">{avatar ? <img className="avatar-image" src={avatar} alt="" /> : user.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{user.displayName}</strong><small>@{user.username}</small></span><b>Мой профиль</b><ChevronRight /></button>
+    <section className="settings-profile-header" aria-label="Ваш профиль">
+      <button className="settings-profile-summary" type="button" onClick={() => navigate(`/profile/${user.username}`)}><span className="avatar">{avatar ? <img className="avatar-image" src={avatar} alt="" /> : user.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{user.displayName}</strong><small>@{user.username}</small></span><ChevronRight /></button>
+      <div className="settings-profile-actions"><button type="button" onClick={() => setShowQr(true)}><QrCode size={17} />QR-код</button><button type="button" onClick={() => navigate('/gifts')}><DiamondIcon size={17} />Алмазы</button><button type="button" onClick={() => navigate('/gifts')}><Gift size={17} />Подарить</button></div>
+      <button className="settings-my-profile" type="button" onClick={() => navigate(`/profile/${user.username}`)}><b>Мой профиль</b><ChevronRight /></button>
+    </section>
     <nav className="settings-categories" aria-label="Разделы настроек">{categories.map(([target, icon, Icon, label, state]) => <button key={`${target}-${label}`} type="button" onClick={() => navigate(`/settings/${target}`)}><i className={`settings-category-icon ${icon}`}><Icon size={21} /></i><span>{label}</span>{state && <small>{state}</small>}<ChevronRight /></button>)}</nav>
+    {showQr && <ProfileQrModal username={user.username} onClose={() => setShowQr(false)} />}
   </section>;
 
   const sectionTitle = settingsCategory === 'notifications' ? 'Уведомления и звуки' : settingsCategory === 'privacy' ? 'Конфиденциальность' : settingsCategory === 'data' ? 'Данные и память' : settingsCategory === 'power' ? 'Энергосбережение' : 'Профиль';
