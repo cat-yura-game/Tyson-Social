@@ -87,6 +87,22 @@ export function ProfilePage() {
     setSelectedGift(result.gift);
     window.dispatchEvent(new Event('diamonds-changed'));
   };
+  const setGiftVisibility = async () => {
+    if (!selectedGift) return;
+    const result = await apiRequest<{ isPublic: boolean }>(`/user-gifts/${selectedGift.id}/public`, { method: 'PUT', body: JSON.stringify({ isPublic: !selectedGift.isPublic }) });
+    const updated = { ...selectedGift, isPublic: result.isPublic };
+    setGifts((current) => current.map((gift) => gift.id === updated.id ? updated : gift));
+    setSelectedGift(updated);
+  };
+  const sellGift = async () => {
+    if (!selectedGift) return;
+    const raw = window.prompt('Цена продажи в алмазах');
+    if (raw === null) return;
+    const price = Number(raw);
+    if (!Number.isInteger(price) || price < 1) return;
+    await apiRequest(`/user-gifts/${selectedGift.id}/list`, { method: 'POST', body: JSON.stringify({ price }) });
+    setSelectedGift(null);
+  };
   return <section className="profile-page">
     <div className="profile-cover" />
     <header className="profile-header">
@@ -98,7 +114,7 @@ export function ProfilePage() {
     </header>
     <div className="profile-tabs" role="tablist" aria-label="Разделы профиля"><button className={profileTab === 'posts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'posts'} onClick={() => setProfileTab('posts')}>Публикации</button><button className={profileTab === 'gifts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'gifts'} onClick={() => setProfileTab('gifts')}><Gift size={17} />Подарки{gifts.length > 0 && <span>{gifts.length}</span>}</button></div>
     {profileTab === 'posts' ? <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setPosts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div> : <section className="profile-gift-gallery" aria-label="Подарки профиля">{gifts.length ? gifts.map((gift) => <button className={gift.worn ? 'profile-gift-tile worn' : 'profile-gift-tile'} style={{ '--gift-accent': gift.accentColor } as CSSProperties} type="button" onClick={() => setSelectedGift(gift)} key={gift.id}><img src={gift.image} alt={gift.title} />{gift.worn && <span>Надет</span>}</button>) : <div className="empty-profile">У пользователя пока нет подарков.</div>}</section>}
-    {selectedGift && <GiftDetailsModal gift={selectedGift} owner={{ username: profile.username, displayName: profile.displayName, avatarKey: profile.avatarKey }} mine={isOwner} onUpgrade={isOwner ? upgradeGift : undefined} onExchange={isOwner ? () => void exchangeGift() : undefined} onClose={() => setSelectedGift(null)} />}
+    {selectedGift && <GiftDetailsModal gift={selectedGift} owner={{ username: profile.username, displayName: profile.displayName, avatarKey: profile.avatarKey }} mine={isOwner} onUpgrade={isOwner ? upgradeGift : undefined} onVisibility={isOwner ? () => void setGiftVisibility() : undefined} onSell={isOwner ? () => void sellGift() : undefined} onExchange={isOwner ? () => void exchangeGift() : undefined} onClose={() => setSelectedGift(null)} />}
     {showQr && <ProfileQrModal username={profile.username} onClose={() => setShowQr(false)} />}
   </section>;
 }
