@@ -1,4 +1,4 @@
-import { BadgeCheck, Heart, MessageCircle, MoreHorizontal, Share2, Sparkles, ThumbsDown, Trash2 } from 'lucide-react';
+import { BadgeCheck, Diamond, Heart, MessageCircle, MoreHorizontal, Share2, Sparkles, ThumbsDown, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
@@ -11,6 +11,8 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
   const navigate = useNavigate();
   const [reaction, setReaction] = useState<Post['viewerReaction']>(post.viewerReaction);
   const [likes, setLikes] = useState(post.likeCount);
+  const [diamondCount, setDiamondCount] = useState(post.diamondCount);
+  const [diamondGiven, setDiamondGiven] = useState(Boolean(post.viewerDiamondGiven));
   const [pending, setPending] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleted, setDeleted] = useState(false);
@@ -47,6 +49,18 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
     }
   };
 
+  const giveDiamond = async () => {
+    if (!user) { navigate('/login'); return; }
+    if (pending || diamondGiven || user.id === post.authorId) return;
+    setPending(true);
+    try {
+      const result = await apiRequest<{ diamondCount: number; balance: number }>(`/posts/${post.id}/diamond`, { method: 'POST' });
+      setDiamondCount(result.diamondCount); setDiamondGiven(true);
+      window.dispatchEvent(new Event('diamonds-changed'));
+    } catch (error) { window.alert(error instanceof Error ? error.message : 'Не удалось отправить алмаз.'); }
+    finally { setPending(false); }
+  };
+
   const summarize = async () => {
     if (summary) { setSummary(null); return; }
     if (summaryLoading) return;
@@ -80,6 +94,7 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
       <footer className="post-actions">
         <button className={reaction === 'like' ? 'reaction-active' : ''} disabled={pending} type="button" aria-label="Нравится" onClick={() => void react('like')}><Heart size={19} /><span>{likes}</span></button>
         <button className={reaction === 'dislike' ? 'reaction-active' : ''} disabled={pending} type="button" aria-label="Не показывать похожее" onClick={() => void react('dislike')}><ThumbsDown size={19} /></button>
+        <button className={diamondGiven ? 'diamond-reaction reaction-active' : 'diamond-reaction'} disabled={pending || diamondGiven || user?.id === post.authorId} type="button" aria-label="Отправить автору один алмаз" onClick={() => void giveDiamond()}><Diamond size={19} /><span>{diamondCount}</span></button>
         <Link to={`/post/${post.id}`} aria-label={`${post.commentCount} комментариев`}><MessageCircle size={19} /><span>{post.commentCount}</span></Link>
         <button type="button" aria-label="Отправить публикацию в Messenger" onClick={() => navigate(user ? `/messages?sharePost=${post.id}` : '/login')}><Share2 size={19} /></button>
         {post.body.length > 500 && <button className="ai-action" type="button" disabled={summaryLoading} onClick={() => void summarize()}><Sparkles size={17} /><span>{summaryLoading ? 'Сокращаем…' : summary ? 'Скрыть краткое' : 'Коротко с AI'}</span></button>}

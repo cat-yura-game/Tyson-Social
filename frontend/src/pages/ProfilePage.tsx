@@ -11,6 +11,7 @@ type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarK
   followingCount: number;
   viewerFollowing: boolean;
 };
+type ProfileGift = { id: string; title: string; serialNumber: number; maxSupply: number; image: string; accentColor: string; worn: boolean; isCollectible: boolean };
 
 export function ProfilePage() {
   const { username = '' } = useParams();
@@ -18,6 +19,7 @@ export function ProfilePage() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [gifts, setGifts] = useState<ProfileGift[]>([]);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
   const [openingChat, setOpeningChat] = useState(false);
@@ -29,7 +31,8 @@ export function ProfilePage() {
     Promise.all([
       apiRequest<{ user: PublicProfile }>(`/users/${encodeURIComponent(username)}`),
       apiRequest<{ posts: Post[] }>(`/users/${encodeURIComponent(username)}/posts`),
-    ]).then(([profileData, postsData]) => { setProfile(profileData.user); setPosts(postsData.posts); })
+      apiRequest<{ gifts: ProfileGift[] }>(`/users/${encodeURIComponent(username)}/gifts`),
+    ]).then(([profileData, postsData, giftsData]) => { setProfile(profileData.user); setPosts(postsData.posts); setGifts(giftsData.gifts); })
       .catch(() => setMissing(true)).finally(() => setLoading(false));
   }, [username]);
 
@@ -71,9 +74,10 @@ export function ProfilePage() {
       {avatar ? <img className="profile-avatar profile-avatar-image" src={avatar} alt="" /> : <div className="avatar profile-avatar">{profile.displayName.slice(0, 1).toUpperCase()}</div>}
       <div className="profile-controls">{isOwner && <Link className="secondary-button" to="/settings">Редактировать профиль</Link>}{user && !isOwner && <><button className={profile.viewerFollowing ? 'secondary-button follow-button following' : 'secondary-button follow-button'} type="button" disabled={followPending} onClick={() => void toggleFollow()}>{profile.viewerFollowing ? <UserCheck size={17} /> : <UserPlus size={17} />}{followPending ? 'Подождите…' : profile.viewerFollowing ? 'Вы подписаны' : 'Подписаться'}</button><button className="secondary-button message-profile-button" type="button" disabled={openingChat} onClick={() => void openChat()}><MessageCircle size={17} />{openingChat ? 'Открываем…' : 'Написать'}</button></>}</div>
       {followError && <p className="profile-follow-error form-error" role="alert">{followError}</p>}
-      <div className="profile-copy"><h1>{profile.displayName}{profile.verified && <BadgeCheck className="verified" size={21} aria-label="Подтверждённый аккаунт" />}</h1><p>@{profile.username}</p><p className="profile-bio">{profile.bio || 'Пользователь пока ничего о себе не рассказал.'}</p><span><CalendarDays size={16} />В Tyson с {joined}</span></div>
+      <div className="profile-copy"><h1>{profile.displayName}{profile.verified && <BadgeCheck className="verified" size={21} aria-label="Подтверждённый аккаунт" />}{gifts.find((gift) => gift.worn) && <img className="profile-worn-gift" src={gifts.find((gift) => gift.worn)?.image} alt="Надетый подарок" />}</h1><p>@{profile.username}</p><p className="profile-bio">{profile.bio || 'Пользователь пока ничего о себе не рассказал.'}</p><span><CalendarDays size={16} />В Tyson с {joined}</span></div>
       <div className="profile-stats"><span><strong>{posts.length}</strong> публикаций</span><span><strong>{profile.followerCount}</strong> подписчиков</span><span><strong>{profile.followingCount}</strong> подписок</span></div>
     </header>
+    {gifts.length > 0 && <section className="profile-gifts"><div className="section-label">Подарки</div><div className="profile-gift-list">{gifts.map((gift) => <article className={gift.worn ? 'profile-gift worn' : 'profile-gift'} style={{ borderColor: gift.accentColor }} key={gift.id}><img src={gift.image} alt={gift.title} /><span>{gift.title}<small>#{gift.serialNumber} / {gift.maxSupply}</small></span></article>)}</div></section>}
     <div className="section-label">Публикации</div>
     <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setPosts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div>
   </section>;

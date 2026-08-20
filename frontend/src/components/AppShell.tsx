@@ -24,7 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: '/settings', label: 'Настройки', icon: Settings },
     ...(user?.role === 'admin' ? [{ to: '/admin', label: 'Админ-панель', icon: ShieldCheck }] : []),
   ];
-  useEffect(() => { if (!user) { setDiamonds(null); return; } void apiRequest<{ balance: number }>('/diamonds/balance').then(({ balance }) => setDiamonds(balance)).catch(() => setDiamonds(null)); }, [user, location.pathname]);
+  useEffect(() => { if (!user) { setDiamonds(null); return; } const refresh = () => { void apiRequest<{ balance: number }>('/diamonds/balance').then(({ balance }) => setDiamonds(balance)).catch(() => setDiamonds(null)); }; refresh(); window.addEventListener('diamonds-changed', refresh); return () => window.removeEventListener('diamonds-changed', refresh); }, [user, location.pathname]);
 
   const handleLogout = async () => {
     await logout();

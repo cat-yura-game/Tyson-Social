@@ -69,7 +69,9 @@ const POST_SELECT = `SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.
   p.published_at AS publishedAt, p.updated_at AS updatedAt,
   u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
   (SELECT pm.storage_key FROM post_media pm WHERE pm.post_id = p.id ORDER BY pm.sort_order LIMIT 1) AS mediaKey,
-  COALESCE((SELECT reaction FROM post_reactions r WHERE r.post_id = p.id AND r.user_id = ?), '') AS viewerReaction
+  COALESCE((SELECT reaction FROM post_reactions r WHERE r.post_id = p.id AND r.user_id = ?), '') AS viewerReaction,
+  COALESCE((SELECT SUM(amount) FROM post_diamond_reactions dr WHERE dr.post_id = p.id), 0) AS diamondCount,
+  EXISTS(SELECT 1 FROM post_diamond_reactions dr WHERE dr.post_id = p.id AND dr.sender_user_id = ?) AS viewerDiamondGiven
   FROM posts p JOIN users u ON u.id = p.author_user_id`;
 
 contentRoutes.get('/feed', async (c) => {
@@ -82,7 +84,7 @@ contentRoutes.get('/feed', async (c) => {
   const followingFilter = view === 'following' ? ` AND EXISTS (SELECT 1 FROM user_follows f
     WHERE f.follower_user_id = ? AND f.followed_user_id = p.author_user_id)` : '';
   const statement = c.env.DB.prepare(`${POST_SELECT} WHERE p.status = 'published'${followingFilter}${topicFilter} ORDER BY p.published_at DESC LIMIT 50`);
-  const bindings = [viewerId, ...(view === 'following' ? [viewerId] : []), ...(topic ? [topic] : [])];
+  const bindings = [viewerId, viewerId, ...(view === 'following' ? [viewerId] : []), ...(topic ? [topic] : [])];
   const rows = await statement.bind(...bindings).all();
   let posts = rows.results as unknown as FeedCandidate[];
   let strategy: 'recent' | 'scoring' | 'gemini' = 'recent';
@@ -136,7 +138,7 @@ contentRoutes.get('/search', async (c) => {
 
 contentRoutes.get('/posts/:id', async (c) => {
   const viewerId = c.get('authUser')?.id ?? '';
-  const row = await c.env.DB.prepare(`${POST_SELECT} WHERE p.id = ? AND p.status = 'published'`).bind(viewerId, c.req.param('id')).first();
+  const row = await c.env.DB.prepare(`${POST_SELECT} WHERE p.id = ? AND p.status = 'published'`).bind(viewerId, viewerId, c.req.param('id')).first();
   if (!row) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
   if (viewerId) {
     await c.env.DB.prepare(`INSERT INTO recommendation_events (id, user_id, post_id, event_type, created_at)
@@ -253,6 +255,45 @@ contentRoutes.put('/posts/:id/reaction', async (c) => {
   await c.env.DB.batch(statements);
   const counts = await c.env.DB.prepare(`SELECT like_count AS likeCount FROM posts WHERE id = ?`).bind(c.req.param('id')).first();
   return ok(c, { reaction: input.reaction, ...counts });
+});
+
+contentRoutes.post('/posts/:id/diamond', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  const postId = c.req.param('id');
+  const post = await c.env.DB.prepare("SELECT author_user_id AS authorId FROM posts WHERE id = ? AND status = 'published'").bind(postId).first<{ authorId: string }>();
+  if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
+  if (post.authorId === auth.user.id) return fail(c, 422, 'SELF_DIAMOND', 'You cannot give diamonds to your own post.');
+  const now = new Date().toISOString();
+  const result = await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO post_diamond_reactions (post_id, sender_user_id, recipient_user_id, amount, created_at)
+      SELECT p.id, ?, p.author_user_id, 1, ? FROM posts p JOIN users s ON s.id = ?
+      WHERE p.id = ? AND p.status = 'published' AND p.author_user_id != ? AND s.diamond_balance >= 1
+        AND NOT EXISTS (SELECT 1 FROM post_diamond_reactions d WHERE d.post_id = p.id AND d.sender_user_id = ?)`)
+      .bind(auth.user.id, now, auth.user.id, postId, auth.user.id, auth.user.id),
+    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance - 1 WHERE id = ? AND EXISTS
+      (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ?)`)
+      .bind(auth.user.id, postId, auth.user.id, now),
+    c.env.DB.prepare(`UPDATE users SET diamond_balance = diamond_balance + 1 WHERE id = ? AND EXISTS
+      (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ?)`)
+      .bind(post.authorId, postId, auth.user.id, now),
+    c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
+      SELECT ?, ?, -1, 'debit', 'post_diamond_sent', ?, ? WHERE EXISTS
+      (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ?)`)
+      .bind(crypto.randomUUID(), auth.user.id, postId, now, postId, auth.user.id, now),
+    c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
+      SELECT ?, ?, 1, 'credit', 'post_diamond_received', ?, ? WHERE EXISTS
+      (SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ? AND created_at = ?)`)
+      .bind(crypto.randomUUID(), post.authorId, postId, now, postId, auth.user.id, now),
+  ]);
+  if ((result[0]?.meta.changes ?? 0) !== 1) {
+    const already = await c.env.DB.prepare('SELECT 1 FROM post_diamond_reactions WHERE post_id = ? AND sender_user_id = ?').bind(postId, auth.user.id).first();
+    return fail(c, 409, already ? 'ALREADY_GAVE_DIAMOND' : 'INSUFFICIENT_DIAMONDS', already ? 'You already gave a diamond to this post.' : 'Not enough diamonds.');
+  }
+  const [count, balance] = await Promise.all([
+    c.env.DB.prepare('SELECT COALESCE(SUM(amount), 0) AS diamondCount FROM post_diamond_reactions WHERE post_id = ?').bind(postId).first<{ diamondCount: number }>(),
+    c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(auth.user.id).first<{ balance: number }>(),
+  ]);
+  return ok(c, { diamondCount: count?.diamondCount ?? 0, balance: balance?.balance ?? 0, given: true });
 });
 
 contentRoutes.get('/posts/:id/comments', async (c) => {

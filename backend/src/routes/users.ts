@@ -271,10 +271,12 @@ userRoutes.get('/:username/posts', async (c) => {
     p.published_at AS publishedAt, p.updated_at AS updatedAt, u.id AS authorId, u.username,
     u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
     (SELECT pm.storage_key FROM post_media pm WHERE pm.post_id = p.id ORDER BY pm.sort_order LIMIT 1) AS mediaKey,
-    COALESCE((SELECT reaction FROM post_reactions r WHERE r.post_id = p.id AND r.user_id = ?), '') AS viewerReaction
+    COALESCE((SELECT reaction FROM post_reactions r WHERE r.post_id = p.id AND r.user_id = ?), '') AS viewerReaction,
+    COALESCE((SELECT SUM(amount) FROM post_diamond_reactions d WHERE d.post_id = p.id), 0) AS diamondCount,
+    EXISTS(SELECT 1 FROM post_diamond_reactions d WHERE d.post_id = p.id AND d.sender_user_id = ?) AS viewerDiamondGiven
     FROM posts p JOIN users u ON u.id = p.author_user_id
     WHERE u.username = ? COLLATE NOCASE AND p.status = 'published'
-    ORDER BY p.published_at DESC LIMIT 100`).bind(viewerId, username).all();
+    ORDER BY p.published_at DESC LIMIT 100`).bind(viewerId, viewerId, username).all();
   return ok(c, { posts: rows.results });
 });
 

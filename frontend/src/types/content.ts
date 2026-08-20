@@ -13,6 +13,8 @@ export interface Post {
   mediaKey: string | null;
   verified: number | boolean;
   viewerReaction: '' | 'like' | 'dislike';
+  diamondCount: number;
+  viewerDiamondGiven: number | boolean;
 }
 
 export interface Comment {

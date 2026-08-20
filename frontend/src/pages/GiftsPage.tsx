@@ -1,9 +1,9 @@
 import { Diamond, Gift, Sparkles } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { ApiError, apiRequest } from '../api/client';
 
 type GiftType = { id: string; title: string; basePrice: number; upgradePrice: number; maxSupply: number; soldCount: number; remaining: number; baseImage: string; active: boolean };
-type UserGift = { id: string; title: string; serialNumber: number; maxSupply: number; isCollectible: boolean; variant: string | null; image: string; upgradePrice: number; collectibleVariantNumber: number | null };
+type UserGift = { id: string; title: string; serialNumber: number; maxSupply: number; isCollectible: boolean; accentColor: string; worn: boolean; variant: string | null; image: string; upgradePrice: number; collectibleVariantNumber: number | null };
 
 export function GiftsPage() {
   const [balance, setBalance] = useState(0);
@@ -30,10 +30,30 @@ export function GiftsPage() {
     catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось улучшить подарок.'); }
     finally { setPending(null); }
   };
+  const wear = async (gift: UserGift) => {
+    setPending(gift.id); setError(null);
+    try { await apiRequest(`/user-gifts/${gift.id}/wear`, { method: 'POST' }); await load(); }
+    catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось надеть подарок.'); }
+    finally { setPending(null); }
+  };
+  const removeWear = async (gift: UserGift) => {
+    setPending(gift.id); setError(null);
+    try { await apiRequest('/users/me/worn-gift', { method: 'DELETE' }); await load(); }
+    catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось снять подарок.'); }
+    finally { setPending(null); }
+  };
+  const transfer = async (gift: UserGift) => {
+    const recipientUsername = window.prompt('Кому передать подарок? Введите @username без @.')?.trim().replace(/^@/, '');
+    if (!recipientUsername) return;
+    setPending(gift.id); setError(null);
+    try { await apiRequest(`/user-gifts/${gift.id}/transfer`, { method: 'POST', body: JSON.stringify({ recipientUsername }) }); await load(); }
+    catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось передать подарок.'); }
+    finally { setPending(null); }
+  };
   return <section className="gifts-page">
     <header className="gifts-hero"><div><p className="eyebrow">Цифровая коллекция Tyson</p><h1>Подарки</h1><p>Ограниченные экземпляры, которые можно сделать collectible.</p></div><div className="diamond-balance"><Diamond />{balance}</div></header>
     {error && <p className="form-error" role="alert">{error}</p>}
     <h2 className="gifts-title">Магазин</h2><div className="gift-shop-grid">{types.map((gift) => <article className="gift-card" key={gift.id}><img src={gift.baseImage} alt={gift.title} /><div><h3>{gift.title}</h3><p><Diamond size={15} />{gift.basePrice}</p><small>{gift.remaining ? `Осталось: ${gift.remaining} / ${gift.maxSupply}` : 'Распродано'}</small><button type="button" disabled={!gift.remaining || pending !== null} onClick={() => void buy(gift)}>{gift.remaining ? pending === gift.id ? 'Покупаем…' : 'Купить' : 'Распродано'}</button></div></article>)}</div>
-    <h2 className="gifts-title">Моя коллекция</h2><div className="gift-collection">{owned.length ? owned.map((gift) => <article className={gift.isCollectible ? 'owned-gift collectible' : 'owned-gift'} key={gift.id}><img src={gift.image} alt={gift.title} /><div><h3>{gift.title}</h3><p>Serial #{gift.serialNumber} / {gift.maxSupply}</p>{gift.isCollectible ? <><strong><Sparkles size={15} />Collectible</strong><small>Variant #{gift.collectibleVariantNumber}</small></> : <button type="button" disabled={pending !== null} onClick={() => void upgrade(gift)}><Gift size={16} />Улучшить — {gift.upgradePrice} 💎</button>}</div></article>) : <p className="empty-profile">Здесь появятся купленные подарки.</p>}</div>
+    <h2 className="gifts-title">Моя коллекция</h2><div className="gift-collection">{owned.length ? owned.map((gift) => <article className={gift.isCollectible ? 'owned-gift collectible' : 'owned-gift'} style={{ '--gift-accent': gift.accentColor } as CSSProperties} key={gift.id}><img src={gift.image} alt={gift.title} /><div><h3>{gift.title}{gift.worn && <span className="worn-gift-label">Надет</span>}</h3><p>Serial #{gift.serialNumber} / {gift.maxSupply}</p>{gift.isCollectible ? <><strong><Sparkles size={15} />Collectible</strong><small>Variant #{gift.collectibleVariantNumber}</small></> : <button type="button" disabled={pending !== null} onClick={() => void upgrade(gift)}><Gift size={16} />Улучшить — {gift.upgradePrice} 💎</button>}<details className="gift-menu"><summary>•••</summary><div>{gift.worn ? <button type="button" disabled={pending !== null} onClick={() => void removeWear(gift)}>Снять</button> : <button type="button" disabled={pending !== null} onClick={() => void wear(gift)}>Надеть</button>}<button type="button" disabled={pending !== null} onClick={() => void transfer(gift)}>Передать</button></div></details></div></article>) : <p className="empty-profile">Здесь появятся купленные подарки.</p>}</div>
   </section>;
 }
