@@ -1,8 +1,8 @@
-import { Bell, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { Bell, Diamond, Gift, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
-import { mediaUrl } from '../api/client';
+import { apiRequest, mediaUrl } from '../api/client';
 import { Brand } from './Brand';
 import { SearchDialog } from './SearchDialog';
 import { TrendsCard } from './TrendsCard';
@@ -12,16 +12,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [showSearch, setShowSearch] = useState(false);
+  const [diamonds, setDiamonds] = useState<number | null>(null);
   const mobileImmersive = location.pathname === '/ai' || location.pathname === '/messages';
   const profilePath = user ? `/profile/${user.username}` : '/login';
   const navItems = [
     { to: '/', label: 'Главная', icon: Home, end: true },
     { to: '/messages', label: 'Сообщения', icon: MessageCircle },
     { to: '/ai', label: 'AI', icon: Sparkles },
+    ...(user ? [{ to: '/gifts', label: 'Подарки', icon: Gift }] : []),
     { to: profilePath, label: user ? 'Профиль' : 'Войти', icon: user ? UserRound : LogIn },
     { to: '/settings', label: 'Настройки', icon: Settings },
     ...(user?.role === 'admin' ? [{ to: '/admin', label: 'Админ-панель', icon: ShieldCheck }] : []),
   ];
+  useEffect(() => { if (!user) { setDiamonds(null); return; } void apiRequest<{ balance: number }>('/diamonds/balance').then(({ balance }) => setDiamonds(balance)).catch(() => setDiamonds(null)); }, [user, location.pathname]);
 
   const handleLogout = async () => {
     await logout();
@@ -37,6 +40,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {navItems.map(({ to, label, icon: Icon, end }) => <NavLink key={`${to}-${label}`} to={to} end={end} className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}><Icon size={21} strokeWidth={1.9} /><span>{label}</span></NavLink>)}
         </nav>
         <NavLink className="create-button" to={user ? '/create' : '/login'}><Plus size={20} />Создать пост</NavLink>
+        {diamonds !== null && <NavLink className="sidebar-diamonds" to="/gifts"><Diamond size={17} />{diamonds}</NavLink>}
         {user ? (
           <div className="sidebar-profile">
             <span className="avatar avatar-small">{user.avatarKey ? <img className="avatar-image" src={mediaUrl(user.avatarKey) ?? ''} alt="" /> : user.displayName.slice(0, 1).toUpperCase()}</span>
