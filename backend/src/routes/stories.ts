@@ -11,6 +11,7 @@ import type { AppVariables, Env } from '../types';
 import { base64Encode } from '../security/encoding';
 import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
 import { uploadLimitForUser } from '../services/upload-limits';
+import { completeDailyTask } from '../services/daily-tasks';
 
 const STORY_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
@@ -76,6 +77,7 @@ storyRoutes.post('/', async (c) => {
     await storage.delete(storageKey);
     throw error;
   }
+  await completeDailyTask(c.env, user.id, 'story');
   return ok(c, { story: { id, storageKey, mediaType, contentType, createdAt: createdAt.toISOString(), expiresAt: expiresAt.toISOString() } }, 201);
 });
 

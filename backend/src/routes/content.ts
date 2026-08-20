@@ -11,6 +11,7 @@ import { assertImageSignature, assertValidMedia, createMediaKey, KvMediaStorage,
 import { base64Encode } from '../security/encoding';
 import { moderatePublicContent } from '../services/moderation-service';
 import { uploadLimitForUser } from '../services/upload-limits';
+import { completeDailyTask } from '../services/daily-tasks';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const contentRoutes = new Hono<App>();
@@ -176,6 +177,7 @@ contentRoutes.post('/posts', async (c) => {
     throw error;
   }
   if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Publication was blocked by safety checks.');
+  if (status === 'published') await completeDailyTask(c.env, auth.user.id, 'post');
   return ok(c, { id: postId, status }, 201);
 });
 
@@ -341,6 +343,7 @@ contentRoutes.post('/posts/:id/comments', async (c) => {
     c.env.DB.prepare(`UPDATE posts SET comment_count = comment_count + ? WHERE id = ?`).bind(status === 'published' ? 1 : 0, c.req.param('id')),
     c.env.DB.prepare(`INSERT INTO recommendation_events (id, user_id, post_id, event_type, created_at) VALUES (?, ?, ?, 'comment', ?)`).bind(crypto.randomUUID(), auth.user.id, c.req.param('id'), now),
   ]);
+  if (status === 'published') await completeDailyTask(c.env, auth.user.id, 'comment');
   return ok(c, { id, status }, 201);
 });
 

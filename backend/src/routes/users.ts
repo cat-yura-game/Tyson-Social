@@ -288,9 +288,16 @@ userRoutes.put('/:username/follow', async (c) => {
   const target = await findUserByUsername(c.env.DB, username);
   if (!target) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
   if (target.id === viewer.id) return fail(c, 422, 'SELF_FOLLOW', 'You cannot follow yourself.');
-  await c.env.DB.prepare(`INSERT INTO user_follows (follower_user_id, followed_user_id, created_at)
+  const follow = await c.env.DB.prepare(`INSERT INTO user_follows (follower_user_id, followed_user_id, created_at)
     VALUES (?, ?, ?) ON CONFLICT(follower_user_id, followed_user_id) DO NOTHING`)
     .bind(viewer.id, target.id, new Date().toISOString()).run();
+  const rewardId = crypto.randomUUID(); const now = new Date().toISOString();
+  const reward = (follow.meta.changes ?? 0) === 1 ? await c.env.DB.prepare(`INSERT OR IGNORE INTO follow_reward_claims (follower_user_id, followed_user_id, rewarded_at) VALUES (?, ?, ?)`)
+    .bind(viewer.id, target.id, now).run() : null;
+  if ((reward?.meta.changes ?? 0) === 1) await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance + 2 WHERE id = ?').bind(target.id),
+    c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at) VALUES (?, ?, 2, 'credit', 'first_follow_reward', ?, ?)`).bind(rewardId, target.id, viewer.id, now),
+  ]);
   const count = await c.env.DB.prepare('SELECT COUNT(*) AS followerCount FROM user_follows WHERE followed_user_id = ?')
     .bind(target.id).first<{ followerCount: number }>();
   return ok(c, { following: true, followerCount: count?.followerCount ?? 0 });
