@@ -1,7 +1,7 @@
 export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/u, '') ?? 'http://localhost:8787';
 
 export function mediaUrl(key: string | null): string | null {
-  return key ? `${API_URL}/api/media/${encodeURIComponent(key)}` : null;
+  return key && !shouldBlockImages() ? `${API_URL}/api/media/${encodeURIComponent(key)}` : null;
 }
 
 const ACCESS_TOKEN_KEY = 'tyson_access_token';
@@ -55,3 +55,4 @@ export async function apiRawRequest(path: string, init: RequestInit = {}): Promi
   }
   return response;
 }
+import { shouldBlockImages } from '../performance';

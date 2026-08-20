@@ -28,6 +28,7 @@ const privacySettingsSchema = z.object({
   messagingVisibility: visibilitySchema,
 }).strict();
 const notificationSettingsSchema = z.object({ messageSoundsEnabled: z.boolean() }).strict();
+const powerSavingSettingsSchema = z.object({ powerSavingEnabled: z.boolean(), blockImagesEnabled: z.boolean() }).strict();
 
 function publicProfile(user: AuthUser) {
   return {
@@ -207,6 +208,23 @@ userRoutes.put('/me/notification-settings', async (c) => {
       .bind(input.messageSoundsEnabled ? 1 : 0, new Date().toISOString(), user.id).run();
     return ok(c, input);
   } catch { return fail(c, 422, 'VALIDATION_ERROR', 'Invalid notification settings.'); }
+});
+
+userRoutes.get('/me/power-saving-settings', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const row = await c.env.DB.prepare(`SELECT power_saving_enabled AS powerSavingEnabled, block_images_enabled AS blockImagesEnabled
+    FROM user_settings WHERE user_id = ?`).bind(user.id).first<{ powerSavingEnabled: number; blockImagesEnabled: number }>();
+  return ok(c, { powerSavingEnabled: row?.powerSavingEnabled === 1, blockImagesEnabled: row?.blockImagesEnabled === 1 });
+});
+
+userRoutes.put('/me/power-saving-settings', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  try {
+    const input = powerSavingSettingsSchema.parse(await parseJsonBody(c.req.raw));
+    await c.env.DB.prepare(`UPDATE user_settings SET power_saving_enabled = ?, block_images_enabled = ?, updated_at = ? WHERE user_id = ?`)
+      .bind(input.powerSavingEnabled ? 1 : 0, input.blockImagesEnabled ? 1 : 0, new Date().toISOString(), user.id).run();
+    return ok(c, input);
+  } catch { return fail(c, 422, 'VALIDATION_ERROR', 'Invalid power saving settings.'); }
 });
 
 userRoutes.put('/me/messaging-settings', async (c) => {

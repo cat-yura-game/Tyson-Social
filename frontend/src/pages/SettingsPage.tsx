@@ -1,4 +1,4 @@
-import { BadgeCheck, BellRing, Camera, LockKeyhole, Monitor, Moon, RefreshCw, Save, Send, ShieldCheck, Sun, Trash2, Unlink, UserPlus, Volume2 } from 'lucide-react';
+import { BadgeCheck, BatteryMedium, BellRing, Camera, ChevronRight, Database, LockKeyhole, Monitor, Moon, RefreshCw, Save, Send, ShieldCheck, Sun, Trash2, Unlink, UserPlus, Volume2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest, mediaUrl, setAccessToken } from '../api/client';
@@ -7,6 +7,7 @@ import { cropAvatarToSquare } from '../images/crop-square';
 import { getThemePreference, setThemePreference, type ThemePreference } from '../theme';
 import { PushNotificationSettings } from '../components/PushNotificationSettings';
 import { AuthorNotificationSettings } from '../components/AuthorNotificationSettings';
+import { applyPowerSavingSettings, type PowerSavingSettings } from '../performance';
 
 export function SettingsPage() {
   const { user, refresh, switchAccount } = useAuth();
@@ -30,11 +31,13 @@ export function SettingsPage() {
   const [linkedAccountError, setLinkedAccountError] = useState<string | null>(null);
   const [secretChatEnabled, setSecretChatEnabled] = useState(false);
   const [secretChatPending, setSecretChatPending] = useState(false);
-  const [settingsCategory, setSettingsCategory] = useState<'profile' | 'privacy' | 'notifications'>('profile');
+  const [settingsCategory, setSettingsCategory] = useState<'profile' | 'privacy' | 'notifications' | 'power'>('profile');
   const [privacy, setPrivacy] = useState({ lastSeenVisibility: 'everyone', birthdayVisibility: 'everyone', messagingVisibility: 'everyone' });
   const [privacyPending, setPrivacyPending] = useState(false);
   const [messageSoundsEnabled, setMessageSoundsEnabled] = useState(true);
   const [soundPending, setSoundPending] = useState(false);
+  const [powerSaving, setPowerSaving] = useState<PowerSavingSettings>({ powerSavingEnabled: false, blockImagesEnabled: false });
+  const [powerSavingPending, setPowerSavingPending] = useState(false);
   const [siteRefreshPending, setSiteRefreshPending] = useState(false);
   const [deleteUsername, setDeleteUsername] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
@@ -66,6 +69,7 @@ export function SettingsPage() {
   useEffect(() => { if (user) void Promise.all([
     apiRequest<typeof privacy>('/users/me/privacy-settings'), apiRequest<{ messageSoundsEnabled: boolean }>('/users/me/notification-settings'),
   ]).then(([privacySettings, notifications]) => { setPrivacy(privacySettings); setMessageSoundsEnabled(notifications.messageSoundsEnabled); }).catch(() => undefined); }, [user]);
+  useEffect(() => { if (user) void apiRequest<PowerSavingSettings>('/users/me/power-saving-settings').then((value) => { setPowerSaving(value); applyPowerSavingSettings(value); }).catch(() => undefined); }, [user]);
 
   if (!user) return null;
 
@@ -168,6 +172,19 @@ export function SettingsPage() {
     finally { setSoundPending(false); }
   };
 
+  const changePowerSaving = async (next: PowerSavingSettings) => {
+    setPowerSavingPending(true); setError(null);
+    try {
+      const value = await apiRequest<PowerSavingSettings>('/users/me/power-saving-settings', { method: 'PUT', body: JSON.stringify(next) }); setPowerSaving(value); applyPowerSavingSettings(value);
+      if (value.powerSavingEnabled && 'serviceWorker' in navigator) {
+        const subscription = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+        if (subscription) { await apiRequest('/push/subscription', { method: 'DELETE', body: JSON.stringify({ endpoint: subscription.endpoint }) }); await subscription.unsubscribe(); }
+      }
+    }
+    catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось изменить энергосбережение.'); }
+    finally { setPowerSavingPending(false); }
+  };
+
   const refreshSite = async () => {
     setSiteRefreshPending(true);
     try {
@@ -203,9 +220,11 @@ export function SettingsPage() {
   return <section className="surface-page narrow-page settings-page">
     <header className="page-heading"><div><p className="eyebrow">Ваш аккаунт</p><h1>Настройки профиля</h1></div></header>
     <nav className="settings-categories" aria-label="Разделы настроек">
-      <button type="button" className={settingsCategory === 'profile' ? 'active' : ''} onClick={() => setSettingsCategory('profile')}>Профиль</button>
-      <button type="button" className={settingsCategory === 'privacy' ? 'active' : ''} onClick={() => setSettingsCategory('privacy')}><ShieldCheck size={15} />Конфиденциальность</button>
-      <button type="button" className={settingsCategory === 'notifications' ? 'active' : ''} onClick={() => setSettingsCategory('notifications')}><BellRing size={15} />Уведомления и звуки</button>
+      <button type="button" className={settingsCategory === 'notifications' ? 'active' : ''} onClick={() => setSettingsCategory('notifications')}><i className="settings-category-icon notifications"><BellRing size={21} /></i><span>Уведомления и звуки</span><ChevronRight /></button>
+      <button type="button" className={settingsCategory === 'privacy' ? 'active' : ''} onClick={() => setSettingsCategory('privacy')}><i className="settings-category-icon privacy"><LockKeyhole size={21} /></i><span>Конфиденциальность</span><ChevronRight /></button>
+      <button type="button" className={settingsCategory === 'power' ? 'active' : ''} onClick={() => setSettingsCategory('power')}><i className="settings-category-icon data"><Database size={21} /></i><span>Данные и память</span><ChevronRight /></button>
+      <button type="button" className={settingsCategory === 'power' ? 'active' : ''} onClick={() => setSettingsCategory('power')}><i className="settings-category-icon power"><BatteryMedium size={21} /></i><span>Энергосбережение</span><small>{powerSaving.powerSavingEnabled ? 'Вкл.' : 'Выкл.'}</small><ChevronRight /></button>
+      <button type="button" className={settingsCategory === 'profile' ? 'active' : ''} onClick={() => setSettingsCategory('profile')}><i className="settings-category-icon profile"><Camera size={21} /></i><span>Профиль</span><ChevronRight /></button>
     </nav>
     {settingsCategory === 'notifications' && <>
       <section className="notification-sound-settings"><div><p className="eyebrow">Звуки</p><h2><Volume2 size={19} />Звук новых сообщений</h2><p>Воспроизводить короткий сигнал в Tyson при получении нового сообщения.</p></div><label className="settings-switch"><input type="checkbox" checked={messageSoundsEnabled} disabled={soundPending} onChange={(event) => void changeMessageSound(event.target.checked)} /><span aria-hidden="true" /><b>{messageSoundsEnabled ? 'Включён' : 'Выключен'}</b></label></section>
@@ -220,6 +239,7 @@ export function SettingsPage() {
       ] as const).map(([key, label]) => <label key={key}><span>{label}</span><select value={privacy[key]} onChange={(event) => setPrivacy({ ...privacy, [key]: event.target.value })}><option value="everyone">Все</option><option value="friends">Друзья</option><option value="nobody">Никто</option></select></label>)}<button className="primary-button" type="button" disabled={privacyPending} onClick={() => void savePrivacy()}><Save size={17} />{privacyPending ? 'Сохраняем…' : 'Сохранить приватность'}</button></section>
       <section className="secret-chats-settings" aria-labelledby="secret-chats-title"><div><p className="eyebrow">Приватные сообщения</p><h2 id="secret-chats-title"><LockKeyhole size={18} />Секретные чаты</h2><p>Обычные сообщения синхронизируются по аккаунту и шифруются при хранении. Секретные чаты используют E2EE и доступны только на добавленных устройствах.</p></div><label className="settings-switch"><input type="checkbox" checked={secretChatEnabled} disabled={secretChatPending} onChange={(event) => void changeSecretChat(event.target.checked)} /><span aria-hidden="true" /><b>{secretChatEnabled ? 'Включены' : 'Выключены'}</b></label></section>
     </>}
+    {settingsCategory === 'power' && <section className="power-saving-settings"><div><p className="eyebrow">Энергосбережение</p><h2><BatteryMedium size={20} />Экономия энергии и трафика</h2><p>Режим отключает прозрачные эффекты, звуки новых сообщений и Push-уведомления в Tyson.</p></div><label className="settings-switch"><input type="checkbox" checked={powerSaving.powerSavingEnabled} disabled={powerSavingPending} onChange={(event) => void changePowerSaving({ ...powerSaving, powerSavingEnabled: event.target.checked })} /><span aria-hidden="true" /><b>{powerSaving.powerSavingEnabled ? 'Включено' : 'Выключено'}</b></label><label className="power-saving-row"><span><strong>Не загружать картинки</strong><small>Посты, аватары и другие пользовательские изображения не будут запрашиваться.</small></span><input type="checkbox" checked={powerSaving.blockImagesEnabled} disabled={powerSavingPending} onChange={(event) => void changePowerSaving({ ...powerSaving, blockImagesEnabled: event.target.checked })} /></label></section>}
     {settingsCategory === 'profile' && <>
     <section className="theme-settings" aria-labelledby="theme-settings-title"><div><p className="eyebrow">Оформление</p><h2 id="theme-settings-title">Тема Tyson</h2></div><div className="theme-options" role="radiogroup" aria-label="Тема интерфейса"><button type="button" role="radio" aria-checked={theme === 'system'} className={theme === 'system' ? 'selected' : ''} onClick={() => chooseTheme('system')}><Monitor size={18} />Как в системе</button><button type="button" role="radio" aria-checked={theme === 'light'} className={theme === 'light' ? 'selected' : ''} onClick={() => chooseTheme('light')}><Sun size={18} />Светлая</button><button type="button" role="radio" aria-checked={theme === 'dark'} className={theme === 'dark' ? 'selected' : ''} onClick={() => chooseTheme('dark')}><Moon size={18} />Тёмная</button></div></section>
     <section className="site-refresh-settings" aria-labelledby="site-refresh-title"><div><p className="eyebrow">Версия сайта</p><h2 id="site-refresh-title">Обновить Tyson</h2><p>Удалит старые файлы интерфейса из кэша и загрузит актуальную версию. Аккаунт, сообщения и настройки сохранятся.</p></div><button className="secondary-button" type="button" disabled={siteRefreshPending} onClick={() => void refreshSite()}><RefreshCw className={siteRefreshPending ? 'refresh-spinning' : ''} size={17} />{siteRefreshPending ? 'Обновляем…' : 'Обновить сайт'}</button></section>

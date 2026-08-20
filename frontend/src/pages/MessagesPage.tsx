@@ -168,7 +168,7 @@ export function MessagesPage() {
         const hadMessages = knownMessageIds.current.size > 0;
         const incoming = next.some((message) => message.senderUserId !== user?.id && !knownMessageIds.current.has(message.id));
         knownMessageIds.current = new Set(next.map((message) => message.id));
-        if (!hadMessages || !incoming || !messageSoundsEnabled || document.visibilityState !== 'visible') return;
+        if (!hadMessages || !incoming || !messageSoundsEnabled || document.documentElement.dataset.powerSaving === 'true' || document.visibilityState !== 'visible') return;
         const AudioContextClass = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (!AudioContextClass) return;
         const context = new AudioContextClass(); const oscillator = context.createOscillator(); const gain = context.createGain();

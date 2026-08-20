@@ -5,8 +5,10 @@ import { App } from './App';
 import { AuthProvider } from './auth/AuthProvider';
 import './styles.css';
 import { applyTheme, getThemePreference, watchSystemTheme } from './theme';
+import { restorePowerSavingSettings } from './performance';
 
 applyTheme(getThemePreference());
+restorePowerSavingSettings();
 watchSystemTheme();
 
 if ('serviceWorker' in navigator) {

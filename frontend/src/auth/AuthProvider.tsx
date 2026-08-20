@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiRequest, setAccessToken } from '../api/client';
+import { applyPowerSavingSettings, type PowerSavingSettings } from '../performance';
 
 export interface AuthUser {
   id: string;
@@ -44,6 +45,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => { if (user) void apiRequest<PowerSavingSettings>('/users/me/power-saving-settings')
+    .then(applyPowerSavingSettings).catch(() => undefined); }, [user?.id]);
 
   const refresh = useCallback(async () => {
     try {
