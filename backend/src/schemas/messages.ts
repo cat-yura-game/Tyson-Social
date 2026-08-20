@@ -23,12 +23,17 @@ const audioContent = z.object({
   durationMs: z.number().int().positive().max(600_000),
 }).strict();
 const textContent = z.object({ type: z.literal('text'), text: z.string().trim().min(1).max(4000) }).strict();
+const giftContent = z.object({
+  type: z.literal('gift'), giftId: z.string().uuid(), title: z.string().trim().min(1).max(100), image: z.string().startsWith('/gift/'),
+  inscription: z.string().trim().max(140).nullable().optional(),
+}).strict();
 const basicCloudContentSchema = z.discriminatedUnion('type', [
   textContent,
   z.object({ type: z.literal('sticker'), stickerId: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/u) }).strict(),
   z.object({ type: z.literal('post'), postId: z.string().uuid() }).strict(),
   imageContent,
   audioContent,
+  giftContent,
 ]);
 const cloudContentSchema = z.union([
   basicCloudContentSchema,
