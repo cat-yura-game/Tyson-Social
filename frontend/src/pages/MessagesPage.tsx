@@ -162,8 +162,9 @@ export function MessagesPage() {
   }, [user]);
 
   useEffect(() => {
-    if (!user) return;
-    const timer = window.setTimeout(() => { void apiRequest<{ people: FollowedPerson[] }>(`/messages/following?q=${encodeURIComponent(personQuery)}`).then(({ people }) => setFollowedPeople(people)).catch(() => setFollowedPeople([])); }, 120);
+    const query = personQuery.trim();
+    if (!user || !query) { setFollowedPeople([]); return; }
+    const timer = window.setTimeout(() => { void apiRequest<{ people: FollowedPerson[] }>(`/messages/following?q=${encodeURIComponent(query)}`).then(({ people }) => setFollowedPeople(people)).catch(() => setFollowedPeople([])); }, 120);
     return () => window.clearTimeout(timer);
   }, [personQuery, user]);
 
