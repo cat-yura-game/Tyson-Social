@@ -13,12 +13,27 @@ export const ALLOWED_VIDEO_TYPES = {
   'video/quicktime': 'mov',
 } as const;
 
+export const ALLOWED_DOCUMENT_TYPES = {
+  'application/pdf': 'pdf',
+  'text/plain': 'txt',
+  'text/markdown': 'md',
+  'text/csv': 'csv',
+  'application/json': 'json',
+  'application/rtf': 'rtf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+} as const;
+
 export type AllowedImageType = keyof typeof ALLOWED_IMAGE_TYPES;
 export type AllowedVideoType = keyof typeof ALLOWED_VIDEO_TYPES;
 export type AllowedMediaType = AllowedImageType | AllowedVideoType;
+export type AllowedDocumentType = keyof typeof ALLOWED_DOCUMENT_TYPES;
+export type AllowedStorageType = AllowedMediaType | AllowedDocumentType;
 
 export interface MediaMetadata {
-  contentType: AllowedMediaType;
+  contentType: AllowedStorageType;
   byteSize: number;
   ownerUserId: string;
   expiresAt?: string;
@@ -84,11 +99,35 @@ export function createStoryMediaKey(ownerUserId: string, contentType: AllowedMed
   return `media/${ownerUserId}/${crypto.randomUUID()}.${extension}`;
 }
 
+export function assertValidAiDocument(contentType: string, byteSize: number, maxBytes = MAX_MEDIA_BYTES): asserts contentType is AllowedDocumentType {
+  if (!(contentType in ALLOWED_DOCUMENT_TYPES)) throw new Error('Unsupported document type.');
+  if (!Number.isSafeInteger(byteSize) || byteSize <= 0 || byteSize > maxBytes) throw new Error(`Document size must be between 1 byte and ${Math.round(maxBytes / 1024 / 1024)} MiB.`);
+}
+
+export function assertAiDocumentSignature(contentType: AllowedDocumentType, bytes: Uint8Array): void {
+  const text = new TextDecoder().decode(bytes.slice(0, 8));
+  const valid = contentType === 'application/pdf' ? text.startsWith('%PDF-')
+    : contentType === 'application/rtf' ? text.startsWith('{\\rtf')
+      : contentType === 'application/msword' ? bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0
+        : contentType.includes('openxmlformats') ? bytes[0] === 0x50 && bytes[1] === 0x4b
+          : true;
+  if (!valid) throw new Error('Document content does not match its MIME type.');
+}
+
+export function createAiAttachmentKey(ownerUserId: string, contentType: AllowedStorageType): string {
+  if (!/^[0-9a-f-]{36}$/i.test(ownerUserId)) throw new Error('Invalid owner ID.');
+  const extension = contentType in ALLOWED_IMAGE_TYPES ? ALLOWED_IMAGE_TYPES[contentType as AllowedImageType]
+    : contentType in ALLOWED_VIDEO_TYPES ? ALLOWED_VIDEO_TYPES[contentType as AllowedVideoType]
+      : ALLOWED_DOCUMENT_TYPES[contentType as AllowedDocumentType];
+  return `media/${ownerUserId}/${crypto.randomUUID()}.${extension}`;
+}
+
 export class KvMediaStorage implements MediaStorage {
   constructor(private readonly namespace: KVNamespace) {}
 
   async put(key: string, body: ReadableStream | ArrayBuffer, metadata: MediaMetadata, expiration?: number): Promise<void> {
-    assertValidStoryMedia(metadata.contentType, metadata.byteSize);
+    if (metadata.contentType in ALLOWED_DOCUMENT_TYPES) assertValidAiDocument(metadata.contentType, metadata.byteSize);
+    else assertValidStoryMedia(metadata.contentType as AllowedMediaType, metadata.byteSize);
     await this.namespace.put(key, body, { metadata, ...(expiration ? { expiration } : {}) });
   }
 

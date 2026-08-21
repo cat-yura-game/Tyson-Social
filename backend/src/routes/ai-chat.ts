@@ -3,8 +3,11 @@ import { GeminiBlockedError, GeminiClient, type GeminiPart } from '../ai/gemini-
 import { fail, ok } from '../lib/responses';
 import { base64Encode } from '../security/encoding';
 import {
+  assertAiDocumentSignature,
   assertImageSignature,
+  assertValidAiDocument,
   assertValidMedia,
+  createAiAttachmentKey,
   createMediaKey,
   KvMediaStorage,
 } from '../services/media-storage';
@@ -131,10 +134,12 @@ aiChatRoutes.get('/conversations/:id/messages', async (c) => {
   const now = new Date().toISOString();
   const rows = await c.env.DB.prepare(`SELECT id, role, content,
     CASE WHEN image_expires_at > ? THEN image_storage_key ELSE NULL END AS imageStorageKey,
+    CASE WHEN image_expires_at > ? THEN attachment_name ELSE NULL END AS attachmentName,
+    CASE WHEN image_expires_at > ? THEN attachment_content_type ELSE NULL END AS attachmentContentType,
     CASE WHEN image_storage_key IS NOT NULL AND image_expires_at <= ? THEN 1 ELSE 0 END AS imageExpired,
     model_version AS modelVersion, created_at AS createdAt
     FROM ai_chat_messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 500`)
-    .bind(now, now, c.req.param('id')).all();
+    .bind(now, now, now, now, c.req.param('id')).all();
   return ok(c, { conversation, messages: rows.results });
 });
 
@@ -173,12 +178,17 @@ aiChatRoutes.post('/conversations/:id/messages', async (c) => {
   const content = typeof contentValue === 'string' ? contentValue.trim() : '';
   const imageValue = form.get('image');
   const image = imageValue instanceof File && imageValue.size > 0 ? imageValue : null;
-  if ((!content && !image) || content.length > MAX_MESSAGE_LENGTH) {
-    return fail(c, 422, 'VALIDATION_ERROR', 'Enter a message or attach an image. Messages are limited to 8,000 characters.');
+  const documentValue = form.get('document');
+  const document = documentValue instanceof File && documentValue.size > 0 ? documentValue : null;
+  if (image && document) return fail(c, 422, 'VALIDATION_ERROR', 'Attach either one image or one document.');
+  if ((!content && !image && !document) || content.length > MAX_MESSAGE_LENGTH) {
+    return fail(c, 422, 'VALIDATION_ERROR', 'Enter a message or attach an image or document. Messages are limited to 8,000 characters.');
   }
 
   let imageStorageKey: string | null = null;
   let imageExpiresAt: string | null = null;
+  let attachmentName: string | null = null;
+  let attachmentContentType: string | null = null;
   let imagePart: GeminiPart | null = null;
   if (image) {
     if (image.size > maxUploadBytes) return fail(c, 413, 'IMAGE_TOO_LARGE', 'AI image is too large.');
@@ -199,6 +209,19 @@ aiChatRoutes.post('/conversations/:id/messages', async (c) => {
       expiresAt: imageExpiresAt,
     }, Math.floor(expiry.getTime() / 1000));
     imagePart = { inlineData: { mimeType: image.type, data: base64Encode(bytes) } };
+  }
+  if (document) {
+    if (document.size > maxUploadBytes) return fail(c, 413, 'DOCUMENT_TOO_LARGE', 'AI document is too large.');
+    const bytes = new Uint8Array(await document.arrayBuffer());
+    try { assertValidAiDocument(document.type, bytes.byteLength, maxUploadBytes); assertAiDocumentSignature(document.type, bytes); }
+    catch (error) { return fail(c, 422, 'INVALID_DOCUMENT', error instanceof Error ? error.message : 'Invalid document.'); }
+    const expiry = new Date(Date.now() + IMAGE_LIFETIME_MS);
+    imageExpiresAt = expiry.toISOString();
+    imageStorageKey = createAiAttachmentKey(auth.user.id, document.type);
+    attachmentName = document.name.replaceAll(/[\\/]/gu, '_').split('').map((char) => char.charCodeAt(0) < 32 ? '_' : char).join('').slice(0, 180) || 'document';
+    attachmentContentType = document.type;
+    await new KvMediaStorage(c.env.MEDIA).put(imageStorageKey, bytes.buffer, { contentType: document.type, byteSize: bytes.byteLength, ownerUserId: auth.user.id, expiresAt: imageExpiresAt }, Math.floor(expiry.getTime() / 1000));
+    imagePart = { inlineData: { mimeType: document.type, data: base64Encode(bytes) } };
   }
 
   const consumed = await c.env.DB.prepare(`INSERT INTO ai_daily_usage (user_id, usage_date, request_count, updated_at)
@@ -226,12 +249,12 @@ aiChatRoutes.post('/conversations/:id/messages', async (c) => {
   const now = new Date().toISOString();
   const userMessageId = crypto.randomUUID();
   const title = conversation.title === 'Новый диалог'
-    ? (content || 'Диалог с изображением').replaceAll(/\s+/gu, ' ').slice(0, 60)
+    ? (content || (document ? `Документ: ${attachmentName}` : 'Диалог с изображением')).replaceAll(/\s+/gu, ' ').slice(0, 60)
     : conversation.title;
   await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO ai_chat_messages
-      (id, conversation_id, role, content, image_storage_key, image_expires_at, created_at)
-      VALUES (?, ?, 'user', ?, ?, ?, ?)`).bind(userMessageId, conversation.id, content, imageStorageKey, imageExpiresAt, now),
+      (id, conversation_id, role, content, image_storage_key, image_expires_at, attachment_name, attachment_content_type, created_at)
+      VALUES (?, ?, 'user', ?, ?, ?, ?, ?, ?)`).bind(userMessageId, conversation.id, content, imageStorageKey, imageExpiresAt, attachmentName, attachmentContentType, now),
     c.env.DB.prepare('UPDATE ai_conversations SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?')
       .bind(title, now, conversation.id, auth.user.id),
   ]);
@@ -255,7 +278,7 @@ aiChatRoutes.post('/conversations/:id/messages', async (c) => {
         .bind(assistantCreatedAt, conversation.id, auth.user.id),
     ]);
     return ok(c, {
-      userMessage: { id: userMessageId, role: 'user', content, imageStorageKey, imageExpired: false, createdAt: now },
+      userMessage: { id: userMessageId, role: 'user', content, imageStorageKey, attachmentName, attachmentContentType, imageExpired: false, createdAt: now },
       assistantMessage: { id: assistantMessageId, role: 'assistant', content: result.text, imageStorageKey: null, imageExpired: false, modelVersion: result.modelVersion, createdAt: assistantCreatedAt },
       quota: { limit: quota.limit, used: consumed.used, remaining: Math.max(0, quota.limit - consumed.used), telegramLinked: quota.telegramLinked },
     }, 201);
@@ -275,7 +298,7 @@ export async function deleteExpiredAiChatImages(env: Env): Promise<number> {
   const storage = new KvMediaStorage(env.MEDIA);
   await Promise.all(rows.results.map((image) => storage.delete(image.storageKey)));
   const placeholders = rows.results.map(() => '?').join(',');
-  await env.DB.prepare(`UPDATE ai_chat_messages SET image_storage_key = NULL, image_expires_at = NULL
+  await env.DB.prepare(`UPDATE ai_chat_messages SET image_storage_key = NULL, image_expires_at = NULL, attachment_name = NULL, attachment_content_type = NULL
     WHERE id IN (${placeholders})`).bind(...rows.results.map((image) => image.id)).run();
   return rows.results.length;
 }
