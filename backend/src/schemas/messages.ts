@@ -12,6 +12,10 @@ export const conversationSchema = z.object({
   recipientUsername: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/u).transform((value) => value.toLowerCase()),
   securityMode: z.enum(['cloud', 'secret']).default('cloud'),
 }).strict();
+export const groupConversationSchema = z.object({
+  title: z.string().trim().min(1).max(80),
+  memberUsernames: z.array(z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/u).transform((value) => value.toLowerCase())).min(2).max(49),
+}).strict();
 
 const imageContent = z.object({
   type: z.literal('image'), attachmentId: z.string().uuid(), key: z.string().min(32).max(256), nonce: z.string().min(16).max(256),
@@ -21,6 +25,10 @@ const audioContent = z.object({
   type: z.literal('audio'), attachmentId: z.string().uuid(), key: z.string().min(32).max(256), nonce: z.string().min(16).max(256),
   digest: z.string().min(32).max(256).optional(), mimeType: z.enum(['audio/webm', 'audio/mp4', 'audio/ogg']),
   durationMs: z.number().int().positive().max(600_000),
+}).strict();
+const videoContent = z.object({
+  type: z.literal('video'), attachmentId: z.string().uuid(), key: z.string().min(32).max(256), nonce: z.string().min(16).max(256),
+  digest: z.string().min(32).max(256).optional(), mimeType: z.enum(['video/webm', 'video/mp4']), durationMs: z.number().int().positive().max(60_000),
 }).strict();
 const textContent = z.object({ type: z.literal('text'), text: z.string().trim().min(1).max(4000) }).strict();
 const giftContent = z.object({
@@ -33,6 +41,7 @@ const basicCloudContentSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('post'), postId: z.string().uuid() }).strict(),
   imageContent,
   audioContent,
+  videoContent,
   giftContent,
 ]);
 const cloudContentSchema = z.union([

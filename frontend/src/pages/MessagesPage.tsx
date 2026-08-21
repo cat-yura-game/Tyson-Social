@@ -1,4 +1,4 @@
-import { Bookmark, ChevronLeft, Forward as ForwardIcon, Gift, LockKeyhole, Mic, Paperclip, Pencil, Plus, Send, Smile, Sparkles, Square, Trash2, X } from 'lucide-react';
+import { Bookmark, Camera, ChevronLeft, Forward as ForwardIcon, Gift, LockKeyhole, Mic, Paperclip, Pencil, Plus, Send, Smile, Sparkles, Square, Trash2, UsersRound, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRawRequest, apiRequest, mediaUrl } from '../api/client';
@@ -9,10 +9,12 @@ import { getSticker, STICKERS, type StickerId } from '../messaging/stickers';
 import { formatMessageDay, messageDayKey } from '../messaging/message-day';
 import { EncryptedMessageImage } from '../components/EncryptedMessageImage';
 import { EncryptedMessageAudio } from '../components/EncryptedMessageAudio';
+import { EncryptedMessageVideo } from '../components/EncryptedMessageVideo';
 import { MessengerAiChat } from '../components/MessengerAiChat';
 
 const STANDARD_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_VOICE_DURATION_MS = 10 * 60 * 1000;
+const MAX_VIDEO_DURATION_MS = 60 * 1000;
 const AUDIO_MIME_TYPES = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus'] as const;
 const TYSON_AI_CHAT_ID = 'tyson-ai';
 
@@ -30,6 +32,8 @@ interface Conversation {
   otherVerified: number | boolean;
   isSaved: boolean;
   securityMode: 'cloud' | 'secret';
+  kind?: 'direct' | 'group';
+  memberCount?: number;
 }
 
 interface PublicDevice { deviceId: string; name: string; publicKey: string }
@@ -44,7 +48,7 @@ function basicContent(content: MessageContent): BasicMessageContent {
 
 function attachmentIdFromMessage(content: MessageContent): string | undefined {
   const value = basicContent(content);
-  return value.type === 'image' || value.type === 'audio' ? value.attachmentId : undefined;
+  return value.type === 'image' || value.type === 'audio' || value.type === 'video' ? value.attachmentId : undefined;
 }
 
 function MessageBody({ content }: { content: MessageContent }) {
@@ -58,7 +62,8 @@ function MessageBody({ content }: { content: MessageContent }) {
             : value.type === 'comment' ? <Link className="shared-post-message" to={`/post/${value.postId}`}><strong>Комментарий Tyson</strong><span>Открыть обсуждение</span></Link>
               : value.type === 'gift' ? <div className="shared-post-message gift-message"><img src={value.image} alt="" /><strong>{value.title}</strong><span>{value.inscription || 'Подарок Tyson'}</span></div>
           : value.type === 'image' ? <EncryptedMessageImage attachmentId={value.attachmentId} encryptionKey={value.key} nonce={value.nonce} digest={value.digest} mimeType={value.mimeType} />
-            : value.type === 'audio' ? <EncryptedMessageAudio attachmentId={value.attachmentId} encryptionKey={value.key} nonce={value.nonce} digest={value.digest} mimeType={value.mimeType} /> : null}
+            : value.type === 'audio' ? <EncryptedMessageAudio attachmentId={value.attachmentId} encryptionKey={value.key} nonce={value.nonce} digest={value.digest} mimeType={value.mimeType} />
+              : value.type === 'video' ? <EncryptedMessageVideo attachmentId={value.attachmentId} encryptionKey={value.key} nonce={value.nonce} digest={value.digest} mimeType={value.mimeType} /> : null}
   </>;
 }
 
@@ -71,6 +76,9 @@ export function MessagesPage() {
   const [messages, setMessages] = useState<PlainMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [newUsername, setNewUsername] = useState('');
+  const [groupTitle, setGroupTitle] = useState('');
+  const [groupMembers, setGroupMembers] = useState('');
+  const [showGroupCreator, setShowGroupCreator] = useState(false);
   const [secretChatsEnabled, setSecretChatsEnabled] = useState(false);
   const [messageSoundsEnabled, setMessageSoundsEnabled] = useState(true);
   const [startSecretChat, setStartSecretChat] = useState(false);
@@ -86,6 +94,7 @@ export function MessagesPage() {
   const [forwardingMessage, setForwardingMessage] = useState<PlainMessage | null>(null);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordingKind, setRecordingKind] = useState<'audio' | 'video'>('audio');
   const [maxUploadBytes, setMaxUploadBytes] = useState(STANDARD_UPLOAD_BYTES);
   const [error, setError] = useState<string | null>(null);
   const busy = useRef(false);
@@ -242,6 +251,12 @@ export function MessagesPage() {
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Не удалось начать разговор.');
     }
+  };
+
+  const startGroup = async (event: FormEvent) => {
+    event.preventDefault(); setError(null);
+    const memberUsernames = groupMembers.split(/[\s,]+/u).map((item) => item.replace(/^@/u, '').toLowerCase()).filter(Boolean);
+    try { const result = await apiRequest<{ conversation: { id: string } }>('/messages/groups', { method: 'POST', body: JSON.stringify({ title: groupTitle, memberUsernames }) }); setGroupTitle(''); setGroupMembers(''); setShowGroupCreator(false); await loadConversations(); setActiveId(result.conversation.id); setSearchParams({ conversation: result.conversation.id }); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Не удалось создать группу.'); }
   };
 
   const createSecretEnvelopes = async (target: Conversation, content: MessageContent, sentAt: string, editedAt?: string) => {
@@ -478,11 +493,19 @@ export function MessagesPage() {
     }
   };
 
+  const sendVideo = async (blob: Blob, durationMs: number) => {
+    const mimeType = blob.type.split(';')[0];
+    if (mimeType !== 'video/webm' && mimeType !== 'video/mp4') { setError('Этот формат видео не поддерживается браузером.'); return; }
+    setUploading(true); setError(null);
+    try { const attachment = await uploadEncryptedAttachment(blob); await sendContent({ type: 'video', ...attachment, mimeType, durationMs: Math.max(1, Math.min(MAX_VIDEO_DURATION_MS, Math.round(durationMs))) }); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : 'Не удалось отправить видеосообщение.'); } finally { setUploading(false); }
+  };
+
   const finishRecording = () => {
     if (recorder.current?.state === 'recording') recorder.current.stop();
   };
 
-  const startRecording = async () => {
+  const startRecording = async (kind: 'audio' | 'video' = 'audio') => {
     if (recording || uploading || sending || !active) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setError('Запись голосовых не поддерживается этим браузером.');
@@ -491,15 +514,16 @@ export function MessagesPage() {
     setError(null);
     setShowStickers(false);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-      const supportedMimeType = AUDIO_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
-      const nextRecorder = new MediaRecorder(stream, supportedMimeType ? { mimeType: supportedMimeType, audioBitsPerSecond: 64_000 } : { audioBitsPerSecond: 64_000 });
+      const stream = await navigator.mediaDevices.getUserMedia(kind === 'video' ? { audio: true, video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 480 } } } : { audio: { echoCancellation: true, noiseSuppression: true } });
+      const supportedMimeType = kind === 'video' ? (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm') : AUDIO_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
+      const nextRecorder = new MediaRecorder(stream, supportedMimeType ? { mimeType: supportedMimeType, ...(kind === 'video' ? { videoBitsPerSecond: 500_000 } : { audioBitsPerSecond: 64_000 }) } : {});
       microphoneStream.current = stream;
       recorder.current = nextRecorder;
       voiceChunks.current = [];
       voiceBytes.current = 0;
       recordingStartedAt.current = Date.now();
       setRecordingSeconds(0);
+      setRecordingKind(kind);
 
       nextRecorder.ondataavailable = (event) => {
         if (!event.data.size) return;
@@ -526,19 +550,19 @@ export function MessagesPage() {
           setError('Голосовое сообщение получилось слишком коротким.');
           return;
         }
-        void sendVoice(voice, durationMs);
+        void (kind === 'video' ? sendVideo(voice, durationMs) : sendVoice(voice, durationMs));
       };
       nextRecorder.start(1000);
       setRecording(true);
       recordingTimer.current = window.setInterval(() => {
         const elapsedMs = Date.now() - recordingStartedAt.current;
         setRecordingSeconds(Math.floor(elapsedMs / 1000));
-        if (elapsedMs >= MAX_VOICE_DURATION_MS && nextRecorder.state === 'recording') nextRecorder.stop();
+        if (elapsedMs >= (kind === 'video' ? MAX_VIDEO_DURATION_MS : MAX_VOICE_DURATION_MS) && nextRecorder.state === 'recording') nextRecorder.stop();
       }, 500);
     } catch {
       microphoneStream.current?.getTracks().forEach((track) => track.stop());
       microphoneStream.current = null;
-      setError('Разрешите Tyson доступ к микрофону, чтобы записывать голосовые.');
+      setError(kind === 'video' ? 'Разрешите Tyson доступ к камере и микрофону.' : 'Разрешите Tyson доступ к микрофону, чтобы записывать голосовые.');
     }
   };
 
@@ -557,13 +581,14 @@ export function MessagesPage() {
 
   return <section className={`messages-page${activeId ? ' mobile-chat-open' : ''}`}>
     <aside className="conversation-list">
-      <div className="messages-title"><div><p className="eyebrow">Синхронизация между устройствами</p><h1>Сообщения</h1></div><LockKeyhole size={21} /></div>
+      <div className="messages-title"><div><p className="eyebrow">Синхронизация между устройствами</p><h1>Messenger</h1></div><LockKeyhole size={21} /></div>
       <form className="new-conversation" onSubmit={(event) => void startConversation(event)}><input required value={newUsername} onChange={(event) => setNewUsername(event.target.value)} placeholder="username получателя" /><button type="submit" aria-label="Начать разговор"><Plus /></button>{secretChatsEnabled && <label className="secret-chat-option"><input type="checkbox" checked={startSecretChat} onChange={(event) => setStartSecretChat(event.target.checked)} />Секретный чат</label>}</form>
+      <button className="create-group-trigger" type="button" onClick={() => setShowGroupCreator((value) => !value)}><UsersRound size={17} />Создать группу</button>{showGroupCreator && <form className="group-creator" onSubmit={(event) => void startGroup(event)}><input required maxLength={80} value={groupTitle} onChange={(event) => setGroupTitle(event.target.value)} placeholder="Название группы" /><input required value={groupMembers} onChange={(event) => setGroupMembers(event.target.value)} placeholder="username участников через запятую" /><button type="submit">Создать</button></form>}
       <button className={activeId === TYSON_AI_CHAT_ID ? 'conversation ai-conversation active' : 'conversation ai-conversation'} onClick={() => { setActiveId(TYSON_AI_CHAT_ID); setSearchParams({ conversation: TYSON_AI_CHAT_ID }); }}><span className="avatar avatar-small ai-conversation-avatar"><Sparkles size={20} /></span><span><strong>Tyson AI</strong><small>На основе Gemini</small></span></button>
-      {conversations.map((conversation) => <button key={conversation.id} className={conversation.id === activeId ? 'conversation active' : 'conversation'} onClick={() => { setActiveId(conversation.id); setSearchParams(sharedPostId ? { conversation: conversation.id, sharePost: sharedPostId } : { conversation: conversation.id }); }}><span className={`avatar avatar-small${conversation.isSaved ? ' saved-avatar' : ''}`}>{conversation.isSaved ? <Bookmark size={20} /> : conversation.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(conversation.otherAvatarKey) ?? ''} alt="" /> : conversation.otherDisplayName.slice(0, 1).toUpperCase()}</span><span><strong>{conversation.otherDisplayName}</strong><small>{conversation.isSaved ? 'Личный защищённый архив' : `@${conversation.otherUsername}`}</small></span></button>)}
+      {conversations.map((conversation) => <button key={conversation.id} className={conversation.id === activeId ? 'conversation active' : 'conversation'} onClick={() => { setActiveId(conversation.id); setSearchParams(sharedPostId ? { conversation: conversation.id, sharePost: sharedPostId } : { conversation: conversation.id }); }}><span className={`avatar avatar-small${conversation.isSaved ? ' saved-avatar' : ''}`}>{conversation.isSaved ? <Bookmark size={20} /> : conversation.kind === 'group' ? <UsersRound size={18} /> : conversation.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(conversation.otherAvatarKey) ?? ''} alt="" /> : conversation.otherDisplayName.slice(0, 1).toUpperCase()}</span><span><strong>{conversation.otherDisplayName}</strong><small>{conversation.isSaved ? 'Личный защищённый архив' : conversation.kind === 'group' ? `${conversation.memberCount} участника` : `@${conversation.otherUsername}`}</small></span></button>)}
     </aside>
     <div className="chat-panel">{activeId === TYSON_AI_CHAT_ID ? <MessengerAiChat onBack={closeMobileChat} /> : active ? <>
-      <header><button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={closeMobileChat}><ChevronLeft /></button>{active.isSaved ? <div className="chat-profile-link"><span className="avatar avatar-small saved-avatar"><Bookmark size={19} /></span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>Ваш личный архив</small></span></div> : <Link className="chat-profile-link" to={`/profile/${encodeURIComponent(active.otherUsername)}`} aria-label={`Открыть профиль ${active.otherDisplayName}`}><span className="avatar avatar-small">{active.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(active.otherAvatarKey) ?? ''} alt="" /> : active.otherDisplayName.slice(0, 1).toUpperCase()}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>@{active.otherUsername}</small></span></Link>}<span className="chat-security"><LockKeyhole size={14} />{active.securityMode === 'secret' ? 'E2EE' : 'Защищено'}</span></header>
+      <header><button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={closeMobileChat}><ChevronLeft /></button>{active.isSaved || active.kind === 'group' ? <div className="chat-profile-link"><span className="avatar avatar-small saved-avatar">{active.isSaved ? <Bookmark size={19} /> : <UsersRound size={18} />}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>{active.isSaved ? 'Ваш личный архив' : `${active.memberCount} участника`}</small></span></div> : <Link className="chat-profile-link" to={`/profile/${encodeURIComponent(active.otherUsername)}`} aria-label={`Открыть профиль ${active.otherDisplayName}`}><span className="avatar avatar-small">{active.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(active.otherAvatarKey) ?? ''} alt="" /> : active.otherDisplayName.slice(0, 1).toUpperCase()}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>@{active.otherUsername}</small></span></Link>}<span className="chat-security"><LockKeyhole size={14} />{active.securityMode === 'secret' ? 'E2EE' : 'Защищено'}</span></header>
       <div className="message-stream">{messages.map((message, index) => {
         const displayedContent = basicContent(message.content);
         const sticker = displayedContent.type === 'sticker' ? getSticker(displayedContent.stickerId) : null;
@@ -588,12 +613,12 @@ export function MessagesPage() {
           <button className="image-message-trigger" type="button" disabled={uploading || sending || recording} aria-label="Прикрепить изображение" onClick={() => imageInput.current?.click()}><Paperclip /></button><input ref={imageInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void sendImage(event)} />
           <button className="sticker-trigger" type="button" disabled={sending || active.isSaved} aria-label="Отправить подарок" onClick={() => void openGiftPicker()}><Gift /></button>
           <div className="message-input-glass">
-            {recording ? <div className="voice-recording-status" role="status"><span aria-hidden="true" />Запись {formatDuration(recordingSeconds)}</div> : <textarea ref={draftInput} rows={1} required maxLength={4000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Сообщение" />}
+            {recording ? <div className="voice-recording-status" role="status"><span aria-hidden="true" />{recordingKind === 'video' ? 'Видеосообщение' : 'Запись'} {formatDuration(recordingSeconds)}</div> : <textarea ref={draftInput} rows={1} required maxLength={4000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Сообщение" />}
             <button className="sticker-trigger" type="button" disabled={recording} aria-label="Открыть стикеры" aria-expanded={showStickers} onClick={() => setShowStickers((shown) => !shown)}><Smile /></button>
           </div>
           {recording ? <button className="voice-message-trigger recording" type="button" disabled={uploading || sending} aria-label="Остановить и отправить голосовое" onClick={finishRecording}><Square size={17} fill="currentColor" /></button>
             : draft.trim() ? <button className="composer-primary-action" type="submit" disabled={sending || uploading} aria-label="Отправить"><Send /></button>
-              : <button className="voice-message-trigger" type="button" disabled={uploading || sending} aria-label="Записать голосовое" onClick={() => void startRecording()}><Mic /></button>}
+              : <><button className="video-message-trigger" type="button" disabled={uploading || sending} aria-label="Записать видеосообщение" onClick={() => void startRecording('video')}><Camera /></button><button className="voice-message-trigger" type="button" disabled={uploading || sending} aria-label="Записать голосовое" onClick={() => void startRecording()}><Mic /></button></>}
         </form>
       </div>
       {messageMenu && <div className="message-menu-layer" role="presentation" onPointerDown={() => setMessageMenu(null)}>

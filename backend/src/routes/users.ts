@@ -26,6 +26,7 @@ const privacySettingsSchema = z.object({
   lastSeenVisibility: visibilitySchema,
   birthdayVisibility: visibilitySchema,
   messagingVisibility: visibilitySchema,
+  storiesVisibility: visibilitySchema,
 }).strict();
 const notificationSettingsSchema = z.object({ messageSoundsEnabled: z.boolean() }).strict();
 const powerSavingSettingsSchema = z.object({ powerSavingEnabled: z.boolean(), blockImagesEnabled: z.boolean() }).strict();
@@ -178,17 +179,17 @@ userRoutes.get('/me/messaging-settings', async (c) => {
 userRoutes.get('/me/privacy-settings', async (c) => {
   const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
   const row = await c.env.DB.prepare(`SELECT last_seen_visibility AS lastSeenVisibility, birthday_visibility AS birthdayVisibility,
-    messaging_visibility AS messagingVisibility FROM user_settings WHERE user_id = ?`).bind(user.id)
-    .first<{ lastSeenVisibility: 'everyone' | 'friends' | 'nobody'; birthdayVisibility: 'everyone' | 'friends' | 'nobody'; messagingVisibility: 'everyone' | 'friends' | 'nobody' }>();
-  return ok(c, row ?? { lastSeenVisibility: 'everyone', birthdayVisibility: 'everyone', messagingVisibility: 'everyone' });
+    messaging_visibility AS messagingVisibility, stories_visibility AS storiesVisibility FROM user_settings WHERE user_id = ?`).bind(user.id)
+    .first<{ lastSeenVisibility: 'everyone' | 'friends' | 'nobody'; birthdayVisibility: 'everyone' | 'friends' | 'nobody'; messagingVisibility: 'everyone' | 'friends' | 'nobody'; storiesVisibility: 'everyone' | 'friends' | 'nobody' }>();
+  return ok(c, row ?? { lastSeenVisibility: 'everyone', birthdayVisibility: 'everyone', messagingVisibility: 'everyone', storiesVisibility: 'everyone' });
 });
 
 userRoutes.put('/me/privacy-settings', async (c) => {
   const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
   try {
     const input = privacySettingsSchema.parse(await parseJsonBody(c.req.raw));
-    await c.env.DB.prepare(`UPDATE user_settings SET last_seen_visibility = ?, birthday_visibility = ?, messaging_visibility = ?, updated_at = ? WHERE user_id = ?`)
-      .bind(input.lastSeenVisibility, input.birthdayVisibility, input.messagingVisibility, new Date().toISOString(), user.id).run();
+    await c.env.DB.prepare(`UPDATE user_settings SET last_seen_visibility = ?, birthday_visibility = ?, messaging_visibility = ?, stories_visibility = ?, updated_at = ? WHERE user_id = ?`)
+      .bind(input.lastSeenVisibility, input.birthdayVisibility, input.messagingVisibility, input.storiesVisibility, new Date().toISOString(), user.id).run();
     return ok(c, input);
   } catch { return fail(c, 422, 'VALIDATION_ERROR', 'Invalid privacy settings.'); }
 });

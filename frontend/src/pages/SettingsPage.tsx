@@ -35,7 +35,7 @@ export function SettingsPage() {
   const [secretChatEnabled, setSecretChatEnabled] = useState(false);
   const [secretChatPending, setSecretChatPending] = useState(false);
   const settingsCategory = section === 'privacy' || section === 'notifications' || section === 'power' || section === 'data' || section === 'profile' || section === 'ai' ? section : null;
-  const [privacy, setPrivacy] = useState({ lastSeenVisibility: 'everyone', birthdayVisibility: 'everyone', messagingVisibility: 'everyone' });
+  const [privacy, setPrivacy] = useState({ lastSeenVisibility: 'everyone', birthdayVisibility: 'everyone', messagingVisibility: 'everyone', storiesVisibility: 'everyone' });
   const [privacyPending, setPrivacyPending] = useState(false);
   const [messageSoundsEnabled, setMessageSoundsEnabled] = useState(true);
   const [soundPending, setSoundPending] = useState(false);
@@ -265,6 +265,7 @@ export function SettingsPage() {
         ['lastSeenVisibility', 'Время последнего посещения'],
         ['birthdayVisibility', 'День рождения'],
         ['messagingVisibility', 'Кто может написать вам'],
+        ['storiesVisibility', 'Кто может смотреть сторис'],
       ] as const).map(([key, label]) => <label key={key}><span>{label}</span><select value={privacy[key]} onChange={(event) => setPrivacy({ ...privacy, [key]: event.target.value })}><option value="everyone">Все</option><option value="friends">Друзья</option><option value="nobody">Никто</option></select></label>)}<button className="primary-button" type="button" disabled={privacyPending} onClick={() => void savePrivacy()}><Save size={17} />{privacyPending ? 'Сохраняем…' : 'Сохранить приватность'}</button></section>
       <section className="secret-chats-settings" aria-labelledby="secret-chats-title"><div><p className="eyebrow">Приватные сообщения</p><h2 id="secret-chats-title"><LockKeyhole size={18} />Секретные чаты</h2><p>Обычные сообщения синхронизируются по аккаунту и шифруются при хранении. Секретные чаты используют E2EE и доступны только на добавленных устройствах.</p></div><label className="settings-switch"><input type="checkbox" checked={secretChatEnabled} disabled={secretChatPending} onChange={(event) => void changeSecretChat(event.target.checked)} /><span aria-hidden="true" /><b>{secretChatEnabled ? 'Включены' : 'Выключены'}</b></label></section>
     </>}

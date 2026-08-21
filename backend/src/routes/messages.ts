@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
 import { fail, ok } from '../lib/responses';
-import { cloneAttachmentSchema, cloudMessageSchema, conversationSchema, deleteMessageSchema, deviceSchema, editCloudMessageSchema, messageBatchSchema } from '../schemas/messages';
+import { cloneAttachmentSchema, cloudMessageSchema, conversationSchema, deleteMessageSchema, deviceSchema, editCloudMessageSchema, groupConversationSchema, messageBatchSchema } from '../schemas/messages';
 import type { AppVariables, AuthUser, Env } from '../types';
 import { decryptCloudMessage, encryptCloudMessage } from '../services/cloud-message-crypto';
 import { uploadLimitForUser } from '../services/upload-limits';
@@ -40,7 +40,7 @@ async function pushNewMessage(c: Parameters<typeof fail>[0], conversationId: str
 function attachmentIdFromContent(content: unknown): string | undefined {
   if (!content || typeof content !== 'object') return undefined;
   const value = content as Record<string, unknown>;
-  if ((value.type === 'image' || value.type === 'audio') && typeof value.attachmentId === 'string') return value.attachmentId;
+  if ((value.type === 'image' || value.type === 'audio' || value.type === 'video') && typeof value.attachmentId === 'string') return value.attachmentId;
   if (value.type === 'forwarded') return attachmentIdFromContent(value.content);
   return undefined;
 }
@@ -137,6 +137,23 @@ messageRoutes.post('/conversations', async (c) => {
     displayName: recipient.displayName, avatarKey: recipient.avatarKey }, securityMode: input.securityMode } }, existing ? 200 : 201);
 });
 
+messageRoutes.post('/groups', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const input = await parse(c, groupConversationSchema); if (input instanceof Response) return input;
+  const usernames = [...new Set(input.memberUsernames.filter((username) => username !== user.username.toLowerCase()))];
+  if (usernames.length < 2) return fail(c, 422, 'GROUP_MEMBERS_REQUIRED', 'Choose at least two other members.');
+  const placeholders = usernames.map(() => '?').join(',');
+  const members = await c.env.DB.prepare(`SELECT id, username FROM users WHERE lower(username) IN (${placeholders}) AND status NOT IN ('suspended', 'deleted')`).bind(...usernames).all<{ id: string; username: string }>();
+  if (members.results.length !== usernames.length) return fail(c, 404, 'USER_NOT_FOUND', 'One or more members were not found.');
+  const id = crypto.randomUUID(); const now = new Date().toISOString();
+  await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO conversations (id, kind, title, security_mode, created_by_user_id, created_at, updated_at) VALUES (?, 'group', ?, 'cloud', ?, ?, ?)`).bind(id, input.title, user.id, now, now),
+    c.env.DB.prepare('INSERT INTO conversation_members (conversation_id, user_id, joined_at) VALUES (?, ?, ?)').bind(id, user.id, now),
+    ...members.results.map((member) => c.env.DB.prepare('INSERT INTO conversation_members (conversation_id, user_id, joined_at) VALUES (?, ?, ?)').bind(id, member.id, now)),
+  ]);
+  return ok(c, { conversation: { id, kind: 'group', title: input.title, memberCount: members.results.length + 1, securityMode: 'cloud' } }, 201);
+});
+
 messageRoutes.get('/conversations', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const savedId = await ensureSavedConversation(c.env.DB, user);
@@ -148,6 +165,9 @@ messageRoutes.get('/conversations', async (c) => {
     JOIN conversation_members theirs ON theirs.conversation_id = c.id AND theirs.user_id != ? AND theirs.left_at IS NULL
     JOIN users u ON u.id = theirs.user_id
     WHERE c.kind = 'direct' ORDER BY c.updated_at DESC LIMIT 100`).bind(user.id, user.id).all();
+  const groups = await c.env.DB.prepare(`SELECT c.id, c.updated_at AS updatedAt, c.security_mode AS securityMode, c.title,
+    COUNT(m.user_id) AS memberCount FROM conversations c JOIN conversation_members mine ON mine.conversation_id = c.id AND mine.user_id = ? AND mine.left_at IS NULL
+    JOIN conversation_members m ON m.conversation_id = c.id AND m.left_at IS NULL WHERE c.kind = 'group' GROUP BY c.id ORDER BY c.updated_at DESC LIMIT 100`).bind(user.id).all();
   return ok(c, { conversations: [{
     id: savedId,
     updatedAt: new Date().toISOString(),
@@ -158,7 +178,7 @@ messageRoutes.get('/conversations', async (c) => {
     otherVerified: false,
     isSaved: true,
     securityMode: 'cloud',
-  }, ...rows.results.map((row) => ({ ...row, isSaved: false }))] });
+  }, ...rows.results.map((row) => ({ ...row, kind: 'direct', isSaved: false })), ...groups.results.map((group) => ({ ...group, kind: 'group', otherUserId: '', otherUsername: '', otherDisplayName: group.title, otherAvatarKey: null, otherVerified: false, isSaved: false }))] });
 });
 
 messageRoutes.post('/conversations/:id/attachments', async (c) => {

@@ -7,7 +7,8 @@ export type BasicMessageContent =
   | { type: 'comment'; commentId: string; postId: string }
   | { type: 'gift'; giftId: string; title: string; image: string; inscription?: string | null }
   | { type: 'image'; attachmentId: string; key: string; nonce: string; digest?: string; mimeType: 'image/jpeg' | 'image/png' | 'image/webp' }
-  | { type: 'audio'; attachmentId: string; key: string; nonce: string; digest?: string; mimeType: 'audio/webm' | 'audio/mp4' | 'audio/ogg'; durationMs: number };
+  | { type: 'audio'; attachmentId: string; key: string; nonce: string; digest?: string; mimeType: 'audio/webm' | 'audio/mp4' | 'audio/ogg'; durationMs: number }
+  | { type: 'video'; attachmentId: string; key: string; nonce: string; digest?: string; mimeType: 'video/webm' | 'video/mp4'; durationMs: number };
 
 export type MessageContent = BasicMessageContent
   | { type: 'forwarded'; fromDisplayName: string; content: BasicMessageContent };
@@ -42,6 +43,10 @@ function parseBasicMessageContent(payload: Record<string, unknown>): BasicMessag
     && typeof payload.durationMs === 'number' && Number.isInteger(payload.durationMs) && payload.durationMs > 0 && payload.durationMs <= 600_000) {
     return { type: 'audio', attachmentId: payload.attachmentId, key: payload.key, nonce: payload.nonce, digest: typeof payload.digest === 'string' ? payload.digest : undefined, mimeType: payload.mimeType, durationMs: payload.durationMs };
   }
+  if (payload.type === 'video' && typeof payload.attachmentId === 'string' && /^[0-9a-f-]{36}$/iu.test(payload.attachmentId)
+    && typeof payload.key === 'string' && /^[A-Za-z0-9+/=_-]{32,256}$/u.test(payload.key)
+    && typeof payload.nonce === 'string' && /^[A-Za-z0-9+/=_-]{16,256}$/u.test(payload.nonce)
+    && (payload.mimeType === 'video/webm' || payload.mimeType === 'video/mp4') && typeof payload.durationMs === 'number' && Number.isInteger(payload.durationMs) && payload.durationMs > 0 && payload.durationMs <= 60_000) return { type: 'video', attachmentId: payload.attachmentId, key: payload.key, nonce: payload.nonce, digest: typeof payload.digest === 'string' ? payload.digest : undefined, mimeType: payload.mimeType, durationMs: payload.durationMs };
   throw new Error('Unsupported encrypted message payload.');
 }
 
