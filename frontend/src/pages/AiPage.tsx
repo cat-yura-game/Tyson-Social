@@ -1,4 +1,4 @@
-import { FileText, Gauge, Menu, Mic, Paperclip, Plus, Send, Sparkles, Trash2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, FileText, Gauge, Menu, Mic, MoreHorizontal, Paperclip, Plus, Send, Sparkles, SquarePen, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { ThinkingState } from '@aicss/react/thinking-state';
 import { TextResponse } from '@aicss/react/text-response';
@@ -9,6 +9,7 @@ interface Conversation {
   title: string;
   createdAt: string;
   updatedAt: string;
+  archivedAt?: string | null;
 }
 
 interface AiMessage {
@@ -52,16 +53,23 @@ export function AiPage() {
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [modelTier, setModelTier] = useState<ModelTier>('lite');
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const [messageMenuId, setMessageMenuId] = useState<string | null>(null);
+  const [archivedView, setArchivedView] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const loadConversations = async () => {
-    const result = await apiRequest<{ conversations: Conversation[] }>('/ai/conversations');
+  const loadConversations = async (archived = archivedView) => {
+    const result = await apiRequest<{ conversations: Conversation[] }>(`/ai/conversations${archived ? '?archived=1' : ''}`);
     setConversations(result.conversations);
     return result.conversations;
   };
   const loadQuota = async () => setQuota(await apiRequest<Quota>('/ai/quota'));
+  const loadAiSettings = async () => {
+    const result = await apiRequest<{ settings: { defaultModelTier: ModelTier } }>('/ai/settings');
+    setModelTier(result.settings.defaultModelTier);
+  };
   const createConversation = async () => {
     const result = await apiRequest<{ conversation: Conversation }>('/ai/conversations', { method: 'POST' });
     setConversations((current) => [result.conversation, ...current]);
@@ -76,10 +84,11 @@ export function AiPage() {
   };
 
   useEffect(() => {
-    void Promise.all([loadConversations(), loadQuota()]).then(([items]) => {
+    void Promise.all([loadConversations(false), loadQuota(), loadAiSettings()]).then(([items]) => {
       if (items[0]) setActiveId(items[0].id);
     }).catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Не удалось загрузить AI.'));
   }, []);
+  useEffect(() => { if (archivedView) { setActiveId(null); setMessages([]); } void loadConversations(archivedView).then((items) => { if (items[0]) setActiveId(items[0].id); }).catch(() => undefined); }, [archivedView]);
   useEffect(() => { if (activeId) void loadMessages(activeId).catch(() => setMessages([])); }, [activeId]);
   useEffect(() => { streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, sending]);
   useEffect(() => () => { if (imagePreview) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
@@ -134,7 +143,7 @@ export function AiPage() {
       setMessages((current) => [...current, result.userMessage, result.assistantMessage]);
       setQuota(result.quota);
       setContent(''); clearImage(); setDocument(null);
-      await loadConversations();
+      await loadConversations(false);
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : 'Gemini временно недоступна.');
       if (conversationId) await loadMessages(conversationId).catch(() => undefined);
@@ -151,17 +160,29 @@ export function AiPage() {
     if (!remaining.length) setMessages([]);
   };
 
+  const archiveConversation = async (conversationId: string, archived: boolean) => {
+    await apiRequest(`/ai/conversations/${encodeURIComponent(conversationId)}`, { method: 'PATCH', body: JSON.stringify({ archived }) });
+    setChatMenuOpen(false); setActiveId(null); setMessages([]); await loadConversations(archivedView);
+  };
+
+  const removeMessage = async (message: AiMessage) => {
+    if (!activeId || !window.confirm('Удалить это сообщение?')) return;
+    await apiRequest(`/ai/conversations/${encodeURIComponent(activeId)}/messages/${encodeURIComponent(message.id)}`, { method: 'DELETE' });
+    setMessages((current) => current.filter((item) => item.id !== message.id)); setMessageMenuId(null);
+  };
+
   return <section className={`ai-page ${sidebarOpen ? 'ai-sidebar-open' : ''}`}>
     <aside className="ai-conversations">
-      <header><div><p className="eyebrow">Tyson AI</p><strong>Диалоги</strong></div><button type="button" onClick={() => void createConversation()} aria-label="Новый диалог"><Plus size={19} /></button></header>
+      <header><div><p className="eyebrow">Tyson AI</p><strong>{archivedView ? 'Архив' : 'Диалоги'}</strong></div><span><button type="button" onClick={() => setArchivedView((value) => !value)} aria-label={archivedView ? 'Вернуться к диалогам' : 'Открыть архив'}>{archivedView ? <ArchiveRestore size={18} /> : <Archive size={18} />}</button>{!archivedView && <button type="button" onClick={() => void createConversation()} aria-label="Новый диалог"><Plus size={19} /></button>}</span></header>
       <div className="ai-conversation-list">{conversations.map((conversation) => <button className={conversation.id === activeId ? 'active' : ''} key={conversation.id} type="button" onClick={() => { setActiveId(conversation.id); setSidebarOpen(false); }}><span>{conversation.title}</span><small>{new Date(conversation.updatedAt).toLocaleDateString('ru-RU')}</small></button>)}</div>
     </aside>
     <div className="ai-chat">
-      <header><button className="ai-menu-button" type="button" onClick={() => setSidebarOpen((open) => !open)} aria-label="Диалоги"><Menu /></button><span className="ai-logo"><Sparkles /></span><div><strong>Tyson AI</strong><small>На основе Gemini</small></div>{activeId && <button className="ai-delete-conversation" type="button" onClick={() => void removeConversation(activeId)} aria-label="Удалить диалог"><Trash2 size={18} /></button>}</header>
+      <header><button className="ai-menu-button" type="button" onClick={() => setSidebarOpen((open) => !open)} aria-label="Диалоги"><Menu /></button><span className="ai-logo"><Sparkles /></span><div><strong>Tyson AI</strong><small>{archivedView ? 'Архив диалогов' : 'На основе Gemini'}</small></div><span className="ai-header-actions"><button type="button" onClick={() => void createConversation()} aria-label="Новый диалог"><SquarePen size={19} /></button>{activeId && <span className="ai-more-menu"><button type="button" onClick={() => setChatMenuOpen((open) => !open)} aria-label="Действия с диалогом" aria-expanded={chatMenuOpen}><MoreHorizontal size={21} /></button>{chatMenuOpen && <div role="menu"><button type="button" onClick={() => void archiveConversation(activeId, !archivedView)}>{archivedView ? <ArchiveRestore size={16} /> : <Archive size={16} />}{archivedView ? 'Вернуть из архива' : 'В архив'}</button><button type="button" onClick={() => void removeConversation(activeId)}><Trash2 size={16} />Удалить чат</button></div>}</span>}</span></header>
       <div className="ai-message-stream" ref={streamRef}>
         {!messages.length && <div className="ai-welcome"><span><Sparkles size={30} /></span><h1>Чем я могу помочь?</h1><p>Задайте вопрос, прикрепите изображение или документ. Диалог сохранится в Tyson.</p></div>}
         {messages.map((message) => <article className={`ai-message ${message.role}`} key={message.id}>
           <strong>{message.role === 'assistant' ? 'Tyson AI' : 'Вы'}</strong>
+          <button className="ai-message-menu-trigger" type="button" onClick={() => setMessageMenuId((current) => current === message.id ? null : message.id)} aria-label="Действия с сообщением"><MoreHorizontal size={16} /></button>{messageMenuId === message.id && <span className="ai-message-menu"><button type="button" onClick={() => void removeMessage(message)}><Trash2 size={15} />Удалить</button></span>}
           {message.imageStorageKey && !message.attachmentName && <img src={mediaUrl(message.imageStorageKey) ?? ''} alt="Изображение в AI-диалоге" />}
           {message.imageStorageKey && message.attachmentName && <a className="ai-document" href={`${API_URL}/api/media/${encodeURIComponent(message.imageStorageKey)}`} target="_blank" rel="noreferrer"><FileText size={18} /><span><b>{message.attachmentName}</b><small>{message.attachmentContentType ?? 'Документ'} · доступен 24 часа</small></span></a>}
           {!message.imageStorageKey && Boolean(message.imageExpired) && <span className="ai-expired-image">Вложение удалено через 24 часа</span>}
