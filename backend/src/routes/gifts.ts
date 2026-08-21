@@ -18,6 +18,13 @@ function typeDto(row: GiftType) { return { id: row.id, slug: row.slug, title: ro
 function giftDto(row: UserGift) { const collectibleVariants = variants(row.collectibleVariantsJson); return { id: row.id, giftTypeId: row.giftTypeId, title: row.title, serialNumber: row.serialNumber, maxSupply: row.maxSupply, basePrice: row.basePrice, inscription: row.inscription ?? null, isCollectible: row.isCollectible === 1, accentColor: row.accentColor ?? '#111111', isPublic: row.isPublic === 1, worn: row.worn === 1, activeListingId: row.activeListingId ?? null, variant: row.variant, image: row.variant ?? row.baseImage, purchasedAt: row.purchasedAt, upgradedAt: row.upgradedAt, upgradePrice: row.upgradePrice, isLimited: row.isLimited === 1, isUnlimited: row.isUnlimited === 1, canUpgrade: row.canUpgrade === 1, canTransfer: row.canTransfer === 1, canWear: row.canWear === 1, exchangeReward: row.exchangeReward, exchangeWindowDays: row.exchangeWindowDays, collectibleVariants, collectibleVariantNumber: row.variant ? collectibleVariants.indexOf(row.variant) + 1 : null }; }
 function listingDto(row: MarketListing) { return { id: row.listingId, price: row.price, gift: giftDto(row), seller: { username: row.sellerUsername, displayName: row.sellerDisplayName, avatarKey: row.sellerAvatarKey } }; }
 const giftColors = ['#22b8ff', '#9d72ff', '#ff5d91', '#ffad31', '#25c98b'];
+const PERMANENT_TASKS = {
+  telegram_link: { reward: 50, completionQuery: 'EXISTS (SELECT 1 FROM telegram_identities WHERE user_id = ?)' },
+  push_notifications: { reward: 10, completionQuery: 'EXISTS (SELECT 1 FROM web_push_subscriptions WHERE user_id = ?)' },
+  profile_complete: { reward: 15, completionQuery: "EXISTS (SELECT 1 FROM users WHERE id = ? AND avatar_key IS NOT NULL AND TRIM(bio) != '')" },
+  first_story: { reward: 10, completionQuery: 'EXISTS (SELECT 1 FROM stories WHERE author_user_id = ?)' },
+  first_post: { reward: 10, completionQuery: "EXISTS (SELECT 1 FROM posts WHERE author_user_id = ? AND status = 'published')" },
+} as const;
 
 giftRoutes.get('/diamonds/balance', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
@@ -28,34 +35,35 @@ giftRoutes.get('/diamonds/balance', async (c) => {
 giftRoutes.get('/diamonds/tasks', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const day = utcTaskDay();
-  const [completed, rewarded, telegram, permanentRewards] = await Promise.all([
+  const [completed, rewarded, permanentRewards, ...permanentCompletion] = await Promise.all([
     c.env.DB.prepare('SELECT task_key AS taskKey FROM daily_task_completions WHERE user_id = ? AND task_day = ?').bind(user.id, day).all<{ taskKey: DailyTaskKey }>(),
     c.env.DB.prepare('SELECT task_key AS taskKey FROM daily_task_rewards WHERE user_id = ? AND task_day = ?').bind(user.id, day).all<{ taskKey: DailyTaskKey }>(),
-    c.env.DB.prepare('SELECT 1 FROM telegram_identities WHERE user_id = ?').bind(user.id).first(),
     c.env.DB.prepare('SELECT task_key AS taskKey FROM permanent_task_rewards WHERE user_id = ?').bind(user.id).all<{ taskKey: string }>(),
+    ...Object.values(PERMANENT_TASKS).map((task) => c.env.DB.prepare(`SELECT ${task.completionQuery} AS completed`).bind(user.id).first<{ completed: number }>()),
   ]);
   const complete = new Set(completed.results.map((row) => row.taskKey)); const claimed = new Set(rewarded.results.map((row) => row.taskKey));
   const permanentClaimed = new Set(permanentRewards.results.map((row) => row.taskKey));
-  return ok(c, { day, tasks: DAILY_TASKS.map((key) => ({ key, completed: complete.has(key), claimed: claimed.has(key), reward: 1 })), permanentTasks: [{ key: 'telegram_link', completed: Boolean(telegram), claimed: permanentClaimed.has('telegram_link'), reward: 50 }] });
+  return ok(c, { day, tasks: DAILY_TASKS.map((key) => ({ key, completed: complete.has(key), claimed: claimed.has(key), reward: 1 })), permanentTasks: Object.entries(PERMANENT_TASKS).map(([key, task], index) => ({ key, completed: permanentCompletion[index]?.completed === 1, claimed: permanentClaimed.has(key), reward: task.reward })) });
 });
 
 giftRoutes.post('/diamonds/tasks/:taskKey/claim', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const taskKey = c.req.param('taskKey');
-  if (taskKey === 'telegram_link') {
+  const permanentTask = PERMANENT_TASKS[taskKey as keyof typeof PERMANENT_TASKS];
+  if (permanentTask) {
     const id = crypto.randomUUID(); const now = new Date().toISOString();
     const result = await c.env.DB.batch([
       c.env.DB.prepare(`INSERT OR IGNORE INTO permanent_task_rewards (id, user_id, task_key, created_at)
-        SELECT ?, ?, 'telegram_link', ? WHERE EXISTS (SELECT 1 FROM telegram_identities WHERE user_id = ?)`)
-        .bind(id, user.id, now, user.id),
-      c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance + 50 WHERE id = ? AND EXISTS (SELECT 1 FROM permanent_task_rewards WHERE id = ?)').bind(user.id, id),
+        SELECT ?, ?, ?, ? WHERE ${permanentTask.completionQuery}`)
+        .bind(id, user.id, taskKey, now, user.id),
+      c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance + ? WHERE id = ? AND EXISTS (SELECT 1 FROM permanent_task_rewards WHERE id = ?)').bind(permanentTask.reward, user.id, id),
       c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
-        SELECT ?, ?, 50, 'credit', 'permanent_task_reward', 'telegram_link', ? WHERE EXISTS (SELECT 1 FROM permanent_task_rewards WHERE id = ?)`)
-        .bind(crypto.randomUUID(), user.id, now, id),
+        SELECT ?, ?, ?, 'credit', 'permanent_task_reward', ?, ? WHERE EXISTS (SELECT 1 FROM permanent_task_rewards WHERE id = ?)`)
+        .bind(crypto.randomUUID(), user.id, permanentTask.reward, taskKey, now, id),
     ]);
     if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'TASK_NOT_READY', 'Telegram is not linked or reward was already claimed.');
     const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
-    return ok(c, { taskKey, reward: 50, balance: balance?.balance ?? 0 });
+    return ok(c, { taskKey, reward: permanentTask.reward, balance: balance?.balance ?? 0 });
   }
   if (!DAILY_TASKS.includes(taskKey as DailyTaskKey)) return fail(c, 404, 'TASK_NOT_FOUND', 'Task not found.');
   const dailyTaskKey = taskKey as DailyTaskKey;
