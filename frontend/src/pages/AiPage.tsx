@@ -134,7 +134,7 @@ export function AiPage() {
           {!message.imageStorageKey && Boolean(message.imageExpired) && <span className="ai-expired-image">Изображение удалено через 24 часа</span>}
           {message.content && <p>{message.content}</p>}
         </article>)}
-        {sending && <article className="ai-message assistant ai-thinking"><strong>Tyson AI</strong><p>Думаю<span>…</span></p></article>}
+        {sending && <article className="ai-message assistant ai-thinking" aria-live="polite"><div className="ai-thinking-head"><span className="ai-thinking-orbs" aria-hidden="true"><i /><i /><i /></span><strong>Tyson AI думает</strong></div><p>Анализирую запрос и готовлю ответ<span>…</span></p></article>}
       </div>
       <form className="ai-composer" onSubmit={(event) => void send(event)}>
         {imagePreview && <div className="ai-image-preview"><img src={imagePreview} alt="Выбранное изображение" /><button type="button" onClick={clearImage} aria-label="Убрать изображение"><X size={16} /></button></div>}
