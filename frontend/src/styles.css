@@ -674,12 +674,14 @@ button { color: inherit; }
   .app-shell.mobile-immersive .ai-conversations > header, .app-shell.mobile-immersive .messages-title { padding-top: calc(15px + env(safe-area-inset-top)); }
   .ai-conversations { position: absolute; z-index: 5; inset: 0 56px 0 0; display: none; border-right: 1px solid var(--line); box-shadow: 15px 0 45px rgb(10 20 14 / 22%); }
   .ai-page.ai-sidebar-open .ai-conversations { display: flex; }
-  .ai-chat { height: 100%; }
+  .ai-chat { position: relative; height: 100%; }
   .ai-menu-button { display: grid !important; }
   .ai-chat > header { min-height: 62px; padding: 9px 10px; }
-  .ai-message-stream { padding: 15px 11px; background: transparent; }
+  .ai-message-stream { padding: 15px 11px 150px; background: transparent; }
+  .ai-chat:has(.ai-model-slider) .ai-message-stream { padding-bottom: 235px; }
   .ai-message { width: 91%; }
-  .ai-composer { padding: 9px; padding-bottom: max(9px, env(safe-area-inset-bottom)); }
+  .ai-composer { position: absolute; z-index: 2; right: 0; bottom: 0; left: 0; padding: 9px; padding-bottom: max(9px, env(safe-area-inset-bottom)); pointer-events: none; }
+  .ai-composer > * { pointer-events: auto; }
   .ai-composer textarea { min-height: 42px; resize: none; font-size: 16px; }
   .ai-composer .ai-model-trigger { display: grid !important; flex: 0 0 39px; }
   .ai-model-slider { position: relative; z-index: 2; margin: 8px 2px 3px; padding: 10px; }
