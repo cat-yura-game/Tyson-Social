@@ -28,30 +28,50 @@ giftRoutes.get('/diamonds/balance', async (c) => {
 giftRoutes.get('/diamonds/tasks', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const day = utcTaskDay();
-  const [completed, rewarded] = await Promise.all([
+  const [completed, rewarded, telegram, permanentRewards] = await Promise.all([
     c.env.DB.prepare('SELECT task_key AS taskKey FROM daily_task_completions WHERE user_id = ? AND task_day = ?').bind(user.id, day).all<{ taskKey: DailyTaskKey }>(),
     c.env.DB.prepare('SELECT task_key AS taskKey FROM daily_task_rewards WHERE user_id = ? AND task_day = ?').bind(user.id, day).all<{ taskKey: DailyTaskKey }>(),
+    c.env.DB.prepare('SELECT 1 FROM telegram_identities WHERE user_id = ?').bind(user.id).first(),
+    c.env.DB.prepare('SELECT task_key AS taskKey FROM permanent_task_rewards WHERE user_id = ?').bind(user.id).all<{ taskKey: string }>(),
   ]);
   const complete = new Set(completed.results.map((row) => row.taskKey)); const claimed = new Set(rewarded.results.map((row) => row.taskKey));
-  return ok(c, { day, tasks: DAILY_TASKS.map((key) => ({ key, completed: complete.has(key), claimed: claimed.has(key), reward: 1 })) });
+  const permanentClaimed = new Set(permanentRewards.results.map((row) => row.taskKey));
+  return ok(c, { day, tasks: DAILY_TASKS.map((key) => ({ key, completed: complete.has(key), claimed: claimed.has(key), reward: 1 })), permanentTasks: [{ key: 'telegram_link', completed: Boolean(telegram), claimed: permanentClaimed.has('telegram_link'), reward: 50 }] });
 });
 
 giftRoutes.post('/diamonds/tasks/:taskKey/claim', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
-  const taskKey = c.req.param('taskKey') as DailyTaskKey; if (!DAILY_TASKS.includes(taskKey)) return fail(c, 404, 'TASK_NOT_FOUND', 'Task not found.');
+  const taskKey = c.req.param('taskKey');
+  if (taskKey === 'telegram_link') {
+    const id = crypto.randomUUID(); const now = new Date().toISOString();
+    const result = await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT OR IGNORE INTO permanent_task_rewards (id, user_id, task_key, created_at)
+        SELECT ?, ?, 'telegram_link', ? WHERE EXISTS (SELECT 1 FROM telegram_identities WHERE user_id = ?)`)
+        .bind(id, user.id, now, user.id),
+      c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance + 50 WHERE id = ? AND EXISTS (SELECT 1 FROM permanent_task_rewards WHERE id = ?)').bind(user.id, id),
+      c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
+        SELECT ?, ?, 50, 'credit', 'permanent_task_reward', 'telegram_link', ? WHERE EXISTS (SELECT 1 FROM permanent_task_rewards WHERE id = ?)`)
+        .bind(crypto.randomUUID(), user.id, now, id),
+    ]);
+    if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'TASK_NOT_READY', 'Telegram is not linked or reward was already claimed.');
+    const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
+    return ok(c, { taskKey, reward: 50, balance: balance?.balance ?? 0 });
+  }
+  if (!DAILY_TASKS.includes(taskKey as DailyTaskKey)) return fail(c, 404, 'TASK_NOT_FOUND', 'Task not found.');
+  const dailyTaskKey = taskKey as DailyTaskKey;
   const day = utcTaskDay(); const id = crypto.randomUUID(); const now = new Date().toISOString();
   const result = await c.env.DB.batch([
     c.env.DB.prepare(`INSERT OR IGNORE INTO daily_task_rewards (id, user_id, task_key, task_day, created_at)
       SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM daily_task_completions WHERE user_id = ? AND task_key = ? AND task_day = ?)`)
-      .bind(id, user.id, taskKey, day, now, user.id, taskKey, day),
+      .bind(id, user.id, dailyTaskKey, day, now, user.id, dailyTaskKey, day),
     c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance + 1 WHERE id = ? AND EXISTS (SELECT 1 FROM daily_task_rewards WHERE id = ?)').bind(user.id, id),
     c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at)
       SELECT ?, ?, 1, 'credit', 'daily_task_reward', ?, ? WHERE EXISTS (SELECT 1 FROM daily_task_rewards WHERE id = ?)`)
-      .bind(crypto.randomUUID(), user.id, taskKey, now, id),
+      .bind(crypto.randomUUID(), user.id, dailyTaskKey, now, id),
   ]);
   if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'TASK_NOT_READY', 'Task is not completed or reward was already claimed.');
   const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
-  return ok(c, { taskKey, reward: 1, balance: balance?.balance ?? 0 });
+  return ok(c, { taskKey: dailyTaskKey, reward: 1, balance: balance?.balance ?? 0 });
 });
 
 giftRoutes.get('/gifts', async (c) => {
