@@ -132,9 +132,8 @@ export function StoriesBar() {
       <input ref={inputRef} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/avif,video/mp4,video/webm,video/quicktime" onChange={(event) => void uploadStory(event)} />
     </section>
     {activeStory && <div className="story-viewer" role="dialog" aria-modal="true" aria-label={`Сторис ${activeStory.displayName}`}>
-      <button className="story-viewer-close" type="button" onClick={() => setActiveIndex(null)} aria-label="Закрыть"><X /></button>
       <div className="story-viewer-card">
-        <header><span className="story-viewer-avatar">{activeStory.avatarKey ? <img src={mediaUrl(activeStory.avatarKey) ?? ''} alt="" /> : activeStory.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{activeStory.displayName}</strong><small>{new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(activeStory.createdAt))}</small></span>{activeStory.authorId === user?.id && <button className="story-delete-button" type="button" onClick={() => void deleteStory(activeStory)} aria-label="Удалить сторис"><Trash2 size={18} /><span>Удалить</span></button>}</header>
+        <header><button className="story-viewer-close" type="button" onClick={() => setActiveIndex(null)} aria-label="Закрыть"><X /></button><span className="story-viewer-avatar">{activeStory.avatarKey ? <img src={mediaUrl(activeStory.avatarKey) ?? ''} alt="" /> : activeStory.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{activeStory.displayName}</strong><small>{new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(activeStory.createdAt))}</small></span>{activeStory.authorId === user?.id && <button className="story-delete-button" type="button" onClick={() => void deleteStory(activeStory)} aria-label="Удалить сторис"><Trash2 size={18} /><span>Удалить</span></button>}</header>
         {activeStory.mediaType === 'video'
           ? <video key={activeStory.id} src={mediaUrl(activeStory.storageKey) ?? ''} autoPlay controls playsInline />
           : <img src={mediaUrl(activeStory.storageKey) ?? ''} alt={`Сторис ${activeStory.displayName}`} />}
