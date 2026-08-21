@@ -1,5 +1,8 @@
 import { ImagePlus, Menu, Plus, Send, Sparkles, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { ThinkingState } from '@aicss/react/thinking-state';
+import { Orb } from '@aicss/react/orbs';
+import { TextResponse } from '@aicss/react/text-response';
 import { apiRequest, mediaUrl } from '../api/client';
 
 interface Conversation {
@@ -132,9 +135,9 @@ export function AiPage() {
           <strong>{message.role === 'assistant' ? 'Tyson AI' : 'Вы'}</strong>
           {message.imageStorageKey && <img src={mediaUrl(message.imageStorageKey) ?? ''} alt="Изображение в AI-диалоге" />}
           {!message.imageStorageKey && Boolean(message.imageExpired) && <span className="ai-expired-image">Изображение удалено через 24 часа</span>}
-          {message.content && <p>{message.content}</p>}
+          {message.content && message.role === 'assistant' ? <TextResponse><p>{message.content}</p></TextResponse> : message.content && <p>{message.content}</p>}
         </article>)}
-        {sending && <article className="ai-message assistant ai-thinking" aria-live="polite"><div className="ai-thinking-head"><span className="ai-thinking-orbs" aria-hidden="true"><i /><i /><i /></span><strong>Tyson AI думает</strong></div><p>Анализирую запрос и готовлю ответ<span>…</span></p></article>}
+        {sending && <article className="ai-message assistant ai-thinking" aria-live="polite"><div className="ai-thinking-head"><Orb variant="C4" size={21} label="Анализирую" /><ThinkingState /></div><p>Анализирую запрос и готовлю ответ<span>…</span></p></article>}
       </div>
       <form className="ai-composer" onSubmit={(event) => void send(event)}>
         {imagePreview && <div className="ai-image-preview"><img src={imagePreview} alt="Выбранное изображение" /><button type="button" onClick={clearImage} aria-label="Убрать изображение"><X size={16} /></button></div>}

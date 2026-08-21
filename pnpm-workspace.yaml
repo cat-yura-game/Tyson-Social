@@ -8,3 +8,5 @@ onlyBuiltDependencies:
 allowBuilds:
   esbuild: true
   workerd: true
+minimumReleaseAgeExclude:
+  - '@aicss/react@0.1.1'

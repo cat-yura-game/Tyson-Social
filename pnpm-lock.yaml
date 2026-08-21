@@ -48,6 +48,9 @@ importers:
 
   frontend:
     dependencies:
+      '@aicss/react':
+        specifier: 0.1.1
+        version: 0.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@vitejs/plugin-react':
         specifier: ^5.0.0
         version: 5.2.0(supports-color@10.2.2)(vite@7.3.6(@types/node@24.13.3))
@@ -99,6 +102,12 @@ importers:
         version: 3.2.7(@types/node@24.13.3)(jsdom@26.1.0(supports-color@10.2.2))(supports-color@10.2.2)
 
 packages:
+
+  '@aicss/react@0.1.1':
+    resolution: {integrity: sha512-IE8T34yqWc5S9Xfs2XreDkTRB0ZR9COC87ENIzOSeTxRrBxK3SlpHvO3PVwGI6Kuq+ObVGQqJQERS/Ix1P9gmg==}
+    peerDependencies:
+      react: '>=18'
+      react-dom: '>=18'
 
   '@asamuzakjp/css-color@3.2.0':
     resolution: {integrity: sha512-K1A6z8tS3XsmCMM86xoWdn7Fkdn9m6RSVtocUrJYIwZnFVkng/PvkEoWtOWmP+Scc6saYWHWZYbndEEXxl24jw==}
@@ -1566,6 +1575,11 @@ packages:
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
+  lucide-react@1.33.0:
+    resolution: {integrity: sha512-MTRwMy0ZlL8Ur/vOAiJ9XGHE+kFPC7brq6MxAm0GiGXEBj0qy0jA/pG4N675oSzciO/UCdX8T+5yUQdmDeTLxg==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
@@ -2082,6 +2096,12 @@ packages:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
 snapshots:
+
+  '@aicss/react@0.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      lucide-react: 1.33.0(react@19.2.8)
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
 
   '@asamuzakjp/css-color@3.2.0':
     dependencies:
@@ -3359,6 +3379,10 @@ snapshots:
       yallist: 3.1.1
 
   lucide-react@0.539.0(react@19.2.8):
+    dependencies:
+      react: 19.2.8
+
+  lucide-react@1.33.0(react@19.2.8):
     dependencies:
       react: 19.2.8
 

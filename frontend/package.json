@@ -11,6 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@aicss/react": "0.1.1",
     "@vitejs/plugin-react": "^5.0.0",
     "libsodium-wrappers": "^0.8.4",
     "lucide-react": "^0.539.0",
