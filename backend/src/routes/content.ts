@@ -231,6 +231,15 @@ contentRoutes.post('/posts/:id/promote', async (c) => {
   return ok(c, { cost, balance: balance?.balance ?? 0, campaign });
 });
 
+contentRoutes.delete('/posts/:id/promote', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  const deleted = await c.env.DB.prepare('DELETE FROM post_promotions WHERE post_id = ? AND owner_user_id = ?')
+    .bind(c.req.param('id'), auth.user.id).run();
+  if (!deleted.meta.changes) return fail(c, 404, 'POST_PROMOTION_NOT_FOUND', 'Active post promotion not found.');
+  // The original diamond transaction is deliberately retained: cancellation only stops future impressions.
+  return ok(c, { cancelled: true, refunded: 0 });
+});
+
 contentRoutes.patch('/posts/:id', async (c) => {
   const auth = requireUser(c); if ('error' in auth) return auth.error;
   const input = await json(c, postBodySchema); if (input instanceof Response) return input;

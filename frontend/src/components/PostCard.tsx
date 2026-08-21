@@ -21,6 +21,7 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [ownerMenu, setOwnerMenu] = useState(false);
+  const [promoted, setPromoted] = useState(Boolean(post.promoted));
   const time = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' });
   const minutes = Math.round((new Date(post.publishedAt).getTime() - Date.now()) / 60_000);
 
@@ -71,10 +72,20 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
     if (!window.confirm(`Запустить продвижение на ${views} просмотров за ${views * 2} 💎?`)) return;
     try {
       await apiRequest(`/posts/${post.id}/promote`, { method: 'POST', body: JSON.stringify({ views }) });
+      setPromoted(true);
       window.dispatchEvent(new Event('diamonds-changed'));
       window.alert('Продвижение запущено.');
       setOwnerMenu(false);
     } catch (error) { window.alert(error instanceof Error ? error.message : 'Не удалось запустить продвижение.'); }
+  };
+
+  const cancelPromotion = async () => {
+    if (!window.confirm('Отменить продвижение? Неиспользованные показы будут остановлены, а алмазы не возвращаются.')) return;
+    try {
+      await apiRequest(`/posts/${post.id}/promote`, { method: 'DELETE' });
+      setPromoted(false); setOwnerMenu(false);
+      window.alert('Продвижение отменено. Алмазы не возвращаются.');
+    } catch (error) { window.alert(error instanceof Error ? error.message : 'Не удалось отменить продвижение.'); }
   };
 
   const summarize = async () => {
@@ -100,10 +111,10 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
         <Link to={`/profile/${post.username}`} className="avatar">{post.avatarKey ? <img className="avatar-image" src={mediaUrl(post.avatarKey) ?? ''} alt="" /> : post.displayName.slice(0, 1).toUpperCase()}</Link>
         <div className="post-author"><Link to={`/profile/${post.username}`}><strong>{post.displayName}</strong>{post.verified && <BadgeCheck className="verified" size={17} aria-label="Подтверждённый аккаунт" />}{post.wornGiftImage && <img className="author-worn-gift" src={post.wornGiftImage} alt="Надетый подарок" />}</Link><span>@{post.username} · {Math.abs(minutes) < 60 ? time.format(minutes, 'minute') : new Date(post.publishedAt).toLocaleDateString('ru-RU')}</span></div>
         {user?.id === post.authorId
-          ? <div className="post-owner-menu"><button className="icon-button" type="button" aria-label="Действия с публикацией" onClick={() => setOwnerMenu((value) => !value)}><MoreHorizontal size={20} /></button>{ownerMenu && <div className="post-owner-menu-popover"><button type="button" onClick={() => void promotePost()}><Rocket size={16} />Продвинуть</button><button className="danger" type="button" disabled={deleting} onClick={() => void deletePost()}><Trash2 size={16} />Удалить</button></div>}</div>
+          ? <div className="post-owner-menu"><button className="icon-button" type="button" aria-label="Действия с публикацией" onClick={() => setOwnerMenu((value) => !value)}><MoreHorizontal size={20} /></button>{ownerMenu && <div className="post-owner-menu-popover">{promoted ? <button type="button" onClick={() => void cancelPromotion()}><Rocket size={16} />Отменить продвижение</button> : <button type="button" onClick={() => void promotePost()}><Rocket size={16} />Продвинуть</button>}<button className="danger" type="button" disabled={deleting} onClick={() => void deletePost()}><Trash2 size={16} />Удалить</button></div>}</div>
           : <button className="icon-button" type="button" aria-label="Действия с публикацией"><MoreHorizontal size={20} /></button>}
       </header>
-      <div className="post-body">{post.promoted && <span className="promoted-label"><Rocket size={12} />Продвигается</span>}{post.title && <Link to={`/post/${post.id}`}><h2 className="post-title">{post.title}</h2></Link>}<RichPostText text={post.body} /></div>
+      <div className="post-body">{promoted && <span className="promoted-label"><Rocket size={12} />Продвигается</span>}{post.title && <Link to={`/post/${post.id}`}><h2 className="post-title">{post.title}</h2></Link>}<RichPostText text={post.body} /></div>
       {post.mediaKey && <Link className="post-media" to={`/post/${post.id}`}><img loading="lazy" src={mediaUrl(post.mediaKey) ?? ''} alt="Изображение публикации" /></Link>}
       {summary && <aside className="post-summary"><span><Sparkles size={15} />Краткое содержание от AI</span><p>{summary}</p></aside>}
       {summaryError && <p className="post-summary-error" role="alert">{summaryError}</p>}
