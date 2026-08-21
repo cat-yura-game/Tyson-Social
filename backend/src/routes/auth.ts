@@ -48,6 +48,13 @@ function clearSessionCookie(c: Parameters<typeof ok>[0]): void {
   deleteCookie(c, SESSION_COOKIE, { secure, sameSite: secure ? 'None' : 'Lax', path: '/' });
 }
 
+function describeSession(userAgent: string | null): { device: string; browser: string } {
+  const value = userAgent ?? '';
+  const device = /iPhone/iu.test(value) ? 'iPhone' : /iPad/iu.test(value) ? 'iPad' : /Android/iu.test(value) ? 'Android' : /Windows/iu.test(value) ? 'Windows' : /Macintosh|Mac OS/iu.test(value) ? 'Mac' : /Linux/iu.test(value) ? 'Linux' : 'Неизвестное устройство';
+  const browser = /Edg\//u.test(value) ? 'Microsoft Edge' : /Firefox\//u.test(value) ? 'Firefox' : /CriOS\//u.test(value) ? 'Chrome для iOS' : /Chrome\//u.test(value) ? 'Chrome' : /Safari\//u.test(value) ? 'Safari' : 'Браузер';
+  return { device, browser };
+}
+
 function ensureBodySize(c: Parameters<typeof fail>[0]): Response | null {
   const length = Number(c.req.header('content-length') ?? 0);
   return Number.isFinite(length) && length > MAX_AUTH_BODY_BYTES
@@ -224,6 +231,31 @@ authRoutes.post('/logout', async (c) => {
   if (token) await revokeSession(c.env.DB, await sha256(token), new Date().toISOString());
   clearSessionCookie(c);
   return ok(c, { loggedOut: true });
+});
+
+authRoutes.get('/sessions', async (c) => {
+  const user = c.get('authUser'); const currentSessionId = c.get('sessionId');
+  if (!user || !currentSessionId) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const rows = await c.env.DB.prepare(`SELECT id, user_agent AS userAgent, created_at AS createdAt, last_seen_at AS lastSeenAt
+    FROM sessions WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ? ORDER BY last_seen_at DESC LIMIT 50`).bind(user.id, new Date().toISOString())
+    .all<{ id: string; userAgent: string | null; createdAt: string; lastSeenAt: string }>();
+  return ok(c, { sessions: rows.results.map((session) => ({ ...session, ...describeSession(session.userAgent), current: session.id === currentSessionId })) });
+});
+
+authRoutes.delete('/sessions/others', async (c) => {
+  const user = c.get('authUser'); const currentSessionId = c.get('sessionId');
+  if (!user || !currentSessionId) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const result = await c.env.DB.prepare('UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND id != ? AND revoked_at IS NULL').bind(new Date().toISOString(), user.id, currentSessionId).run();
+  return ok(c, { revoked: result.meta.changes ?? 0 });
+});
+
+authRoutes.delete('/sessions/:id', async (c) => {
+  const user = c.get('authUser'); const currentSessionId = c.get('sessionId'); const id = c.req.param('id');
+  if (!user || !currentSessionId) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  if (id === currentSessionId) return fail(c, 422, 'CURRENT_SESSION', 'Use logout to end the current session.');
+  const result = await c.env.DB.prepare('UPDATE sessions SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL').bind(new Date().toISOString(), id, user.id).run();
+  if (!result.meta.changes) return fail(c, 404, 'SESSION_NOT_FOUND', 'Session not found.');
+  return ok(c, { revoked: true });
 });
 
 authRoutes.get('/session', (c) => ok(c, { user: c.get('authUser') }));

@@ -1,4 +1,4 @@
-import { ArrowLeft, BadgeCheck, BatteryMedium, BellRing, Camera, ChevronRight, Database, Gem, LockKeyhole, Monitor, Moon, QrCode, RefreshCw, Save, Send, ShieldCheck, Sparkles, Sun, Trash2, Unlink, UserPlus, Volume2 } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, BatteryMedium, BellRing, Camera, ChevronRight, Database, Gem, LockKeyhole, Monitor, MonitorSmartphone, Moon, QrCode, RefreshCw, Save, Send, ShieldCheck, Sparkles, Sun, Trash2, Unlink, UserPlus, Volume2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest, mediaUrl, setAccessToken } from '../api/client';
@@ -34,7 +34,7 @@ export function SettingsPage() {
   const [linkedAccountError, setLinkedAccountError] = useState<string | null>(null);
   const [secretChatEnabled, setSecretChatEnabled] = useState(false);
   const [secretChatPending, setSecretChatPending] = useState(false);
-  const settingsCategory = section === 'privacy' || section === 'notifications' || section === 'power' || section === 'data' || section === 'profile' || section === 'ai' ? section : null;
+  const settingsCategory = section === 'privacy' || section === 'notifications' || section === 'power' || section === 'data' || section === 'profile' || section === 'ai' || section === 'devices' ? section : null;
   const [privacy, setPrivacy] = useState({ lastSeenVisibility: 'everyone', birthdayVisibility: 'everyone', messagingVisibility: 'everyone', storiesVisibility: 'everyone' });
   const [privacyPending, setPrivacyPending] = useState(false);
   const [messageSoundsEnabled, setMessageSoundsEnabled] = useState(true);
@@ -50,6 +50,8 @@ export function SettingsPage() {
   const [deletePassword, setDeletePassword] = useState('');
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Array<{ id: string; device: string; browser: string; createdAt: string; lastSeenAt: string; current: boolean }>>([]);
+  const [sessionsPending, setSessionsPending] = useState(false);
   const telegramResult = searchParams.get('telegram');
   const telegramCallbackError = searchParams.get('telegram_error');
 
@@ -78,6 +80,8 @@ export function SettingsPage() {
   ]).then(([privacySettings, notifications]) => { setPrivacy(privacySettings); setMessageSoundsEnabled(notifications.messageSoundsEnabled); }).catch(() => undefined); }, [user]);
   useEffect(() => { if (user) void apiRequest<PowerSavingSettings>('/users/me/power-saving-settings').then((value) => { setPowerSaving(value); applyPowerSavingSettings(value); }).catch(() => undefined); }, [user]);
   useEffect(() => { if (user) void apiRequest<{ settings: typeof aiSettings; quota: { remaining: number; limit: number } }>('/ai/settings').then(({ settings, quota }) => { setAiSettings(settings); setAiQuota(quota); }).catch(() => undefined); }, [user]);
+  const loadSessions = async () => { const result = await apiRequest<{ sessions: typeof sessions }>('/auth/sessions'); setSessions(result.sessions); };
+  useEffect(() => { if (user && section === 'devices') void loadSessions().catch(() => setSessions([])); }, [section, user]);
 
   if (!user) return null;
 
@@ -231,10 +235,13 @@ export function SettingsPage() {
       setDeletePending(false);
     }
   };
+  const revokeSession = async (id: string) => { setSessionsPending(true); try { await apiRequest(`/auth/sessions/${id}`, { method: 'DELETE' }); await loadSessions(); } catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось завершить сеанс.'); } finally { setSessionsPending(false); } };
+  const revokeOtherSessions = async () => { if (!window.confirm('Завершить все остальные сеансы? На этом устройстве вы останетесь в аккаунте.')) return; setSessionsPending(true); try { await apiRequest('/auth/sessions/others', { method: 'DELETE' }); await loadSessions(); } catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось завершить сеансы.'); } finally { setSessionsPending(false); } };
 
   const categories = [
     ['notifications', 'notifications', BellRing, 'Уведомления и звуки', null],
     ['privacy', 'privacy', LockKeyhole, 'Конфиденциальность', null],
+    ['devices', 'devices', MonitorSmartphone, 'Устройства', sessions.length ? String(sessions.length) : null],
     ['data', 'data', Database, 'Данные и память', null],
     ['power', 'power', BatteryMedium, 'Энергосбережение', powerSaving.powerSavingEnabled ? 'Вкл.' : 'Выкл.'],
     ['diamonds', 'diamonds', Gem, 'Алмазы', 'Подарки и баланс'],
@@ -252,7 +259,7 @@ export function SettingsPage() {
     {showQr && <ProfileQrModal username={user.username} onClose={() => setShowQr(false)} />}
   </section>;
 
-  const sectionTitle = settingsCategory === 'notifications' ? 'Уведомления и звуки' : settingsCategory === 'privacy' ? 'Конфиденциальность' : settingsCategory === 'data' ? 'Данные и память' : settingsCategory === 'power' ? 'Энергосбережение' : settingsCategory === 'ai' ? 'Tyson AI' : 'Профиль';
+  const sectionTitle = settingsCategory === 'notifications' ? 'Уведомления и звуки' : settingsCategory === 'privacy' ? 'Конфиденциальность' : settingsCategory === 'devices' ? 'Устройства' : settingsCategory === 'data' ? 'Данные и память' : settingsCategory === 'power' ? 'Энергосбережение' : settingsCategory === 'ai' ? 'Tyson AI' : 'Профиль';
   return <section className="surface-page narrow-page settings-page settings-detail-page">
     <header className="settings-detail-header"><button type="button" aria-label="Назад к настройкам" onClick={() => navigate('/settings')}><ArrowLeft size={21} /></button><div><p className="eyebrow">Настройки Tyson</p><h1>{sectionTitle}</h1></div></header>
     {settingsCategory === 'notifications' && <>
@@ -269,6 +276,7 @@ export function SettingsPage() {
       ] as const).map(([key, label]) => <label key={key}><span>{label}</span><select value={privacy[key]} onChange={(event) => setPrivacy({ ...privacy, [key]: event.target.value })}><option value="everyone">Все</option><option value="friends">Друзья</option><option value="nobody">Никто</option></select></label>)}<button className="primary-button" type="button" disabled={privacyPending} onClick={() => void savePrivacy()}><Save size={17} />{privacyPending ? 'Сохраняем…' : 'Сохранить приватность'}</button></section>
       <section className="secret-chats-settings" aria-labelledby="secret-chats-title"><div><p className="eyebrow">Приватные сообщения</p><h2 id="secret-chats-title"><LockKeyhole size={18} />Секретные чаты</h2><p>Обычные сообщения синхронизируются по аккаунту и шифруются при хранении. Секретные чаты используют E2EE и доступны только на добавленных устройствах.</p></div><label className="settings-switch"><input type="checkbox" checked={secretChatEnabled} disabled={secretChatPending} onChange={(event) => void changeSecretChat(event.target.checked)} /><span aria-hidden="true" /><b>{secretChatEnabled ? 'Включены' : 'Выключены'}</b></label></section>
     </>}
+    {settingsCategory === 'devices' && <section className="device-sessions"><div><p className="eyebrow">Безопасность</p><h2><MonitorSmartphone size={20} />Активные сеансы</h2><p>Если вы не узнаёте устройство, завершите его сеанс.</p></div><div className="device-session-list">{sessions.map((session) => <article key={session.id}><i><MonitorSmartphone size={20} /></i><div><strong>{session.device}{session.current && <span>Это устройство</span>}</strong><small>{session.browser} · был в сети {new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(session.lastSeenAt))}</small></div>{!session.current && <button type="button" disabled={sessionsPending} onClick={() => void revokeSession(session.id)}>Завершить</button>}</article>)}{!sessions.length && <p className="device-session-empty">Загружаем сеансы…</p>}</div><button className="secondary-button device-revoke-all" type="button" disabled={sessionsPending || sessions.filter((session) => !session.current).length === 0} onClick={() => void revokeOtherSessions()}>Выйти со всех остальных устройств</button></section>}
     {settingsCategory === 'power' && <section className="power-saving-settings"><div><p className="eyebrow">Энергосбережение</p><h2><BatteryMedium size={20} />Экономия энергии</h2><p>Режим отключает прозрачные эффекты, звуки новых сообщений и Push-уведомления в Tyson.</p></div><label className="settings-switch"><input type="checkbox" checked={powerSaving.powerSavingEnabled} disabled={powerSavingPending} onChange={(event) => void changePowerSaving({ ...powerSaving, powerSavingEnabled: event.target.checked })} /><span aria-hidden="true" /><b>{powerSaving.powerSavingEnabled ? 'Включено' : 'Выключено'}</b></label></section>}
     {settingsCategory === 'data' && <section className="power-saving-settings"><div><p className="eyebrow">Данные и память</p><h2><Database size={20} />Загрузка медиа</h2><p>Управляйте трафиком: отключённые изображения не будут загружаться из Tyson.</p></div><label className="power-saving-row"><span><strong>Не загружать картинки</strong><small>Посты, аватары и другие пользовательские изображения не будут запрашиваться.</small></span><input type="checkbox" checked={powerSaving.blockImagesEnabled} disabled={powerSavingPending} onChange={(event) => void changePowerSaving({ ...powerSaving, blockImagesEnabled: event.target.checked })} /></label></section>}
     {settingsCategory === 'ai' && <section className="ai-settings"><div><p className="eyebrow">Персонализация</p><h2><Sparkles size={20} />Tyson AI</h2><p>{aiQuota ? `Сегодня доступно ${aiQuota.remaining} из ${aiQuota.limit} запросов.` : 'Загружаем лимит запросов…'}</p></div><label><span>Модель по умолчанию</span><select value={aiSettings.defaultModelTier} onChange={(event) => setAiSettings({ ...aiSettings, defaultModelTier: event.target.value })}><option value="lite">Быстро — Gemini Flash Lite</option><option value="flash">Стандарт — Gemini Flash</option><option value="smart">Умнее — Gemini 3.7 Flash</option></select></label><label><span>Как к вам обращаться</span><input maxLength={80} value={aiSettings.profileName} onChange={(event) => setAiSettings({ ...aiSettings, profileName: event.target.value })} placeholder="Например, Юра" /></label><label><span>О себе для Tyson AI</span><textarea maxLength={1000} value={aiSettings.profileContext} onChange={(event) => setAiSettings({ ...aiSettings, profileContext: event.target.value })} placeholder="Интересы, стиль общения и полезный контекст" /><small>{aiSettings.profileContext.length} / 1000</small></label><button className="primary-button" type="button" disabled={aiSettingsPending} onClick={() => void saveAiSettings()}><Save size={17} />{aiSettingsPending ? 'Сохраняем…' : 'Сохранить настройки AI'}</button></section>}
