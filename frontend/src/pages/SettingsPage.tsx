@@ -51,6 +51,9 @@ export function SettingsPage() {
   const [deletePassword, setDeletePassword] = useState('');
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [aliases, setAliases] = useState<Array<{ id: string; username: string }>>([]);
+  const [newAlias, setNewAlias] = useState('');
+  const [aliasPending, setAliasPending] = useState(false);
   const [sessions, setSessions] = useState<Array<{ id: string; device: string; browser: string; createdAt: string; lastSeenAt: string; current: boolean }>>([]);
   const [sessionsPending, setSessionsPending] = useState(false);
   const telegramResult = searchParams.get('telegram');
@@ -80,6 +83,8 @@ export function SettingsPage() {
     apiRequest<typeof privacy>('/users/me/privacy-settings'), apiRequest<{ messageSoundsEnabled: boolean }>('/users/me/notification-settings'),
   ]).then(([privacySettings, notifications]) => { setPrivacy(privacySettings); setMessageSoundsEnabled(notifications.messageSoundsEnabled); }).catch(() => undefined); }, [user]);
   useEffect(() => { if (user) void apiRequest<PowerSavingSettings>('/users/me/power-saving-settings').then((value) => { setPowerSaving(value); applyPowerSavingSettings(value); }).catch(() => undefined); }, [user]);
+  const loadAliases = async () => { const result = await apiRequest<{ aliases: Array<{ id: string; username: string }> }>('/users/me/aliases'); setAliases(result.aliases); };
+  useEffect(() => { if (user) void loadAliases().catch(() => setAliases([])); }, [user]);
   const loadAiPro = async () => setAiPro(await apiRequest<{ active: boolean; expiresAt: string | null }>('/ai/pro'));
   useEffect(() => { if (user) void Promise.all([apiRequest<{ settings: typeof aiSettings; quota: { remaining: number; limit: number } }>('/ai/settings'), loadAiPro()]).then(([{ settings, quota }]) => { setAiSettings(settings); setAiQuota(quota); }).catch(() => undefined); }, [user]);
   const loadSessions = async () => { const result = await apiRequest<{ sessions: typeof sessions }>('/auth/sessions'); setSessions(result.sessions); };
@@ -238,6 +243,8 @@ export function SettingsPage() {
       setDeletePending(false);
     }
   };
+  const addAlias = async (event: FormEvent) => { event.preventDefault(); if (!newAlias.trim()) return; setAliasPending(true); try { await apiRequest('/users/me/aliases', { method: 'POST', body: JSON.stringify({ username: newAlias }) }); setNewAlias(''); await loadAliases(); window.dispatchEvent(new Event('diamonds-changed')); setMessage('Дополнительный username добавлен.'); } catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось добавить username.'); } finally { setAliasPending(false); } };
+  const deleteAlias = async (id: string) => { if (!window.confirm('Удалить дополнительный username? Его сможет занять другой пользователь.')) return; setAliasPending(true); try { await apiRequest(`/users/me/aliases/${id}`, { method: 'DELETE' }); await loadAliases(); } catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось удалить username.'); } finally { setAliasPending(false); } };
   const revokeSession = async (id: string) => { setSessionsPending(true); try { await apiRequest(`/auth/sessions/${id}`, { method: 'DELETE' }); await loadSessions(); } catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось завершить сеанс.'); } finally { setSessionsPending(false); } };
   const revokeOtherSessions = async () => { if (!window.confirm('Завершить все остальные сеансы? На этом устройстве вы останетесь в аккаунте.')) return; setSessionsPending(true); try { await apiRequest('/auth/sessions/others', { method: 'DELETE' }); await loadSessions(); } catch (caught) { setError(caught instanceof ApiError ? caught.message : 'Не удалось завершить сеансы.'); } finally { setSessionsPending(false); } };
 
@@ -295,6 +302,7 @@ export function SettingsPage() {
       {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success">{message}</p>}
       <button className="primary-button" disabled={pending} type="submit"><Save size={17} />{pending ? 'Сохраняем…' : 'Сохранить'}</button>
     </form>
+    <section className="alias-settings"><div><p className="eyebrow">Имена пользователя</p><h2>Дополнительные username</h2><p>Основной username остаётся прежним. Каждый дополнительный стоит 50 💎.</p></div><form onSubmit={(event) => void addAlias(event)}><span>@</span><input minLength={3} maxLength={30} pattern="[A-Za-z0-9_]+" value={newAlias} onChange={(event) => setNewAlias(event.target.value.replace(/^@/u, ''))} placeholder="новое_имя" /><button type="submit" disabled={aliasPending}>Добавить · 50 💎</button></form>{aliases.length > 0 && <div className="alias-list">{aliases.map((alias) => <div key={alias.id}><span>@{alias.username}</span><button type="button" disabled={aliasPending} onClick={() => void deleteAlias(alias.id)}><Trash2 size={15} />Удалить</button></div>)}</div>}<small>Можно добавить до 20 дополнительных username.</small></section>
     <section className="telegram-settings" aria-labelledby="telegram-settings-title">
       <div className="telegram-settings-copy"><span className="telegram-mark"><Send size={20} /></span><div><h2 id="telegram-settings-title">Telegram</h2><p>{telegramStatus?.linked ? 'Telegram подтверждает аккаунт и доступен для следующего входа.' : 'Подключите Telegram вместо подтверждения кодом по email.'}</p>{telegramStatus?.identity && <small>{telegramStatus.identity.username ? `@${telegramStatus.identity.username}` : telegramStatus.identity.displayName ?? 'Telegram подключён'}</small>}</div></div>
       {telegramStatus?.linked ? <button className="secondary-button" type="button" disabled={telegramPending} onClick={() => void disconnectTelegram()}><Unlink size={16} />Отключить</button> : <button className="telegram-connect-button" type="button" disabled={telegramPending || telegramStatus === null} onClick={() => void connectTelegram()}><Send size={16} />{telegramPending ? 'Открываем…' : 'Подключить'}</button>}

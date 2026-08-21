@@ -53,8 +53,8 @@ export async function findUserByEmail(db: D1Database, email: string): Promise<Us
 }
 
 export async function findUserByUsername(db: D1Database, username: string): Promise<AuthUser | null> {
-  const row = await db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE username = ? LIMIT 1`)
-    .bind(username).first<UserRow>();
+  const row = await db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE username = ? OR id = (SELECT user_id FROM username_aliases WHERE username = ? COLLATE NOCASE) LIMIT 1`)
+    .bind(username, username).first<UserRow>();
   return row ? projectUser(row) : null;
 }
 

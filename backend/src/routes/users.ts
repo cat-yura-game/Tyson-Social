@@ -30,6 +30,7 @@ const privacySettingsSchema = z.object({
 }).strict();
 const notificationSettingsSchema = z.object({ messageSoundsEnabled: z.boolean() }).strict();
 const powerSavingSettingsSchema = z.object({ powerSavingEnabled: z.boolean(), blockImagesEnabled: z.boolean() }).strict();
+const aliasSchema = z.object({ username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/u).transform((value) => value.toLowerCase()) }).strict();
 
 function publicProfile(user: AuthUser) {
   return {
@@ -72,6 +73,40 @@ userRoutes.put('/me/post-notification-authors', async (c) => {
 userRoutes.get('/me', (c) => {
   const user = c.get('authUser');
   return user ? ok(c, { user }) : fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+});
+
+userRoutes.get('/me/aliases', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const rows = await c.env.DB.prepare('SELECT id, username, created_at AS createdAt FROM username_aliases WHERE user_id = ? ORDER BY created_at').bind(user.id).all();
+  return ok(c, { aliases: rows.results, price: 50 });
+});
+
+userRoutes.post('/me/aliases', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  let input: z.infer<typeof aliasSchema>; try { input = aliasSchema.parse(await parseJsonBody(c.req.raw)); } catch { return fail(c, 422, 'VALIDATION_ERROR', 'Invalid username.'); }
+  if (input.username === user.username.toLowerCase()) return fail(c, 422, 'MAIN_USERNAME', 'This is already your main username.');
+  const [takenUser, takenAlias, count] = await Promise.all([
+    c.env.DB.prepare('SELECT 1 FROM users WHERE username = ? COLLATE NOCASE').bind(input.username).first(),
+    c.env.DB.prepare('SELECT 1 FROM username_aliases WHERE username = ? COLLATE NOCASE').bind(input.username).first(),
+    c.env.DB.prepare('SELECT COUNT(*) AS count FROM username_aliases WHERE user_id = ?').bind(user.id).first<{ count: number }>(),
+  ]);
+  if (takenUser || takenAlias) return fail(c, 409, 'USERNAME_TAKEN', 'This username is already taken.');
+  if ((count?.count ?? 0) >= 20) return fail(c, 422, 'ALIAS_LIMIT_REACHED', 'You can have up to 20 additional usernames.');
+  const now = new Date().toISOString(); const aliasId = crypto.randomUUID(); const transactionId = crypto.randomUUID();
+  const result = await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at) SELECT ?, ?, -50, 'debit', 'username_alias', ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND diamond_balance >= 50)`).bind(transactionId, user.id, input.username, now, user.id),
+    c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance - 50 WHERE id = ? AND EXISTS (SELECT 1 FROM diamond_transactions WHERE id = ?)').bind(user.id, transactionId),
+    c.env.DB.prepare('INSERT INTO username_aliases (id, user_id, username, created_at) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM diamond_transactions WHERE id = ?)').bind(aliasId, user.id, input.username, now, transactionId),
+  ]);
+  if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'Not enough diamonds.');
+  return ok(c, { alias: { id: aliasId, username: input.username, createdAt: now }, balance: (await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>())?.balance ?? 0 }, 201);
+});
+
+userRoutes.delete('/me/aliases/:id', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const result = await c.env.DB.prepare('DELETE FROM username_aliases WHERE id = ? AND user_id = ?').bind(c.req.param('id'), user.id).run();
+  if (!result.meta.changes) return fail(c, 404, 'ALIAS_NOT_FOUND', 'Username not found.');
+  return ok(c, { deleted: true });
 });
 
 function setSwitchedSessionCookie(c: Parameters<typeof ok>[0], token: string): void {
@@ -365,8 +400,8 @@ userRoutes.get('/:username/posts', async (c) => {
     COALESCE((SELECT SUM(amount) FROM post_diamond_reactions d WHERE d.post_id = p.id), 0) AS diamondCount,
     EXISTS(SELECT 1 FROM post_diamond_reactions d WHERE d.post_id = p.id AND d.sender_user_id = ?) AS viewerDiamondGiven
     FROM posts p JOIN users u ON u.id = p.author_user_id
-    WHERE u.username = ? COLLATE NOCASE AND p.status = 'published'
-    ORDER BY p.pinned_at DESC, p.published_at DESC LIMIT 100`).bind(viewerId, viewerId, username).all();
+    WHERE (u.username = ? COLLATE NOCASE OR EXISTS (SELECT 1 FROM username_aliases a WHERE a.user_id = u.id AND a.username = ? COLLATE NOCASE)) AND p.status = 'published'
+    ORDER BY p.pinned_at DESC, p.published_at DESC LIMIT 100`).bind(viewerId, viewerId, username, username).all();
   return ok(c, { posts: rows.results });
 });
 
