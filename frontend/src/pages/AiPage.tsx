@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 import { ThinkingState } from '@aicss/react/thinking-state';
 import { TextResponse } from '@aicss/react/text-response';
 import { API_URL, apiRequest, mediaUrl } from '../api/client';
+import { RichAiText } from '../components/RichAiText';
 
 interface Conversation {
   id: string;
@@ -186,7 +187,7 @@ export function AiPage() {
           {message.imageStorageKey && !message.attachmentName && <img src={mediaUrl(message.imageStorageKey) ?? ''} alt="Изображение в AI-диалоге" />}
           {message.imageStorageKey && message.attachmentName && <a className="ai-document" href={`${API_URL}/api/media/${encodeURIComponent(message.imageStorageKey)}`} target="_blank" rel="noreferrer"><FileText size={18} /><span><b>{message.attachmentName}</b><small>{message.attachmentContentType ?? 'Документ'} · доступен 24 часа</small></span></a>}
           {!message.imageStorageKey && Boolean(message.imageExpired) && <span className="ai-expired-image">Вложение удалено через 24 часа</span>}
-          {message.content && message.role === 'assistant' ? <TextResponse><p>{message.content}</p></TextResponse> : message.content && <p>{message.content}</p>}
+          {message.content && message.role === 'assistant' ? <TextResponse><RichAiText text={message.content} /></TextResponse> : message.content && <p>{message.content}</p>}
         </article>)}
         {sending && <article className="ai-message assistant ai-thinking" aria-live="polite"><div className="ai-thinking-head"><span className="ai-thinking-dot" aria-hidden="true" /><ThinkingState /></div><p>Анализирую запрос и готовлю ответ<span>…</span></p></article>}
       </div>

@@ -1,6 +1,7 @@
 import { ChevronLeft, Send, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { apiRequest } from '../api/client';
+import { RichAiText } from './RichAiText';
 
 interface AiConversation { id: string; title: string; updatedAt: string }
 interface AiMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: string }
@@ -96,7 +97,7 @@ export function MessengerAiChat({ onBack }: { onBack(): void }) {
     </header>
     <div className="messenger-ai-stream" ref={stream}>
       {!messages.length && <div className="messenger-ai-welcome"><span><Sparkles /></span><strong>Tyson AI в сообщениях</strong><p>Пишите как обычному собеседнику. Используется общий дневной лимит Tyson AI.</p></div>}
-      {messages.map((message) => <article className={message.role === 'user' ? 'message mine messenger-ai-message' : 'message messenger-ai-message'} key={message.id}>{message.role === 'assistant' && <strong>Tyson AI</strong>}<p>{message.content}</p><small>{new Date(message.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small></article>)}
+      {messages.map((message) => <article className={message.role === 'user' ? 'message mine messenger-ai-message' : 'message messenger-ai-message'} key={message.id}>{message.role === 'assistant' && <strong>Tyson AI</strong>}{message.role === 'assistant' ? <RichAiText text={message.content} /> : <p>{message.content}</p>}<small>{new Date(message.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small></article>)}
       {sending && <article className="message messenger-ai-message thinking"><strong>Tyson AI</strong><p>Думаю…</p></article>}
     </div>
     <form className="composer-area messenger-ai-composer" onSubmit={(event) => void send(event)}>
