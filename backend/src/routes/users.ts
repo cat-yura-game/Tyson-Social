@@ -77,7 +77,7 @@ userRoutes.get('/me', (c) => {
 
 userRoutes.get('/me/aliases', async (c) => {
   const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
-  const rows = await c.env.DB.prepare('SELECT id, username, created_at AS createdAt FROM username_aliases WHERE user_id = ? ORDER BY created_at').bind(user.id).all();
+  const rows = await c.env.DB.prepare('SELECT id, username, created_at AS createdAt, purchase_price AS purchasePrice FROM username_aliases WHERE user_id = ? ORDER BY created_at').bind(user.id).all();
   return ok(c, { aliases: rows.results, price: 50 });
 });
 
@@ -468,6 +468,7 @@ userRoutes.get('/:username', async (c) => {
   const profile = publicProfile(user);
   if (!canSee(privacy?.lastSeenVisibility)) profile.lastSeenAt = null;
   if (!canSee(privacy?.birthdayVisibility)) { profile.birthdayMonthDay = null; profile.birthdayYear = null; }
+  const aliases = await c.env.DB.prepare('SELECT id, username, created_at AS createdAt, purchase_price AS purchasePrice FROM username_aliases WHERE user_id = ? ORDER BY created_at').bind(user.id).all();
   return ok(c, { user: { ...profile, followerCount: stats?.followerCount ?? 0,
-    followingCount: stats?.followingCount ?? 0, viewerFollowing: stats?.viewerFollowing === 1 } });
+    followingCount: stats?.followingCount ?? 0, viewerFollowing: stats?.viewerFollowing === 1, aliases: aliases.results } });
 });
