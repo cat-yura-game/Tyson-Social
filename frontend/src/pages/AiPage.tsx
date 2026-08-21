@@ -1,4 +1,4 @@
-import { FileText, ImagePlus, Menu, Mic, Paperclip, Plus, Send, SlidersHorizontal, Sparkles, Trash2, X } from 'lucide-react';
+import { FileText, Gauge, Menu, Mic, Paperclip, Plus, Send, Sparkles, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { ThinkingState } from '@aicss/react/thinking-state';
 import { TextResponse } from '@aicss/react/text-response';
@@ -40,7 +40,6 @@ interface Quota {
 
 export function AiPage() {
   const imageInput = useRef<HTMLInputElement>(null);
-  const documentInput = useRef<HTMLInputElement>(null);
   const streamRef = useRef<HTMLDivElement>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -85,33 +84,25 @@ export function AiPage() {
   useEffect(() => { streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, sending]);
   useEffect(() => () => { if (imagePreview) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
 
-  const selectImage = (event: ChangeEvent<HTMLInputElement>) => {
+  const selectAttachment = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
     event.target.value = '';
     setError(null);
     if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) { setError('Поддерживаются JPEG, PNG, WebP и AVIF.'); return; }
-    if (file.size > 10 * 1024 * 1024) { setError('Изображение должно быть не больше 10 МиБ для Telegram-аккаунтов.'); return; }
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setDocument(null);
-    setImage(file);
-    setImagePreview(URL.createObjectURL(file));
+    if (file.size > 10 * 1024 * 1024) { setError('Вложение должно быть не больше 10 МиБ.'); return; }
+    if (['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+      setDocument(null); setImage(file); setImagePreview(URL.createObjectURL(file));
+      return;
+    }
+    if (!DOCUMENT_TYPES.has(file.type)) { setError('Поддерживаются изображения, PDF, TXT, Markdown, CSV, JSON, RTF и документы Office.'); return; }
+    clearImage(); setDocument(file);
   };
 
   const clearImage = () => {
     if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImage(null);
     setImagePreview(null);
-  };
-
-  const selectDocument = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    event.target.value = '';
-    setError(null);
-    if (!file) return;
-    if (!DOCUMENT_TYPES.has(file.type)) { setError('Поддерживаются PDF, TXT, Markdown, CSV, JSON, RTF и документы Office.'); return; }
-    if (file.size > 10 * 1024 * 1024) { setError('Документ должен быть не больше 10 МиБ.'); return; }
-    clearImage(); setDocument(file);
   };
 
   const startVoiceInput = () => {
@@ -182,11 +173,10 @@ export function AiPage() {
         {imagePreview && <div className="ai-image-preview"><img src={imagePreview} alt="Выбранное изображение" /><button type="button" onClick={clearImage} aria-label="Убрать изображение"><X size={16} /></button></div>}
         {document && <div className="ai-document-preview"><FileText size={19} /><span>{document.name}<small>Документ будет удалён через 24 часа</small></span><button type="button" onClick={() => setDocument(null)} aria-label="Убрать документ"><X size={16} /></button></div>}
         {error && <p className="form-error" role="alert">{error}</p>}
-        <div><button type="button" onClick={() => imageInput.current?.click()} disabled={sending} aria-label="Добавить изображение"><ImagePlus /></button><button type="button" onClick={() => documentInput.current?.click()} disabled={sending} aria-label="Добавить документ"><Paperclip /></button><textarea value={content} onChange={(event) => setContent(event.target.value)} maxLength={8000} rows={1} placeholder="Спросить Tyson AI" disabled={sending || quota?.remaining === 0} />{(content.trim() || image || document) && <button className="ai-model-trigger" type="button" onClick={() => setModelPickerOpen((open) => !open)} aria-label="Выбрать уровень модели" aria-expanded={modelPickerOpen}><SlidersHorizontal /></button>}{!(content.trim() || image || document) && <button type="button" onClick={startVoiceInput} disabled={sending || voiceRecording} aria-label="Голосовой ввод"><Mic className={voiceRecording ? 'voice-recording' : ''} /></button>}{(content.trim() || image || document) && <button className="ai-send" type="submit" disabled={sending || quota?.remaining === 0} aria-label="Отправить"><Send /></button>}</div>
+        <div><button type="button" onClick={() => imageInput.current?.click()} disabled={sending} aria-label="Прикрепить изображение или документ"><Paperclip /></button><textarea value={content} onChange={(event) => setContent(event.target.value)} maxLength={8000} rows={1} placeholder="Спросить Tyson AI" disabled={sending || quota?.remaining === 0} /><button className="ai-model-trigger" type="button" onClick={() => setModelPickerOpen((open) => !open)} aria-label="Выбрать уровень модели" aria-expanded={modelPickerOpen}><Gauge /></button>{!(content.trim() || image || document) && <button type="button" onClick={startVoiceInput} disabled={sending || voiceRecording} aria-label="Голосовой ввод"><Mic className={voiceRecording ? 'voice-recording' : ''} /></button>}{(content.trim() || image || document) && <button className="ai-send" type="submit" disabled={sending || quota?.remaining === 0} aria-label="Отправить"><Send /></button>}</div>
         {modelPickerOpen && <section className="ai-model-slider" aria-label="Уровень модели"><div><strong>{MODEL_TIER_LABELS[modelTier].name}</strong><small>{MODEL_TIER_LABELS[modelTier].caption}</small></div><input type="range" min="0" max="2" step="1" value={MODEL_TIERS.indexOf(modelTier)} onChange={(event) => setModelTier(MODEL_TIERS[Number(event.target.value)] ?? 'lite')} aria-label="Уровень интеллекта модели" /><footer><span>Быстро</span><span>Умнее</span></footer></section>}
         <footer><span>Вложения удаляются через 24 часа</span><strong>{quota ? `${quota.remaining} из ${quota.limit} запросов сегодня` : 'Загрузка лимита…'}</strong></footer>
-        <input ref={imageInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={selectImage} />
-        <input ref={documentInput} className="visually-hidden" type="file" accept=".pdf,.txt,.md,.csv,.json,.rtf,.doc,.docx,.xlsx,.pptx,application/pdf,text/plain,text/markdown,text/csv,application/json,application/rtf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={selectDocument} />
+        <input ref={imageInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/avif,.pdf,.txt,.md,.csv,.json,.rtf,.doc,.docx,.xlsx,.pptx,application/pdf,text/plain,text/markdown,text/csv,application/json,application/rtf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={selectAttachment} />
       </form>
     </div>
   </section>;

@@ -680,6 +680,8 @@ button { color: inherit; }
   .ai-message { width: 91%; }
   .ai-composer { padding: 9px; padding-bottom: max(9px, env(safe-area-inset-bottom)); }
   .ai-composer textarea { min-height: 42px; resize: none; font-size: 16px; }
+  .ai-composer .ai-model-trigger { display: grid !important; flex: 0 0 39px; }
+  .ai-model-slider { position: relative; z-index: 2; margin: 8px 2px 3px; padding: 10px; }
   .ai-composer footer span { display: none; }
   .ai-composer footer { justify-content: flex-end; }
   .conversation-list { height: 100%; padding: 18px 14px; border-right: 0; }
@@ -801,6 +803,7 @@ html[data-theme='dark'] .search-dialog > form { box-shadow: inset 0 1px 0 rgb(25
 html[data-theme='dark'] .ai-conversations { background: #121914; }
 html[data-theme='dark'] .ai-message-stream { background: linear-gradient(180deg, rgb(27 37 30 / 70%), transparent 42%); }
 html[data-theme='dark'] .ai-message.assistant { border-color: rgb(126 205 246 / 14%); background: linear-gradient(145deg, #142832, #11212a); box-shadow: 0 7px 20px rgb(0 0 0 / 17%); } html[data-theme='dark'] .ai-thinking { border-color: rgb(74 183 235 / 22%); background: linear-gradient(120deg, #123443, #112832); } html[data-theme='dark'] .ai-thinking-head strong { color: #72caff; } html[data-theme='dark'] .ai-thinking p { color: #a4c2d1; } html[data-theme='dark'] .ai-composer > div:not(.ai-image-preview):not(.ai-document-preview) { border-color: rgb(126 205 246 / 15%); background: linear-gradient(145deg, #152b36, #101f28); box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%); } html[data-theme='dark'] .ai-document, html[data-theme='dark'] .ai-document-preview { border-color: rgb(126 205 246 / 15%); background: #132b37; } html[data-theme='dark'] .ai-document b, html[data-theme='dark'] .ai-document-preview > span { color: var(--ink); }
+html[data-theme='dark'] .ai-model-slider { border-color: rgb(126 205 246 / 15%); background: #132b37; box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%); }
 html[data-theme='dark'] .ai-composer > div:not(.ai-image-preview),
 html[data-theme='dark'] .ai-conversation-list > button:hover,
 html[data-theme='dark'] .ai-conversation-list > button.active,
