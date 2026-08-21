@@ -355,7 +355,7 @@ userRoutes.get('/:username/posts', async (c) => {
   const username = c.req.param('username').trim().toLowerCase();
   if (!/^[a-z0-9_]{3,30}$/u.test(username)) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
   const viewerId = c.get('authUser')?.id ?? '';
-  const rows = await c.env.DB.prepare(`SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.comment_count AS commentCount,
+  const rows = await c.env.DB.prepare(`SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.comment_count AS commentCount, p.pinned_at AS pinnedAt,
     p.published_at AS publishedAt, p.updated_at AS updatedAt, u.id AS authorId, u.username,
     u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
     u.worn_gift_id AS wornGiftId,
@@ -366,7 +366,7 @@ userRoutes.get('/:username/posts', async (c) => {
     EXISTS(SELECT 1 FROM post_diamond_reactions d WHERE d.post_id = p.id AND d.sender_user_id = ?) AS viewerDiamondGiven
     FROM posts p JOIN users u ON u.id = p.author_user_id
     WHERE u.username = ? COLLATE NOCASE AND p.status = 'published'
-    ORDER BY p.published_at DESC LIMIT 100`).bind(viewerId, viewerId, username).all();
+    ORDER BY p.pinned_at DESC, p.published_at DESC LIMIT 100`).bind(viewerId, viewerId, username).all();
   return ok(c, { posts: rows.results });
 });
 

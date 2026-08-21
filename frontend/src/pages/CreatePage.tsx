@@ -41,6 +41,7 @@ export function CreatePage() {
   const [pollOpen, setPollOpen] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
+  const [coauthorUsernames, setCoauthorUsernames] = useState('');
 
   useEffect(() => {
     if (!image) { setPreview(null); return; }
@@ -164,10 +165,11 @@ export function CreatePage() {
         request.set('body', body);
         request.set('image', image);
         if (poll) request.set('poll', JSON.stringify(poll));
+        if (coauthorUsernames.trim()) request.set('coauthorUsernames', coauthorUsernames);
       }
       const result = await apiRequest<{ id: string; status: string }>('/posts', {
         method: 'POST',
-        body: request ?? JSON.stringify({ title, body, ...(poll ? { poll } : {}) }),
+        body: request ?? JSON.stringify({ title, body, ...(poll ? { poll } : {}), ...(coauthorUsernames.trim() ? { coauthorUsernames: coauthorUsernames.split(/[\s,]+/u) } : {}) }),
       });
       if (result.status === 'published' && promotionViews > 0) {
         try {
@@ -209,6 +211,7 @@ export function CreatePage() {
         <button type="button" className="secondary-button" onClick={() => setPollOpen((value) => !value)}>{pollOpen ? <X size={16} /> : <Plus size={16} />}{pollOpen ? 'Убрать опрос' : 'Добавить опрос'}</button>
         {pollOpen && <div className="poll-composer-fields"><input maxLength={200} value={pollQuestion} onChange={(event) => setPollQuestion(event.target.value)} placeholder="Вопрос" />{pollOptions.map((option, index) => <div key={index}><input maxLength={100} value={option} onChange={(event) => setPollOptions((current) => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} placeholder={`Вариант ${index + 1}`} />{pollOptions.length > 2 && <button type="button" aria-label="Удалить вариант" onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={15} /></button>}</div>)}{pollOptions.length < 4 && <button type="button" className="poll-add-option" onClick={() => setPollOptions((current) => [...current, ''])}>+ Вариант</button>}</div>}
       </section>
+      <label className="coauthor-composer"><span>Отметить соавторов</span><input maxLength={100} value={coauthorUsernames} onChange={(event) => setCoauthorUsernames(event.target.value)} placeholder="username через запятую (до 3)" /><small>Соавторы будут показаны рядом с автором публикации.</small></label>
       <div className="moderation-note"><Sparkles size={18} /><span>Перед публикацией Gemini проверит текст и изображение на спам, мошенничество и нарушения правил.</span></div>
       <label className="post-promotion-option"><span><Rocket size={19} /><span><strong>Продвинуть публикацию</strong><small>2 💎 за уникальный просмотр аккаунтом в сутки</small></span></span><select value={promotionViews} onChange={(event) => setPromotionViews(Number(event.target.value))}><option value={0}>Не продвигать</option><option value={5}>5 просмотров · 10 💎</option><option value={10}>10 просмотров · 20 💎</option><option value={25}>25 просмотров · 50 💎</option><option value={50}>50 просмотров · 100 💎</option></select></label>
       {error && <p className="form-error" role="alert">{error}</p>}

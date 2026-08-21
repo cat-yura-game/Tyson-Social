@@ -29,7 +29,7 @@ interface CreatePostImage {
   contentType: AllowedImageType;
 }
 
-async function createPostInput(c: Parameters<typeof fail>[0], maxUploadBytes: number): Promise<{ title: string; body: string; image: CreatePostImage | null; poll: z.infer<typeof pollSchema> | null } | Response> {
+async function createPostInput(c: Parameters<typeof fail>[0], maxUploadBytes: number): Promise<{ title: string; body: string; image: CreatePostImage | null; poll: z.infer<typeof pollSchema> | null; coauthorUsernames: string[] } | Response> {
   const contentType = c.req.header('content-type')?.toLowerCase() ?? '';
   if (!contentType.includes('multipart/form-data')) {
     const raw = await c.req.json().catch(() => null);
@@ -37,7 +37,8 @@ async function createPostInput(c: Parameters<typeof fail>[0], maxUploadBytes: nu
     if (!input.success) return fail(c, 422, 'VALIDATION_ERROR', 'The submitted post is invalid.', input.error.flatten());
     const poll = raw && typeof raw === 'object' && 'poll' in raw && (raw as { poll?: unknown }).poll ? pollSchema.safeParse((raw as { poll: unknown }).poll) : null;
     if (poll && !poll.success) return fail(c, 422, 'VALIDATION_ERROR', 'The poll is invalid.', poll.error.flatten());
-    return { title: input.data.title, body: input.data.body, image: null, poll: poll?.data ?? null };
+    const coauthorUsernames = raw && typeof raw === 'object' && Array.isArray((raw as { coauthorUsernames?: unknown }).coauthorUsernames) ? (raw as { coauthorUsernames: unknown[] }).coauthorUsernames.filter((item): item is string => typeof item === 'string').map((item) => item.trim().replace(/^@/u, '').toLowerCase()).filter(Boolean).slice(0, 3) : [];
+    return { title: input.data.title, body: input.data.body, image: null, poll: poll?.data ?? null, coauthorUsernames };
   }
 
   const declaredLength = Number(c.req.header('content-length') ?? 0);
@@ -49,14 +50,15 @@ async function createPostInput(c: Parameters<typeof fail>[0], maxUploadBytes: nu
     const input = postBodySchema.parse({ title: form.get('title') ?? '', body: form.get('body') });
     const uploaded = form.get('image');
     const rawPoll = form.get('poll'); const poll = rawPoll ? pollSchema.parse(JSON.parse(String(rawPoll))) : null;
-    if (uploaded === null) return { title: input.title, body: input.body, image: null, poll };
+    const coauthorUsernames = String(form.get('coauthorUsernames') ?? '').split(/[\s,]+/u).map((item) => item.trim().replace(/^@/u, '').toLowerCase()).filter(Boolean).slice(0, 3);
+    if (uploaded === null) return { title: input.title, body: input.body, image: null, poll, coauthorUsernames };
     if (!(uploaded instanceof File)) return fail(c, 422, 'INVALID_IMAGE', 'A valid image file is required.');
     const imageContentType = uploaded.type.toLowerCase();
     const bytes = await uploaded.arrayBuffer();
     assertValidMedia(imageContentType, bytes.byteLength, maxUploadBytes);
     if (imageContentType === 'image/avif') throw new Error('Post images must be JPEG, PNG or WebP.');
     assertImageSignature(imageContentType, new Uint8Array(bytes));
-    return { title: input.title, body: input.body, image: { bytes, contentType: imageContentType }, poll };
+    return { title: input.title, body: input.body, image: { bytes, contentType: imageContentType }, poll, coauthorUsernames };
   } catch (error) {
     if (error instanceof Response) return error;
     return fail(c, 422, 'INVALID_POST', error instanceof ZodError ? 'The submitted post is invalid.' : error instanceof Error ? error.message : 'Invalid post data.', error instanceof ZodError ? error.flatten() : undefined);
@@ -85,6 +87,8 @@ const POST_SELECT = `SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.
   ,(SELECT id FROM post_polls pp WHERE pp.post_id = p.id) AS pollId
   ,(SELECT question FROM post_polls pp WHERE pp.post_id = p.id) AS pollQuestion
   ,(SELECT ends_at FROM post_polls pp WHERE pp.post_id = p.id) AS pollEndsAt
+  ,p.pinned_at AS pinnedAt
+  ,COALESCE((SELECT json_group_array(json_object('username', cu.username, 'displayName', cu.display_name)) FROM post_coauthors pc JOIN users cu ON cu.id = pc.user_id WHERE pc.post_id = p.id), '[]') AS coauthorsJson
   FROM posts p JOIN users u ON u.id = p.author_user_id`;
 const diamondAmountSchema = z.object({ amount: z.number().int().min(1).max(1_000_000) }).strict();
 
@@ -195,6 +199,13 @@ contentRoutes.post('/posts', async (c) => {
     statements.push(c.env.DB.prepare('INSERT INTO post_polls (id, post_id, question, ends_at, created_at) VALUES (?, ?, ?, ?, ?)').bind(pollId, postId, input.poll.question, input.poll.endsAt ?? null, now));
     input.poll.options.forEach((label, sortOrder) => statements.push(c.env.DB.prepare('INSERT INTO post_poll_options (id, poll_id, label, sort_order) VALUES (?, ?, ?, ?)').bind(crypto.randomUUID(), pollId, label, sortOrder)));
   }
+  const coauthorUsernames = [...new Set(input.coauthorUsernames.filter((username) => username !== auth.user.username.toLowerCase()))];
+  if (coauthorUsernames.length) {
+    const placeholders = coauthorUsernames.map(() => '?').join(',');
+    const people = await c.env.DB.prepare(`SELECT id, username FROM users WHERE lower(username) IN (${placeholders}) AND status IN ('active', 'pending_email')`).bind(...coauthorUsernames).all<{ id: string; username: string }>();
+    if (people.results.length !== coauthorUsernames.length) return fail(c, 404, 'COAUTHOR_NOT_FOUND', 'One or more coauthors were not found.');
+    statements.push(...people.results.map((person) => c.env.DB.prepare('INSERT INTO post_coauthors (post_id, user_id, created_at) VALUES (?, ?, ?)').bind(postId, person.id, now)));
+  }
   if (input.image && mediaKey) {
     statements.push(c.env.DB.prepare(`INSERT INTO post_media (id, post_id, storage_key, media_type, mime_type, byte_size, sort_order, created_at)
       VALUES (?, ?, ?, 'image', ?, ?, 0, ?)`).bind(crypto.randomUUID(), postId, mediaKey, input.image.contentType, input.image.bytes.byteLength, now));
@@ -215,6 +226,20 @@ contentRoutes.post('/posts', async (c) => {
     })());
   }
   return ok(c, { id: postId, status }, 201);
+});
+
+contentRoutes.put('/posts/:id/pin', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  const input = await json(c, z.object({ pinned: z.boolean() }).strict()); if (input instanceof Response) return input;
+  const post = await c.env.DB.prepare("SELECT id FROM posts WHERE id = ? AND author_user_id = ? AND status = 'published'").bind(c.req.param('id'), auth.user.id).first();
+  if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
+  if (input.pinned) {
+    const existing = await c.env.DB.prepare('SELECT COUNT(*) AS count FROM posts WHERE author_user_id = ? AND pinned_at IS NOT NULL AND id != ?').bind(auth.user.id, c.req.param('id')).first<{ count: number }>();
+    if ((existing?.count ?? 0) >= 3) return fail(c, 422, 'PIN_LIMIT_REACHED', 'You can pin up to three posts.');
+  }
+  const now = new Date().toISOString();
+  await c.env.DB.prepare('UPDATE posts SET pinned_at = ?, updated_at = ? WHERE id = ?').bind(input.pinned ? now : null, now, c.req.param('id')).run();
+  return ok(c, { pinned: input.pinned });
 });
 
 contentRoutes.get('/posts/:id/poll', async (c) => {

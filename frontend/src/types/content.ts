@@ -21,6 +21,8 @@ export interface Post {
   pollId?: string | null;
   pollQuestion?: string | null;
   pollEndsAt?: string | null;
+  pinnedAt?: string | null;
+  coauthorsJson?: string;
 }
 
 export interface Poll { id: string; question: string; endsAt: string | null; totalVotes: number; viewerOptionId: string | null; options: Array<{ id: string; label: string; votes: number }>; }
