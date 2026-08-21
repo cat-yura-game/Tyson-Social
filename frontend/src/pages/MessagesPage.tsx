@@ -1,4 +1,4 @@
-import { Bookmark, Camera, ChevronLeft, Forward as ForwardIcon, Gift, LockKeyhole, Mic, Paperclip, Pencil, Plus, Send, Smile, Sparkles, Square, Trash2, UsersRound, X } from 'lucide-react';
+import { Bookmark, Camera, ChevronLeft, Forward as ForwardIcon, Gift, LockKeyhole, Mic, Paperclip, Pencil, Search, Send, Smile, Sparkles, Square, Trash2, UsersRound, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRawRequest, apiRequest, mediaUrl } from '../api/client';
@@ -41,6 +41,8 @@ interface EncryptedMessage { id: string; senderUserId: string; senderDeviceId: s
 interface PlainMessage extends EncryptedMessage { content: MessageContent }
 interface CloudMessage { id: string; senderUserId: string; sentAt: string; editedAt?: string | null; content: unknown }
 interface MessageMenuState { message: PlainMessage; x: number; y: number }
+interface FollowedPerson { id: string; username: string; displayName: string; avatarKey: string | null; verified: number | boolean }
+interface MessageSearchResult { id: string; conversationId: string; senderUserId: string; sentAt: string; excerpt: string }
 
 function basicContent(content: MessageContent): BasicMessageContent {
   return content.type === 'forwarded' ? content.content : content;
@@ -75,7 +77,10 @@ export function MessagesPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<PlainMessage[]>([]);
   const [draft, setDraft] = useState('');
-  const [newUsername, setNewUsername] = useState('');
+  const [personQuery, setPersonQuery] = useState('');
+  const [followedPeople, setFollowedPeople] = useState<FollowedPerson[]>([]);
+  const [messageQuery, setMessageQuery] = useState('');
+  const [messageResults, setMessageResults] = useState<MessageSearchResult[]>([]);
   const [groupTitle, setGroupTitle] = useState('');
   const [groupMembers, setGroupMembers] = useState('');
   const [showGroupCreator, setShowGroupCreator] = useState(false);
@@ -155,6 +160,19 @@ export function MessagesPage() {
       .then(({ maxBytes }) => setMaxUploadBytes(maxBytes))
       .catch(() => setMaxUploadBytes(STANDARD_UPLOAD_BYTES));
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const timer = window.setTimeout(() => { void apiRequest<{ people: FollowedPerson[] }>(`/messages/following?q=${encodeURIComponent(personQuery)}`).then(({ people }) => setFollowedPeople(people)).catch(() => setFollowedPeople([])); }, 120);
+    return () => window.clearTimeout(timer);
+  }, [personQuery, user]);
+
+  useEffect(() => {
+    const query = messageQuery.trim();
+    if (query.length < 2) { setMessageResults([]); return; }
+    const timer = window.setTimeout(() => { void apiRequest<{ messages: MessageSearchResult[] }>(`/messages/search?q=${encodeURIComponent(query)}`).then(({ messages }) => setMessageResults(messages)).catch(() => setMessageResults([])); }, 220);
+    return () => window.clearTimeout(timer);
+  }, [messageQuery]);
 
   useEffect(() => () => {
     if (recordingTimer.current !== null) window.clearInterval(recordingTimer.current);
@@ -236,15 +254,14 @@ export function MessagesPage() {
     input.style.overflowY = input.scrollHeight > 94 ? 'auto' : 'hidden';
   }, [draft]);
 
-  const startConversation = async (event: FormEvent) => {
-    event.preventDefault();
+  const openConversation = async (recipientUsername: string) => {
     setError(null);
     try {
       const result = await apiRequest<{ conversation: { id: string } }>('/messages/conversations', {
         method: 'POST',
-        body: JSON.stringify({ recipientUsername: newUsername, securityMode: startSecretChat ? 'secret' : 'cloud' }),
+        body: JSON.stringify({ recipientUsername, securityMode: startSecretChat ? 'secret' : 'cloud' }),
       });
-      setNewUsername('');
+      setPersonQuery('');
       await loadConversations();
       setActiveId(result.conversation.id);
       setSearchParams(sharedPostId ? { conversation: result.conversation.id, sharePost: sharedPostId } : { conversation: result.conversation.id });
@@ -582,7 +599,8 @@ export function MessagesPage() {
   return <section className={`messages-page${activeId ? ' mobile-chat-open' : ''}`}>
     <aside className="conversation-list">
       <div className="messages-title"><div><p className="eyebrow">Синхронизация между устройствами</p><h1>Messenger</h1></div><LockKeyhole size={21} /></div>
-      <form className="new-conversation" onSubmit={(event) => void startConversation(event)}><input required value={newUsername} onChange={(event) => setNewUsername(event.target.value)} placeholder="username получателя" /><button type="submit" aria-label="Начать разговор"><Plus /></button>{secretChatsEnabled && <label className="secret-chat-option"><input type="checkbox" checked={startSecretChat} onChange={(event) => setStartSecretChat(event.target.checked)} />Секретный чат</label>}</form>
+      <div className="messenger-person-search"><div className="new-conversation"><Search size={17} /><input value={personQuery} onChange={(event) => setPersonQuery(event.target.value)} placeholder="Найти среди подписок" />{secretChatsEnabled && <label className="secret-chat-option"><input type="checkbox" checked={startSecretChat} onChange={(event) => setStartSecretChat(event.target.checked)} />Секретный</label>}</div>{followedPeople.length > 0 && <div className="person-search-results">{followedPeople.map((person) => <button key={person.id} type="button" onClick={() => void openConversation(person.username)}><span className="avatar avatar-small">{person.avatarKey ? <img className="avatar-image" src={mediaUrl(person.avatarKey) ?? ''} alt="" /> : person.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{person.displayName}</strong><small>Открыть диалог</small></span></button>)}</div>}</div>
+      <div className="messenger-message-search"><Search size={16} /><input value={messageQuery} onChange={(event) => setMessageQuery(event.target.value)} placeholder="Поиск по сообщениям" />{messageResults.length > 0 && <div className="message-search-results">{messageResults.map((result) => <button key={result.id} type="button" onClick={() => { setActiveId(result.conversationId); setSearchParams({ conversation: result.conversationId }); setMessageQuery(''); }}><strong>{result.excerpt}</strong><small>{new Date(result.sentAt).toLocaleDateString('ru-RU')}</small></button>)}</div>}</div>
       <button className="create-group-trigger" type="button" onClick={() => setShowGroupCreator((value) => !value)}><UsersRound size={17} />Создать группу</button>{showGroupCreator && <form className="group-creator" onSubmit={(event) => void startGroup(event)}><input required maxLength={80} value={groupTitle} onChange={(event) => setGroupTitle(event.target.value)} placeholder="Название группы" /><input required value={groupMembers} onChange={(event) => setGroupMembers(event.target.value)} placeholder="username участников через запятую" /><button type="submit">Создать</button></form>}
       <button className={activeId === TYSON_AI_CHAT_ID ? 'conversation ai-conversation active' : 'conversation ai-conversation'} onClick={() => { setActiveId(TYSON_AI_CHAT_ID); setSearchParams({ conversation: TYSON_AI_CHAT_ID }); }}><span className="avatar avatar-small ai-conversation-avatar"><Sparkles size={20} /></span><span><strong>Tyson AI</strong><small>На основе Gemini</small></span></button>
       {conversations.map((conversation) => <button key={conversation.id} className={conversation.id === activeId ? 'conversation active' : 'conversation'} onClick={() => { setActiveId(conversation.id); setSearchParams(sharedPostId ? { conversation: conversation.id, sharePost: sharedPostId } : { conversation: conversation.id }); }}><span className={`avatar avatar-small${conversation.isSaved ? ' saved-avatar' : ''}`}>{conversation.isSaved ? <Bookmark size={20} /> : conversation.kind === 'group' ? <UsersRound size={18} /> : conversation.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(conversation.otherAvatarKey) ?? ''} alt="" /> : conversation.otherDisplayName.slice(0, 1).toUpperCase()}</span><span><strong>{conversation.otherDisplayName}</strong><small>{conversation.isSaved ? 'Личный защищённый архив' : conversation.kind === 'group' ? `${conversation.memberCount} участника` : `@${conversation.otherUsername}`}</small></span></button>)}

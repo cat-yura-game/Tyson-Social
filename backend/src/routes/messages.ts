@@ -98,6 +98,36 @@ messageRoutes.get('/upload-limit', async (c) => {
   return ok(c, { maxBytes: await uploadLimitForUser(c.env.DB, user.id) });
 });
 
+messageRoutes.get('/following', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const query = c.req.query('q')?.trim().slice(0, 80) ?? '';
+  const like = `%${query.replace(/[\\%_]/gu, '\\$&')}%`;
+  const rows = await c.env.DB.prepare(`SELECT u.id, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified
+    FROM user_follows f JOIN users u ON u.id = f.followed_user_id
+    WHERE f.follower_user_id = ? AND u.status IN ('active', 'pending_email') AND (? = '' OR u.display_name LIKE ? ESCAPE '\\' OR u.username LIKE ? ESCAPE '\\')
+    ORDER BY u.display_name COLLATE NOCASE LIMIT 20`).bind(user.id, query, like, like).all();
+  return ok(c, { people: rows.results });
+});
+
+messageRoutes.get('/search', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const query = c.req.query('q')?.trim().replaceAll(/\s+/gu, ' ').slice(0, 80) ?? '';
+  if (query.length < 2) return ok(c, { messages: [] });
+  const rows = await c.env.DB.prepare(`SELECT cm.id, cm.conversation_id AS conversationId, cm.sender_user_id AS senderUserId, cm.ciphertext, cm.nonce, cm.sent_at AS sentAt
+    FROM cloud_messages cm JOIN conversation_members m ON m.conversation_id = cm.conversation_id
+    WHERE m.user_id = ? AND m.left_at IS NULL ORDER BY cm.created_at DESC LIMIT 500`).bind(user.id).all<{ id: string; conversationId: string; senderUserId: string; ciphertext: string; nonce: string; sentAt: string }>();
+  const needle = query.toLocaleLowerCase('ru'); const messages: Array<{ id: string; conversationId: string; senderUserId: string; sentAt: string; excerpt: string }> = [];
+  for (const row of rows.results) {
+    try {
+      const content = await decryptCloudMessage<Record<string, unknown>>(c.env, row.ciphertext, row.nonce);
+      const text = content.type === 'text' && typeof content.text === 'string' ? content.text : '';
+      if (text.toLocaleLowerCase('ru').includes(needle)) messages.push({ id: row.id, conversationId: row.conversationId, senderUserId: row.senderUserId, sentAt: row.sentAt, excerpt: text.slice(0, 240) });
+      if (messages.length >= 20) break;
+    } catch { /* Ignore corrupted entries while searching. */ }
+  }
+  return ok(c, { messages });
+});
+
 messageRoutes.post('/conversations', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const input = await parse(c, conversationSchema); if (input instanceof Response) return input;
