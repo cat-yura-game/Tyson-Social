@@ -77,9 +77,8 @@ export function MessagesPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<PlainMessage[]>([]);
   const [draft, setDraft] = useState('');
-  const [personQuery, setPersonQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [followedPeople, setFollowedPeople] = useState<FollowedPerson[]>([]);
-  const [messageQuery, setMessageQuery] = useState('');
   const [messageResults, setMessageResults] = useState<MessageSearchResult[]>([]);
   const [groupTitle, setGroupTitle] = useState('');
   const [groupMembers, setGroupMembers] = useState('');
@@ -162,18 +161,18 @@ export function MessagesPage() {
   }, [user]);
 
   useEffect(() => {
-    const query = personQuery.trim();
+    const query = searchQuery.trim();
     if (!user || !query) { setFollowedPeople([]); return; }
     const timer = window.setTimeout(() => { void apiRequest<{ people: FollowedPerson[] }>(`/messages/following?q=${encodeURIComponent(query)}`).then(({ people }) => setFollowedPeople(people)).catch(() => setFollowedPeople([])); }, 120);
     return () => window.clearTimeout(timer);
-  }, [personQuery, user]);
+  }, [searchQuery, user]);
 
   useEffect(() => {
-    const query = messageQuery.trim();
+    const query = searchQuery.trim();
     if (query.length < 2) { setMessageResults([]); return; }
     const timer = window.setTimeout(() => { void apiRequest<{ messages: MessageSearchResult[] }>(`/messages/search?q=${encodeURIComponent(query)}`).then(({ messages }) => setMessageResults(messages)).catch(() => setMessageResults([])); }, 220);
     return () => window.clearTimeout(timer);
-  }, [messageQuery]);
+  }, [searchQuery]);
 
   useEffect(() => () => {
     if (recordingTimer.current !== null) window.clearInterval(recordingTimer.current);
@@ -262,7 +261,7 @@ export function MessagesPage() {
         method: 'POST',
         body: JSON.stringify({ recipientUsername, securityMode: startSecretChat ? 'secret' : 'cloud' }),
       });
-      setPersonQuery('');
+      setSearchQuery('');
       await loadConversations();
       setActiveId(result.conversation.id);
       setSearchParams(sharedPostId ? { conversation: result.conversation.id, sharePost: sharedPostId } : { conversation: result.conversation.id });
@@ -600,8 +599,7 @@ export function MessagesPage() {
   return <section className={`messages-page${activeId ? ' mobile-chat-open' : ''}`}>
     <aside className="conversation-list">
       <div className="messages-title"><div><p className="eyebrow">Синхронизация между устройствами</p><h1>Messenger</h1></div><LockKeyhole size={21} /></div>
-      <div className="messenger-person-search"><div className="new-conversation"><Search size={17} /><input value={personQuery} onChange={(event) => setPersonQuery(event.target.value)} placeholder="Найти среди подписок" />{secretChatsEnabled && <label className="secret-chat-option"><input type="checkbox" checked={startSecretChat} onChange={(event) => setStartSecretChat(event.target.checked)} />Секретный</label>}</div>{followedPeople.length > 0 && <div className="person-search-results">{followedPeople.map((person) => <button key={person.id} type="button" onClick={() => void openConversation(person.username)}><span className="avatar avatar-small">{person.avatarKey ? <img className="avatar-image" src={mediaUrl(person.avatarKey) ?? ''} alt="" /> : person.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{person.displayName}</strong><small>Открыть диалог</small></span></button>)}</div>}</div>
-      <div className="messenger-message-search"><Search size={16} /><input value={messageQuery} onChange={(event) => setMessageQuery(event.target.value)} placeholder="Поиск по сообщениям" />{messageResults.length > 0 && <div className="message-search-results">{messageResults.map((result) => <button key={result.id} type="button" onClick={() => { setActiveId(result.conversationId); setSearchParams({ conversation: result.conversationId }); setMessageQuery(''); }}><strong>{result.excerpt}</strong><small>{new Date(result.sentAt).toLocaleDateString('ru-RU')}</small></button>)}</div>}</div>
+      <div className="messenger-unified-search"><div className="new-conversation"><Search size={17} /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Поиск людей и сообщений" />{secretChatsEnabled && <label className="secret-chat-option"><input type="checkbox" checked={startSecretChat} onChange={(event) => setStartSecretChat(event.target.checked)} />Секретный</label>}</div>{(followedPeople.length > 0 || messageResults.length > 0) && <div className="unified-search-results">{followedPeople.length > 0 && <><p>Написать</p>{followedPeople.map((person) => <button key={person.id} type="button" onClick={() => void openConversation(person.username)}><span className="avatar avatar-small">{person.avatarKey ? <img className="avatar-image" src={mediaUrl(person.avatarKey) ?? ''} alt="" /> : person.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{person.displayName}</strong><small>Открыть диалог</small></span></button>)}</>}{messageResults.length > 0 && <><p>Сообщения</p>{messageResults.map((result) => <button className="message-result" key={result.id} type="button" onClick={() => { setActiveId(result.conversationId); setSearchParams({ conversation: result.conversationId }); setSearchQuery(''); }}><strong>{result.excerpt}</strong><small>{new Date(result.sentAt).toLocaleDateString('ru-RU')}</small></button>)}</>}</div>}</div>
       <button className="create-group-trigger" type="button" onClick={() => setShowGroupCreator((value) => !value)}><UsersRound size={17} />Создать группу</button>{showGroupCreator && <form className="group-creator" onSubmit={(event) => void startGroup(event)}><input required maxLength={80} value={groupTitle} onChange={(event) => setGroupTitle(event.target.value)} placeholder="Название группы" /><input required value={groupMembers} onChange={(event) => setGroupMembers(event.target.value)} placeholder="username участников через запятую" /><button type="submit">Создать</button></form>}
       <button className={activeId === TYSON_AI_CHAT_ID ? 'conversation ai-conversation active' : 'conversation ai-conversation'} onClick={() => { setActiveId(TYSON_AI_CHAT_ID); setSearchParams({ conversation: TYSON_AI_CHAT_ID }); }}><span className="avatar avatar-small ai-conversation-avatar"><Sparkles size={20} /></span><span><strong>Tyson AI</strong><small>На основе Gemini</small></span></button>
       {conversations.map((conversation) => <button key={conversation.id} className={conversation.id === activeId ? 'conversation active' : 'conversation'} onClick={() => { setActiveId(conversation.id); setSearchParams(sharedPostId ? { conversation: conversation.id, sharePost: sharedPostId } : { conversation: conversation.id }); }}><span className={`avatar avatar-small${conversation.isSaved ? ' saved-avatar' : ''}`}>{conversation.isSaved ? <Bookmark size={20} /> : conversation.kind === 'group' ? <UsersRound size={18} /> : conversation.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(conversation.otherAvatarKey) ?? ''} alt="" /> : conversation.otherDisplayName.slice(0, 1).toUpperCase()}</span><span><strong>{conversation.otherDisplayName}</strong><small>{conversation.isSaved ? 'Личный защищённый архив' : conversation.kind === 'group' ? `${conversation.memberCount} участника` : `@${conversation.otherUsername}`}</small></span></button>)}
