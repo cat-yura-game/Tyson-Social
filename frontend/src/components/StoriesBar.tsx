@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MessageCircle, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRawRequest, apiRequest, mediaUrl } from '../api/client';
@@ -15,6 +15,8 @@ interface Story {
   displayName: string;
   avatarKey: string | null;
   verified: number;
+  reactionCount: number;
+  viewerReaction: '' | '❤️' | '🔥' | '😂' | '😮' | '👏';
 }
 
 interface StoryGroup {
@@ -106,6 +108,8 @@ export function StoriesBar() {
     if (next < 0 || next >= stories.length) setActiveIndex(null);
     else setActiveIndex(next);
   };
+  const reactToStory = async (reaction: Story['viewerReaction']) => { if (!activeStory) return; if (!user) { navigate('/login'); return; } const value = activeStory.viewerReaction === reaction ? null : reaction; const result = await apiRequest<{ reaction: Story['viewerReaction'] | null; reactionCount: number }>(`/stories/${activeStory.id}/reaction`, { method: 'PUT', body: JSON.stringify({ reaction: value }) }); setStories((current) => current.map((story) => story.id === activeStory.id ? { ...story, viewerReaction: result.reaction ?? '', reactionCount: result.reactionCount } : story)); };
+  const replyToStory = async () => { if (!activeStory) return; if (!user) { navigate('/login'); return; } const body = window.prompt('Ответ на сторис'); if (!body?.trim()) return; await apiRequest(`/stories/${activeStory.id}/reply`, { method: 'POST', body: JSON.stringify({ body }) }); window.alert('Ответ отправлен.'); };
 
   return <>
     <section className="stories-section" aria-label="Сторис">
@@ -134,6 +138,7 @@ export function StoriesBar() {
         {activeStory.mediaType === 'video'
           ? <video key={activeStory.id} src={mediaUrl(activeStory.storageKey) ?? ''} autoPlay controls playsInline />
           : <img src={mediaUrl(activeStory.storageKey) ?? ''} alt={`Сторис ${activeStory.displayName}`} />}
+        <footer className="story-interactions"><div>{(['❤️', '🔥', '😂', '😮', '👏'] as const).map((reaction) => <button className={activeStory.viewerReaction === reaction ? 'active' : ''} key={reaction} type="button" onClick={() => void reactToStory(reaction)}>{reaction}</button>)}<small>{activeStory.reactionCount || ''}</small></div>{activeStory.authorId !== user?.id && <button type="button" onClick={() => void replyToStory()}><MessageCircle size={16} />Ответить</button>}</footer>
       </div>
       <button className="story-viewer-nav previous" type="button" onClick={() => move(-1)} aria-label="Предыдущая сторис"><ChevronLeft /></button>
       <button className="story-viewer-nav next" type="button" onClick={() => move(1)} aria-label="Следующая сторис"><ChevronRight /></button>

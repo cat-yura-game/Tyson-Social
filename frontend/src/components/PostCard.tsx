@@ -1,9 +1,9 @@
 import { BadgeCheck, Heart, MessageCircle, MoreHorizontal, Rocket, Share2, Sparkles, ThumbsDown, Trash2 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
-import type { Post } from '../types/content';
+import type { Poll, Post } from '../types/content';
 import { RichPostText } from './RichPostText';
 import { DiamondIcon } from './DiamondIcon';
 import { WornGiftButton } from './WornGiftButton';
@@ -23,8 +23,12 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [ownerMenu, setOwnerMenu] = useState(false);
   const [promoted, setPromoted] = useState(Boolean(post.promoted));
+  const [poll, setPoll] = useState<Poll | null>(null);
+  const [pollPending, setPollPending] = useState(false);
   const time = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' });
   const minutes = Math.round((new Date(post.publishedAt).getTime() - Date.now()) / 60_000);
+  useEffect(() => { if (post.pollId) void apiRequest<{ poll: Poll }>(`/posts/${post.id}/poll`).then(({ poll: next }) => setPoll(next)).catch(() => setPoll(null)); }, [post.id, post.pollId]);
+  const vote = async (optionId: string) => { if (!user) { navigate('/login'); return; } if (pollPending) return; setPollPending(true); try { await apiRequest(`/posts/${post.id}/poll`, { method: 'PUT', body: JSON.stringify({ optionId }) }); const next = await apiRequest<{ poll: Poll }>(`/posts/${post.id}/poll`); setPoll(next.poll); } finally { setPollPending(false); } };
 
   const react = async (next: 'like' | 'dislike') => {
     if (!user) { navigate('/login'); return; }
@@ -117,6 +121,7 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
       </header>
       <div className="post-body">{promoted && <span className="promoted-label"><Rocket size={12} />Продвигается</span>}{post.title && <Link to={`/post/${post.id}`}><h2 className="post-title">{post.title}</h2></Link>}<RichPostText text={post.body} /></div>
       {post.mediaKey && <Link className="post-media" to={`/post/${post.id}`}><img loading="lazy" src={mediaUrl(post.mediaKey) ?? ''} alt="Изображение публикации" /></Link>}
+      {poll && <section className="post-poll"><strong>{poll.question}</strong><div>{poll.options.map((option) => { const percent = poll.totalVotes ? Math.round(option.votes / poll.totalVotes * 100) : 0; const chosen = poll.viewerOptionId === option.id; return <button key={option.id} type="button" disabled={pollPending} className={chosen ? 'chosen' : ''} onClick={() => void vote(option.id)}><span style={{ width: poll.viewerOptionId ? `${percent}%` : '0%' }} /><b>{option.label}</b>{poll.viewerOptionId && <em>{percent}%</em>}</button>; })}</div><small>{poll.totalVotes} {poll.totalVotes === 1 ? 'голос' : 'голосов'}</small></section>}
       {summary && <aside className="post-summary"><span><Sparkles size={15} />Краткое содержание от AI</span><p>{summary}</p></aside>}
       {summaryError && <p className="post-summary-error" role="alert">{summaryError}</p>}
       <footer className="post-actions">

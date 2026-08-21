@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z, ZodError } from 'zod';
 import { createAiProviders } from '../ai/providers';
 import { fail, ok } from '../lib/responses';
-import { commentBodySchema, extractLinks, postBodySchema, reactionSchema } from '../schemas/content';
+import { commentBodySchema, extractLinks, pollSchema, postBodySchema, reactionSchema } from '../schemas/content';
 import { sha256 } from '../security/tokens';
 import type { AppVariables, Env } from '../types';
 import { interleaveAuthors, rankFeed, type FeedCandidate } from '../recommendations/feed-ranking';
@@ -29,11 +29,15 @@ interface CreatePostImage {
   contentType: AllowedImageType;
 }
 
-async function createPostInput(c: Parameters<typeof fail>[0], maxUploadBytes: number): Promise<{ title: string; body: string; image: CreatePostImage | null } | Response> {
+async function createPostInput(c: Parameters<typeof fail>[0], maxUploadBytes: number): Promise<{ title: string; body: string; image: CreatePostImage | null; poll: z.infer<typeof pollSchema> | null } | Response> {
   const contentType = c.req.header('content-type')?.toLowerCase() ?? '';
   if (!contentType.includes('multipart/form-data')) {
-    const input = await json(c, postBodySchema);
-    return input instanceof Response ? input : { title: input.title, body: input.body, image: null };
+    const raw = await c.req.json().catch(() => null);
+    const input = postBodySchema.safeParse(raw);
+    if (!input.success) return fail(c, 422, 'VALIDATION_ERROR', 'The submitted post is invalid.', input.error.flatten());
+    const poll = raw && typeof raw === 'object' && 'poll' in raw && (raw as { poll?: unknown }).poll ? pollSchema.safeParse((raw as { poll: unknown }).poll) : null;
+    if (poll && !poll.success) return fail(c, 422, 'VALIDATION_ERROR', 'The poll is invalid.', poll.error.flatten());
+    return { title: input.data.title, body: input.data.body, image: null, poll: poll?.data ?? null };
   }
 
   const declaredLength = Number(c.req.header('content-length') ?? 0);
@@ -44,14 +48,15 @@ async function createPostInput(c: Parameters<typeof fail>[0], maxUploadBytes: nu
     const form = await c.req.formData();
     const input = postBodySchema.parse({ title: form.get('title') ?? '', body: form.get('body') });
     const uploaded = form.get('image');
-    if (uploaded === null) return { title: input.title, body: input.body, image: null };
+    const rawPoll = form.get('poll'); const poll = rawPoll ? pollSchema.parse(JSON.parse(String(rawPoll))) : null;
+    if (uploaded === null) return { title: input.title, body: input.body, image: null, poll };
     if (!(uploaded instanceof File)) return fail(c, 422, 'INVALID_IMAGE', 'A valid image file is required.');
     const imageContentType = uploaded.type.toLowerCase();
     const bytes = await uploaded.arrayBuffer();
     assertValidMedia(imageContentType, bytes.byteLength, maxUploadBytes);
     if (imageContentType === 'image/avif') throw new Error('Post images must be JPEG, PNG or WebP.');
     assertImageSignature(imageContentType, new Uint8Array(bytes));
-    return { title: input.title, body: input.body, image: { bytes, contentType: imageContentType } };
+    return { title: input.title, body: input.body, image: { bytes, contentType: imageContentType }, poll };
   } catch (error) {
     if (error instanceof Response) return error;
     return fail(c, 422, 'INVALID_POST', error instanceof ZodError ? 'The submitted post is invalid.' : error instanceof Error ? error.message : 'Invalid post data.', error instanceof ZodError ? error.flatten() : undefined);
@@ -77,6 +82,9 @@ const POST_SELECT = `SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.
   COALESCE((SELECT SUM(amount) FROM post_diamond_reactions dr WHERE dr.post_id = p.id), 0) AS diamondCount,
   EXISTS(SELECT 1 FROM post_diamond_reactions dr WHERE dr.post_id = p.id AND dr.sender_user_id = ?) AS viewerDiamondGiven,
   EXISTS(SELECT 1 FROM post_promotions pp WHERE pp.post_id = p.id AND pp.delivered_views < pp.purchased_views) AS promoted
+  ,(SELECT id FROM post_polls pp WHERE pp.post_id = p.id) AS pollId
+  ,(SELECT question FROM post_polls pp WHERE pp.post_id = p.id) AS pollQuestion
+  ,(SELECT ends_at FROM post_polls pp WHERE pp.post_id = p.id) AS pollEndsAt
   FROM posts p JOIN users u ON u.id = p.author_user_id`;
 const diamondAmountSchema = z.object({ amount: z.number().int().min(1).max(1_000_000) }).strict();
 
@@ -182,6 +190,11 @@ contentRoutes.post('/posts', async (c) => {
     c.env.DB.prepare(`INSERT INTO posts (id, author_user_id, title, body, status, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(postId, auth.user.id, input.title, input.body, status, status === 'published' ? now : null, now, now),
     c.env.DB.prepare(`INSERT INTO moderation_results (id, subject_type, subject_id, decision, risk_score, categories_json, reason, provider, model_version, input_hash, created_at) VALUES (?, 'post', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), postId, result.decision, result.riskScore, JSON.stringify(result.categories), result.reason, result.provider, result.modelVersion, await sha256(`${moderationText}:${imageBase64 ? await sha256(imageBase64) : ''}`), now),
   ];
+  if (input.poll) {
+    const pollId = crypto.randomUUID();
+    statements.push(c.env.DB.prepare('INSERT INTO post_polls (id, post_id, question, ends_at, created_at) VALUES (?, ?, ?, ?, ?)').bind(pollId, postId, input.poll.question, input.poll.endsAt ?? null, now));
+    input.poll.options.forEach((label, sortOrder) => statements.push(c.env.DB.prepare('INSERT INTO post_poll_options (id, poll_id, label, sort_order) VALUES (?, ?, ?, ?)').bind(crypto.randomUUID(), pollId, label, sortOrder)));
+  }
   if (input.image && mediaKey) {
     statements.push(c.env.DB.prepare(`INSERT INTO post_media (id, post_id, storage_key, media_type, mime_type, byte_size, sort_order, created_at)
       VALUES (?, ?, ?, 'image', ?, ?, 0, ?)`).bind(crypto.randomUUID(), postId, mediaKey, input.image.contentType, input.image.bytes.byteLength, now));
@@ -202,6 +215,29 @@ contentRoutes.post('/posts', async (c) => {
     })());
   }
   return ok(c, { id: postId, status }, 201);
+});
+
+contentRoutes.get('/posts/:id/poll', async (c) => {
+  const viewerId = c.get('authUser')?.id ?? '';
+  const poll = await c.env.DB.prepare(`SELECT pp.id, pp.question, pp.ends_at AS endsAt,
+    (SELECT COUNT(*) FROM post_poll_votes v WHERE v.poll_id = pp.id) AS totalVotes,
+    (SELECT option_id FROM post_poll_votes v WHERE v.poll_id = pp.id AND v.user_id = ?) AS viewerOptionId
+    FROM post_polls pp JOIN posts p ON p.id = pp.post_id WHERE pp.post_id = ? AND p.status = 'published'`).bind(viewerId, c.req.param('id')).first();
+  if (!poll) return fail(c, 404, 'POLL_NOT_FOUND', 'Poll not found.');
+  const options = await c.env.DB.prepare('SELECT o.id, o.label, (SELECT COUNT(*) FROM post_poll_votes v WHERE v.option_id = o.id) AS votes FROM post_poll_options o WHERE o.poll_id = ? ORDER BY o.sort_order').bind(poll.id).all();
+  return ok(c, { poll: { ...poll, options: options.results } });
+});
+
+contentRoutes.put('/posts/:id/poll', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  const input = await json(c, z.object({ optionId: z.string().uuid() }).strict()); if (input instanceof Response) return input;
+  const poll = await c.env.DB.prepare(`SELECT pp.id, pp.ends_at AS endsAt FROM post_polls pp JOIN posts p ON p.id = pp.post_id WHERE pp.post_id = ? AND p.status = 'published'`).bind(c.req.param('id')).first<{ id: string; endsAt: string | null }>();
+  if (!poll) return fail(c, 404, 'POLL_NOT_FOUND', 'Poll not found.');
+  if (poll.endsAt && new Date(poll.endsAt) <= new Date()) return fail(c, 422, 'POLL_CLOSED', 'This poll has ended.');
+  const option = await c.env.DB.prepare('SELECT id FROM post_poll_options WHERE id = ? AND poll_id = ?').bind(input.optionId, poll.id).first();
+  if (!option) return fail(c, 422, 'INVALID_OPTION', 'This option does not belong to the poll.');
+  await c.env.DB.prepare('INSERT INTO post_poll_votes (poll_id, option_id, user_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(poll_id, user_id) DO UPDATE SET option_id = excluded.option_id, created_at = excluded.created_at').bind(poll.id, input.optionId, auth.user.id, new Date().toISOString()).run();
+  return ok(c, { voted: true });
 });
 
 const promotionSchema = z.object({ views: z.number().int().min(1).max(500) }).strict();

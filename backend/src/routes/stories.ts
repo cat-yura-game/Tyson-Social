@@ -12,6 +12,8 @@ import { base64Encode } from '../security/encoding';
 import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
 import { uploadLimitForUser } from '../services/upload-limits';
 import { completeDailyTask } from '../services/daily-tasks';
+import { z } from 'zod';
+import { sendPushToUser } from '../services/web-push';
 
 const STORY_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
@@ -22,15 +24,43 @@ storyRoutes.get('/', async (c) => {
   const now = new Date().toISOString();
   const rows = await c.env.DB.prepare(`SELECT s.id, s.storage_key AS storageKey, s.media_type AS mediaType,
     s.content_type AS contentType, s.created_at AS createdAt, s.expires_at AS expiresAt,
-    u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified
+    u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
+    (SELECT COUNT(*) FROM story_reactions r WHERE r.story_id = s.id) AS reactionCount,
+    COALESCE((SELECT reaction FROM story_reactions r WHERE r.story_id = s.id AND r.user_id = ?), '') AS viewerReaction
     FROM stories s JOIN users u ON u.id = s.author_user_id
     WHERE s.expires_at > ? AND u.status IN ('active', 'pending_email')
       AND (u.id = ? OR EXISTS (
         SELECT 1 FROM user_follows f WHERE f.follower_user_id = ? AND f.followed_user_id = u.id
       ))
     ORDER BY CASE WHEN u.id = ? THEN 0 ELSE 1 END, s.created_at ASC LIMIT 200`)
-    .bind(now, viewerId, viewerId, viewerId).all();
+    .bind(viewerId, now, viewerId, viewerId, viewerId).all();
   return ok(c, { stories: rows.results });
+});
+
+storyRoutes.put('/:id/reaction', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const input = z.object({ reaction: z.enum(['❤️', '🔥', '😂', '😮', '👏']).nullable() }).strict().safeParse(await c.req.json().catch(() => null));
+  if (!input.success) return fail(c, 422, 'VALIDATION_ERROR', 'Choose a valid reaction.');
+  const story = await c.env.DB.prepare('SELECT author_user_id AS authorId FROM stories WHERE id = ? AND expires_at > ?').bind(c.req.param('id'), new Date().toISOString()).first<{ authorId: string }>();
+  if (!story) return fail(c, 404, 'STORY_NOT_FOUND', 'Story not found.');
+  const now = new Date().toISOString();
+  if (input.data.reaction) await c.env.DB.prepare('INSERT INTO story_reactions (story_id, user_id, reaction, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(story_id, user_id) DO UPDATE SET reaction = excluded.reaction, created_at = excluded.created_at').bind(c.req.param('id'), user.id, input.data.reaction, now).run();
+  else await c.env.DB.prepare('DELETE FROM story_reactions WHERE story_id = ? AND user_id = ?').bind(c.req.param('id'), user.id).run();
+  if (input.data.reaction && story.authorId !== user.id) c.executionCtx.waitUntil(sendPushToUser(c.env, story.authorId, { title: 'Реакция на сторис', body: `${user.displayName} отреагировал ${input.data.reaction}`, url: '/', tag: `story-reaction-${c.req.param('id')}-${user.id}` }));
+  const reactionCount = await c.env.DB.prepare('SELECT COUNT(*) AS reactionCount FROM story_reactions WHERE story_id = ?').bind(c.req.param('id')).first<{ reactionCount: number }>();
+  return ok(c, { reaction: input.data.reaction, reactionCount: reactionCount?.reactionCount ?? 0 });
+});
+
+storyRoutes.post('/:id/reply', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const input = z.object({ body: z.string().trim().min(1).max(500) }).strict().safeParse(await c.req.json().catch(() => null));
+  if (!input.success) return fail(c, 422, 'VALIDATION_ERROR', 'Reply must contain up to 500 characters.');
+  const story = await c.env.DB.prepare('SELECT author_user_id AS authorId FROM stories WHERE id = ? AND expires_at > ?').bind(c.req.param('id'), new Date().toISOString()).first<{ authorId: string }>();
+  if (!story) return fail(c, 404, 'STORY_NOT_FOUND', 'Story not found.');
+  const id = crypto.randomUUID(); const now = new Date().toISOString();
+  await c.env.DB.batch([c.env.DB.prepare('INSERT INTO story_replies (id, story_id, author_user_id, body, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, c.req.param('id'), user.id, input.data.body, now), c.env.DB.prepare(`INSERT INTO notifications (id, user_id, actor_user_id, type, entity_id, message, dedupe_key, created_at) SELECT ?, ?, ?, 'comment', ?, 'ответил на вашу сторис', ?, ? WHERE ? != ?`).bind(crypto.randomUUID(), story.authorId, user.id, c.req.param('id'), `story-reply:${id}`, now, story.authorId, user.id)]);
+  if (story.authorId !== user.id) c.executionCtx.waitUntil(sendPushToUser(c.env, story.authorId, { title: 'Ответ на сторис', body: `${user.displayName}: ${input.data.body}`, url: '/', tag: `story-reply-${id}` }));
+  return ok(c, { id }, 201);
 });
 
 storyRoutes.post('/', async (c) => {

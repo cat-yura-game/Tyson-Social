@@ -18,7 +18,12 @@ export interface Post {
   diamondCount: number;
   viewerDiamondGiven: number | boolean;
   promoted?: number | boolean;
+  pollId?: string | null;
+  pollQuestion?: string | null;
+  pollEndsAt?: string | null;
 }
+
+export interface Poll { id: string; question: string; endsAt: string | null; totalVotes: number; viewerOptionId: string | null; options: Array<{ id: string; label: string; votes: number }>; }
 
 export interface Comment {
   id: string;
