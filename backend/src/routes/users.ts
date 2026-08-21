@@ -357,6 +357,7 @@ userRoutes.get('/:username/posts', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.comment_count AS commentCount,
     p.published_at AS publishedAt, p.updated_at AS updatedAt, u.id AS authorId, u.username,
     u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
+    u.worn_gift_id AS wornGiftId,
     (SELECT COALESCE(ug.variant, gt.base_image) FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = u.worn_gift_id) AS wornGiftImage,
     (SELECT pm.storage_key FROM post_media pm WHERE pm.post_id = p.id ORDER BY pm.sort_order LIMIT 1) AS mediaKey,
     COALESCE((SELECT reaction FROM post_reactions r WHERE r.post_id = p.id AND r.user_id = ?), '') AS viewerReaction,

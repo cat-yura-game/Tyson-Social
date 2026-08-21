@@ -10,6 +10,7 @@ export interface Post {
   username: string;
   displayName: string;
   avatarKey: string | null;
+  wornGiftId?: string | null;
   wornGiftImage: string | null;
   mediaKey: string | null;
   verified: number | boolean;
@@ -27,6 +28,7 @@ export interface Comment {
   username: string;
   displayName: string;
   avatarKey: string | null;
+  wornGiftId?: string | null;
   wornGiftImage: string | null;
   diamondCount: number;
 }
