@@ -3,6 +3,24 @@ import { fail } from '../lib/responses';
 import type { AppVariables, Env } from '../types';
 
 export const secureRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
+const PROFILE_TITLES: Record<string, string> = { auto: '⚡ Автоподбор', nl: '🇳🇱 Нидерланды', de: '🇩🇪 Германия', 'white-nl': '🇳🇱 Белый список', 'white-ru': '🇷🇺 Белый список' };
+
+function namedConfig(raw: string, profile: string): Record<string, unknown> {
+  const config = JSON.parse(raw) as { outbounds?: Array<{ tag?: string; protocol?: string }>; routing?: { balancers?: Array<{ selector?: string[]; fallbackTag?: string }> }; observatory?: { subjectSelector?: string[] }; remarks?: string };
+  const title = PROFILE_TITLES[profile] ?? profile;
+  const firstProxy = config.outbounds?.find((outbound) => outbound.protocol === 'vless');
+  const previousTag = firstProxy?.tag;
+  if (firstProxy && previousTag) {
+    firstProxy.tag = title;
+    for (const balancer of config.routing?.balancers ?? []) {
+      if (balancer.selector) balancer.selector = balancer.selector.map((tag) => tag === previousTag ? title : tag);
+      if (balancer.fallbackTag === previousTag) balancer.fallbackTag = title;
+    }
+    if (config.observatory?.subjectSelector) config.observatory.subjectSelector = config.observatory.subjectSelector.map((tag) => tag === previousTag ? title : tag);
+  }
+  config.remarks = title;
+  return config as Record<string, unknown>;
+}
 
 secureRoutes.get('/test-config/:token', (c) => {
   if (!c.env.SECURE_TEST_TOKEN || !c.env.SECURE_TEST_CONFIG || c.req.param('token') !== c.env.SECURE_TEST_TOKEN) {
@@ -14,9 +32,9 @@ secureRoutes.get('/test-config/:token', (c) => {
 secureRoutes.get('/test-config/:token/:profile', (c) => {
   if (!c.env.SECURE_TEST_TOKEN || c.req.param('token') !== c.env.SECURE_TEST_TOKEN) return fail(c, 404, 'CONFIG_NOT_FOUND', 'Test configuration not found.');
   const configs: Record<string, string | undefined> = { auto: c.env.SECURE_TEST_CONFIG_AUTO, nl: c.env.SECURE_TEST_CONFIG_NL, de: c.env.SECURE_TEST_CONFIG_DE, 'white-nl': c.env.SECURE_TEST_CONFIG_WHITE_NL, 'white-ru': c.env.SECURE_TEST_CONFIG_WHITE_RU };
-  const config = configs[c.req.param('profile')];
+  const profile = c.req.param('profile'); const config = configs[profile];
   if (!config) return fail(c, 404, 'CONFIG_NOT_FOUND', 'Test configuration not found.');
-  return new Response(config, { headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="tyson-secure-${c.req.param('profile')}-test.json"`, 'cache-control': 'no-store' } });
+  return new Response(JSON.stringify(namedConfig(config, profile)), { headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="tyson-secure-${profile}-test.json"`, 'cache-control': 'no-store' } });
 });
 
 secureRoutes.get('/test-subscription/:token', (c) => {
@@ -24,7 +42,7 @@ secureRoutes.get('/test-subscription/:token', (c) => {
   const configs = [c.env.SECURE_TEST_CONFIG_AUTO, c.env.SECURE_TEST_CONFIG_NL, c.env.SECURE_TEST_CONFIG_DE, c.env.SECURE_TEST_CONFIG_WHITE_NL, c.env.SECURE_TEST_CONFIG_WHITE_RU];
   if (configs.some((config) => !config)) return fail(c, 500, 'CONFIG_UNAVAILABLE', 'Test configuration is unavailable.');
   try {
-    return new Response(JSON.stringify(configs.map((config) => JSON.parse(config!))), { headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="tyson-secure-test-subscription.json"', 'cache-control': 'no-store', 'profile-title': 'Tyson Secure Test' } });
+    return new Response(JSON.stringify(configs.map((config, index) => namedConfig(config!, ['auto', 'nl', 'de', 'white-nl', 'white-ru'][index]))), { headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="tyson-secure-test-subscription.json"', 'cache-control': 'no-store', 'profile-title': 'Tyson Secure Test' } });
   } catch { return fail(c, 500, 'CONFIG_UNAVAILABLE', 'Test configuration is unavailable.'); }
 });
 
