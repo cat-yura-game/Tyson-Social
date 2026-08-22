@@ -42,7 +42,8 @@ secureRoutes.get('/test-subscription/:token', (c) => {
   const configs = [c.env.SECURE_TEST_CONFIG_AUTO, c.env.SECURE_TEST_CONFIG_NL, c.env.SECURE_TEST_CONFIG_DE, c.env.SECURE_TEST_CONFIG_WHITE_NL, c.env.SECURE_TEST_CONFIG_WHITE_RU];
   if (configs.some((config) => !config)) return fail(c, 500, 'CONFIG_UNAVAILABLE', 'Test configuration is unavailable.');
   try {
-    return new Response(JSON.stringify(configs.map((config, index) => namedConfig(config!, ['auto', 'nl', 'de', 'white-nl', 'white-ru'][index]))), { headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="tyson-secure-test-subscription.json"', 'cache-control': 'no-store', 'profile-title': 'Tyson Secure Test' } });
+    const profiles = ['auto', 'nl', 'de', 'white-nl', 'white-ru'];
+    return new Response(JSON.stringify(configs.map((config, index) => namedConfig(config!, profiles[index] ?? 'auto'))), { headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="tyson-secure-test-subscription.json"', 'cache-control': 'no-store', 'profile-title': 'Tyson Secure Test' } });
   } catch { return fail(c, 500, 'CONFIG_UNAVAILABLE', 'Test configuration is unavailable.'); }
 });
 
