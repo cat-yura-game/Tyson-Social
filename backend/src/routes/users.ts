@@ -75,6 +75,29 @@ userRoutes.get('/me', (c) => {
   return user ? ok(c, { user }) : fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
 });
 
+userRoutes.get('/me/analytics', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const [reach, impressions, likes, comments, reposts, followers, posts] = await Promise.all([
+    c.env.DB.prepare(`SELECT COUNT(DISTINCT e.user_id) AS value FROM recommendation_events e JOIN posts p ON p.id = e.post_id WHERE p.author_user_id = ? AND p.status = 'published' AND e.event_type = 'impression' AND e.created_at >= ?`).bind(user.id, since).first<{ value: number }>(),
+    c.env.DB.prepare(`SELECT COUNT(*) AS value FROM recommendation_events e JOIN posts p ON p.id = e.post_id WHERE p.author_user_id = ? AND p.status = 'published' AND e.event_type = 'impression' AND e.created_at >= ?`).bind(user.id, since).first<{ value: number }>(),
+    c.env.DB.prepare(`SELECT COUNT(*) AS value FROM recommendation_events e JOIN posts p ON p.id = e.post_id WHERE p.author_user_id = ? AND p.status = 'published' AND e.event_type = 'like' AND e.created_at >= ?`).bind(user.id, since).first<{ value: number }>(),
+    c.env.DB.prepare(`SELECT COUNT(*) AS value FROM comments cm JOIN posts p ON p.id = cm.post_id WHERE p.author_user_id = ? AND p.status = 'published' AND cm.status = 'published' AND cm.created_at >= ?`).bind(user.id, since).first<{ value: number }>(),
+    c.env.DB.prepare(`SELECT COUNT(*) AS value FROM posts r JOIN posts p ON p.id = r.repost_of_post_id WHERE p.author_user_id = ? AND p.status = 'published' AND r.status = 'published' AND r.published_at >= ?`).bind(user.id, since).first<{ value: number }>(),
+    c.env.DB.prepare('SELECT COUNT(*) AS value FROM user_follows WHERE followed_user_id = ? AND created_at >= ?').bind(user.id, since).first<{ value: number }>(),
+    c.env.DB.prepare(`SELECT p.id, p.title, p.body, p.published_at AS publishedAt, p.like_count AS likeCount, p.comment_count AS commentCount,
+      (SELECT COUNT(*) FROM recommendation_events e WHERE e.post_id = p.id AND e.event_type = 'impression' AND e.created_at >= ?) AS impressions,
+      (SELECT COUNT(DISTINCT e.user_id) FROM recommendation_events e WHERE e.post_id = p.id AND e.event_type = 'impression' AND e.created_at >= ?) AS reach,
+      (SELECT COUNT(*) FROM posts r WHERE r.repost_of_post_id = p.id AND r.status = 'published') AS repostCount
+      FROM posts p WHERE p.author_user_id = ? AND p.status = 'published' AND p.repost_of_post_id IS NULL ORDER BY impressions DESC, p.published_at DESC LIMIT 5`).bind(since, since, user.id).all(),
+  ]);
+  return ok(c, {
+    periodDays: 30, reach: reach?.value ?? 0, impressions: impressions?.value ?? 0,
+    interactions: (likes?.value ?? 0) + (comments?.value ?? 0) + (reposts?.value ?? 0), followers: followers?.value ?? 0,
+    topPosts: posts.results,
+  });
+});
+
 userRoutes.get('/me/aliases', async (c) => {
   const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
   const rows = await c.env.DB.prepare('SELECT id, username, created_at AS createdAt, purchase_price AS purchasePrice FROM username_aliases WHERE user_id = ? ORDER BY created_at').bind(user.id).all();

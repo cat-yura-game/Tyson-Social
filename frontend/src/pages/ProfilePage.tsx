@@ -1,4 +1,4 @@
-import { AtSign, BadgeCheck, CalendarDays, Copy, Gift, MessageCircle, QrCode, Repeat2, UserCheck, UserPlus, X } from 'lucide-react';
+import { AtSign, BadgeCheck, BarChart3, CalendarDays, Copy, Gift, MessageCircle, QrCode, Repeat2, UserCheck, UserPlus, X } from 'lucide-react';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -8,6 +8,7 @@ import { PostCard } from '../components/PostCard';
 import { GiftDetailsModal, type GiftDetails } from '../components/GiftDetailsModal';
 import { ProfileQrModal } from '../components/ProfileQrModal';
 import type { Post } from '../types/content';
+import './profile-analytics.css';
 
 type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarKey' | 'bio' | 'verified' | 'createdAt' | 'lastSeenAt' | 'birthdayMonthDay' | 'birthdayYear'> & {
   followerCount: number;
@@ -16,6 +17,7 @@ type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarK
   aliases: Array<{ id: string; username: string; createdAt: string; purchasePrice: number }>;
 };
 type ProfileGift = GiftDetails;
+type AuthorAnalytics = { periodDays: number; reach: number; impressions: number; interactions: number; followers: number; topPosts: Array<{ id: string; title: string; body: string; publishedAt: string; likeCount: number; commentCount: number; repostCount: number; impressions: number; reach: number }> };
 
 export function ProfilePage() {
   const { username = '' } = useParams();
@@ -34,6 +36,9 @@ export function ProfilePage() {
   const [showQr, setShowQr] = useState(false);
   const [profileTab, setProfileTab] = useState<'posts' | 'reposts' | 'gifts'>('posts');
   const [selectedAlias, setSelectedAlias] = useState<PublicProfile['aliases'][number] | null>(null);
+  const [analytics, setAnalytics] = useState<AuthorAnalytics | null>(null);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true); setMissing(false);
@@ -136,15 +141,23 @@ export function ProfilePage() {
     setGifts((current) => current.map((gift) => ({ ...gift, worn: gift.id === selectedGift.id ? !selectedGift.worn : false })));
     setSelectedGift({ ...selectedGift, worn: !selectedGift.worn });
   };
+  const openAnalytics = async () => {
+    setAnalyticsOpen((open) => !open);
+    if (analytics || analyticsLoading) return;
+    setAnalyticsLoading(true);
+    try { setAnalytics(await apiRequest<AuthorAnalytics>('/users/me/analytics')); }
+    finally { setAnalyticsLoading(false); }
+  };
   return <section className="profile-page">
     <div className="profile-cover" />
     <header className="profile-header">
       {avatar ? <img className="profile-avatar profile-avatar-image" src={avatar} alt="" /> : <div className="avatar profile-avatar">{profile.displayName.slice(0, 1).toUpperCase()}</div>}
-      <div className="profile-controls">{isOwner && <Link className="secondary-button" to="/settings">Редактировать профиль</Link>}<button className="secondary-button profile-qr-trigger" type="button" onClick={() => setShowQr(true)}><QrCode size={17} />QR-код</button>{user && !isOwner && <><button className={profile.viewerFollowing ? 'secondary-button follow-button following' : 'secondary-button follow-button'} type="button" disabled={followPending} onClick={() => void toggleFollow()}>{profile.viewerFollowing ? <UserCheck size={17} /> : <UserPlus size={17} />}{followPending ? 'Подождите…' : profile.viewerFollowing ? 'Вы подписаны' : 'Подписаться'}</button><button className="secondary-button message-profile-button" type="button" disabled={openingChat} onClick={() => void openChat()}><MessageCircle size={17} />{openingChat ? 'Открываем…' : 'Написать'}</button></>}</div>
+      <div className="profile-controls">{isOwner && <><Link className="secondary-button" to="/settings">Редактировать профиль</Link><button className="secondary-button" type="button" aria-expanded={analyticsOpen} onClick={() => void openAnalytics()}><BarChart3 size={17} />Аналитика</button></>}<button className="secondary-button profile-qr-trigger" type="button" onClick={() => setShowQr(true)}><QrCode size={17} />QR-код</button>{user && !isOwner && <><button className={profile.viewerFollowing ? 'secondary-button follow-button following' : 'secondary-button follow-button'} type="button" disabled={followPending} onClick={() => void toggleFollow()}>{profile.viewerFollowing ? <UserCheck size={17} /> : <UserPlus size={17} />}{followPending ? 'Подождите…' : profile.viewerFollowing ? 'Вы подписаны' : 'Подписаться'}</button><button className="secondary-button message-profile-button" type="button" disabled={openingChat} onClick={() => void openChat()}><MessageCircle size={17} />{openingChat ? 'Открываем…' : 'Написать'}</button></>}</div>
       {followError && <p className="profile-follow-error form-error" role="alert">{followError}</p>}
       <div className="profile-copy"><h1>{profile.displayName}{profile.verified && <BadgeCheck className="verified" size={21} aria-label="Подтверждённый аккаунт" />}{gifts.find((gift) => gift.worn) && <button className="profile-worn-gift-button" type="button" onClick={() => setSelectedGift(gifts.find((gift) => gift.worn) ?? null)} aria-label="Открыть надетый подарок"><img className="profile-worn-gift" src={gifts.find((gift) => gift.worn)?.image} alt="Надетый подарок" /></button>}</h1><div className="profile-identity"><p>@{profile.username}{profile.aliases.length > 0 && <><span className="profile-alias-caption">а также</span>{profile.aliases.map((alias) => <button key={alias.id} type="button" onClick={() => setSelectedAlias(alias)}>@{alias.username}</button>)}</>}</p><small className="profile-last-seen">{lastSeen}</small></div><p className="profile-bio">{profile.bio || 'Пользователь пока ничего о себе не рассказал.'}</p>{birthday && <span><CalendarDays size={16} />{birthday}</span>}<span><CalendarDays size={16} />В Tyson с {joined}</span></div>
       <div className="profile-stats"><span><strong>{posts.length}</strong> публикаций</span><span><strong>{profile.followerCount}</strong> подписчиков</span><span><strong>{profile.followingCount}</strong> подписок</span></div>
     </header>
+    {isOwner && analyticsOpen && <section className="author-analytics" aria-label="Аналитика автора"><header><div><p className="eyebrow">Только для вас</p><h2><BarChart3 size={20} />Мини-аналитика</h2><p>Последние {analytics?.periodDays ?? 30} дней.</p></div></header>{analyticsLoading ? <p className="author-analytics-loading">Считаем статистику…</p> : analytics && <><div className="author-analytics-metrics"><article><strong>{analytics.reach}</strong><span>охват</span><small>уникальных аккаунтов</small></article><article><strong>{analytics.impressions}</strong><span>показов</span><small>в ленте Tyson</small></article><article><strong>{analytics.interactions}</strong><span>взаимодействий</span><small>лайки, комментарии, репосты</small></article><article><strong>+{analytics.followers}</strong><span>подписчиков</span><small>за период</small></article></div><div className="author-analytics-posts"><h3>Публикации с лучшим охватом</h3>{analytics.topPosts.length ? analytics.topPosts.map((post) => <article key={post.id}><div><strong>{post.title || post.body.slice(0, 56) || 'Публикация без текста'}</strong><small>{new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(new Date(post.publishedAt))}</small></div><span>{post.reach} охват · {post.impressions} показов</span><small>{post.likeCount} лайков · {post.commentCount} комментариев · {post.repostCount} репостов</small></article>) : <p>Публикаций за период пока нет.</p>}</div></>}</section>}
     <div className="profile-tabs" role="tablist" aria-label="Разделы профиля"><button className={profileTab === 'posts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'posts'} onClick={() => setProfileTab('posts')}>Публикации</button><button className={profileTab === 'reposts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'reposts'} onClick={() => setProfileTab('reposts')}><Repeat2 size={17} />Репосты{reposts.length > 0 && <span>{reposts.length}</span>}</button><button className={profileTab === 'gifts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'gifts'} onClick={() => setProfileTab('gifts')}><Gift size={17} />Подарки{gifts.length > 0 && <span>{gifts.length}</span>}</button></div>
     {profileTab === 'posts' ? <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setPosts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div> : profileTab === 'reposts' ? <div className="profile-posts">{reposts.length ? reposts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setReposts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Репостов пока нет.</div>}</div> : <section className="profile-gift-gallery" aria-label="Подарки профиля">{gifts.length ? gifts.map((gift) => <button className={gift.worn ? 'profile-gift-tile worn' : 'profile-gift-tile'} style={{ '--gift-accent': gift.accentColor } as CSSProperties} type="button" onClick={() => setSelectedGift(gift)} key={gift.id}><img src={gift.image} alt={gift.title} />{gift.worn && <span>Надет</span>}</button>) : <div className="empty-profile">У пользователя пока нет подарков.</div>}</section>}
     {selectedGift && <GiftDetailsModal gift={selectedGift} owner={{ username: profile.username, displayName: profile.displayName, avatarKey: profile.avatarKey }} mine={isOwner} onUpgrade={isOwner ? upgradeGift : undefined} onTransfer={isOwner ? () => void transferGift() : undefined} onWear={isOwner ? () => void wearGift() : undefined} onVisibility={isOwner ? () => void setGiftVisibility() : undefined} onSell={isOwner ? () => void sellGift() : undefined} onExchange={isOwner ? () => void exchangeGift() : undefined} onClose={() => setSelectedGift(null)} />}
