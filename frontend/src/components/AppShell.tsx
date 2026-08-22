@@ -8,6 +8,7 @@ import { Brand } from './Brand';
 import { SearchDialog } from './SearchDialog';
 import { TrendsCard } from './TrendsCard';
 import { NotificationBell } from './NotificationBell';
+import { getMobileLastTab, onMobileLastTabChange } from '../mobile-nav';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
@@ -15,8 +16,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [showSearch, setShowSearch] = useState(false);
   const [diamonds, setDiamonds] = useState<number | null>(null);
+  const [mobileLastTab, setMobileLastTab] = useState(getMobileLastTab);
   const mobileImmersive = location.pathname === '/ai' || location.pathname === '/messages';
   const profilePath = user ? `/profile/${user.username}` : '/login';
+  const mobileLastItem = user && mobileLastTab === 'profile'
+    ? { to: profilePath, label: 'Профиль', icon: UserRound, end: false }
+    : { to: user ? '/settings' : '/login', label: user ? 'Настройки' : 'Войти', icon: user ? Settings : LogIn, end: false };
   const navItems = [
     { to: '/', label: 'Главная', icon: Home, end: true },
     { to: '/messages', label: 'Сообщения', icon: MessageCircle },
@@ -27,6 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     ...(user?.role === 'admin' ? [{ to: '/admin', label: 'Админ-панель', icon: ShieldCheck }] : []),
   ];
   useEffect(() => { if (!user) { setDiamonds(null); return; } const refresh = () => { void apiRequest<{ balance: number }>('/diamonds/balance').then(({ balance }) => setDiamonds(balance)).catch(() => setDiamonds(null)); }; refresh(); window.addEventListener('diamonds-changed', refresh); return () => window.removeEventListener('diamonds-changed', refresh); }, [user, location.pathname]);
+  useEffect(() => onMobileLastTabChange(() => setMobileLastTab(getMobileLastTab())), []);
 
   const handleLogout = async () => {
     await logout();
@@ -63,8 +69,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           { to: '/messages', label: 'Сообщения', icon: MessageCircle },
           { to: user ? '/create' : '/login', label: 'Создать', icon: Plus },
           { to: '/ai', label: 'AI', icon: Sparkles },
-          { to: user ? '/settings' : '/login', label: user ? 'Настройки' : 'Войти', icon: user ? Settings : LogIn },
-        ].map(({ to, label, icon: Icon, end }) => <NavLink key={`${to}-${label}`} to={to} end={end} aria-label={label} className={({ isActive }) => isActive ? 'active' : ''}><Icon className="mobile-nav-icon" /><span>{label}</span></NavLink>)}
+          mobileLastItem,
+        ].map(({ to, label, icon: Icon }) => <NavLink key={`${to}-${label}`} to={to} end={to === '/'} aria-label={label} className={({ isActive }) => isActive ? 'active' : ''}><Icon className="mobile-nav-icon" /><span>{label}</span></NavLink>)}
       </nav>
       {showSearch && <SearchDialog onClose={() => setShowSearch(false)} />}
     </div>
