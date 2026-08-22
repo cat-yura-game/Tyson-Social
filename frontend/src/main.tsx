@@ -6,8 +6,10 @@ import { AuthProvider } from './auth/AuthProvider';
 import './styles.css';
 import { applyTheme, getThemePreference, watchSystemTheme } from './theme';
 import { restorePowerSavingSettings } from './performance';
+import { applyUiScale, getUiScale } from './ui-scale';
 
 applyTheme(getThemePreference());
+applyUiScale(getUiScale());
 restorePowerSavingSettings();
 watchSystemTheme();
 

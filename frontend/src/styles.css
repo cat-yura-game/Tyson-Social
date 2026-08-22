@@ -13,6 +13,7 @@
   --green: #173d2b;
   --soft-green: #e9f0e9;
   --radius: 22px;
+  --tyson-ui-scale: 1;
 }
 
 * { box-sizing: border-box; }
@@ -379,6 +380,7 @@ button { color: inherit; }
 .theme-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .theme-options button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 43px; padding: 9px; border: 1px solid var(--line); border-radius: 12px; background: white; font-size: 11px; font-weight: 750; cursor: pointer; }
 .theme-options button.selected { border-color: var(--green); background: var(--soft-green); color: var(--green); box-shadow: 0 0 0 2px rgb(23 61 43 / 7%); }
+.interface-scale-settings { display: grid; gap: 15px; margin-bottom: 28px; padding: 18px; border: 1px solid var(--line); border-radius: 17px; background: #f7f8f4; }.interface-scale-settings h2 { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 5px 0 7px; font-size: 18px; }.interface-scale-settings h2 strong { color: #1689df; font-size: 16px; }.interface-scale-settings p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }.interface-scale-control { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; color: var(--muted); font-size: 11px; font-weight: 700; }.interface-scale-control input { width: 100%; accent-color: #1689df; }
 .telegram-settings { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 18px; margin-top: 30px; padding-top: 25px; border-top: 1px solid var(--line); }
 .site-refresh-settings { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 18px; margin: 18px 0 28px; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: rgb(255 255 255 / 58%); }
 .site-refresh-settings h2 { margin: 4px 0; font-size: 17px; }
@@ -612,6 +614,7 @@ button { color: inherit; }
 
 @media (max-width: 760px) {
   :root { --green: #0878d1; --lime: #78dcff; --soft-green: #e5f5ff; --mobile-glass: rgb(255 255 255 / 62%); --mobile-glass-strong: rgb(255 255 255 / 76%); --mobile-glass-border: rgb(255 255 255 / 72%); --mobile-glass-shadow: 0 14px 44px rgb(17 73 112 / 12%), inset 0 1px 0 rgb(255 255 255 / 82%); --messenger-glass-underlay-top: linear-gradient(180deg, rgb(8 22 32 / 10%) 0%, rgb(255 255 255 / 6%) 100%); --messenger-glass-underlay-bottom: linear-gradient(180deg, rgb(255 255 255 / 6%) 0%, rgb(8 22 32 / 10%) 100%); }
+  #root { zoom: var(--tyson-ui-scale); }
   body { background: radial-gradient(circle at 8% 8%, rgb(77 196 255 / 18%), transparent 29rem), radial-gradient(circle at 95% 38%, rgb(22 119 210 / 11%), transparent 25rem), #f2f6f8; background-attachment: fixed; }
   .diamonds-hero { padding: 26px 17px 19px; border-radius: 24px; }.diamonds-hero-icon { width: 88px; height: 88px; padding: 17px; border-radius: 30px; }.diamonds-hero h1 { font-size: 28px; }.diamonds-hero > p { font-size: 13px; }.diamonds-balance-card { margin-top: 18px; }.diamonds-balance-card strong { font-size: 34px; }.gifts-hero { padding: 20px; border-radius: 20px; }.gifts-hero h1 { font-size: 28px; }.gift-shop-grid, .gift-collection { grid-template-columns: 1fr; }.gift-card, .owned-gift { grid-template-columns: 108px minmax(0, 1fr); gap: 12px; }.gift-card > img, .owned-gift > img { width: 108px; }.gift-open { width: 108px; }.owned-gift > div { min-width: 0; }.owned-gift h3 { font-size: 19px; line-height: 1.12; }.owned-gift p { margin: 5px 0; }.owned-gift strong { margin-top: 4px; }.diamond-balance { padding: 10px 12px; font-size: 18px; }
   .app-shell { display: block; padding: 0; }
@@ -864,6 +867,7 @@ html[data-theme='dark'] .messenger-ai-composer textarea { background: transparen
 html[data-theme='dark'] .sticker-picker button,
 html[data-theme='dark'] .share-post-bar,
 html[data-theme='dark'] .theme-settings { background: #131a16; }
+html[data-theme='dark'] .interface-scale-settings { background: #131a16; }
 html[data-theme='dark'] .message:not(.mine) .shared-post-message { background: #2b362f; color: var(--green); }
 html[data-theme='dark'] .moderation-note { background: #202822; color: var(--muted); }
 html[data-theme='dark'] .post-promotion-option, html[data-theme='dark'] .rich-post-text blockquote { border-color: #285269; background: #142b38; color: #d7eefa; }
