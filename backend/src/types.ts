@@ -21,18 +21,6 @@ export interface Env {
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
-  SECURE_TEST_TOKEN?: string;
-  SECURE_TEST_CONFIG?: string;
-  SECURE_TEST_CONFIG_AUTO?: string;
-  SECURE_TEST_CONFIG_NL?: string;
-  SECURE_TEST_CONFIG_DE?: string;
-  SECURE_TEST_CONFIG_WHITE_NL?: string;
-  SECURE_TEST_CONFIG_WHITE_RU?: string;
-  SECURE_CONFIG_AUTO?: string;
-  SECURE_CONFIG_NL?: string;
-  SECURE_CONFIG_DE?: string;
-  SECURE_CONFIG_WHITE_NL?: string;
-  SECURE_CONFIG_WHITE_RU?: string;
 }
 
 export interface AppVariables {
