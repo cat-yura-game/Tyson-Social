@@ -1,4 +1,4 @@
-import { AtSign, BadgeCheck, CalendarDays, Copy, Gift, MessageCircle, QrCode, UserCheck, UserPlus, X } from 'lucide-react';
+import { AtSign, BadgeCheck, CalendarDays, Copy, Gift, MessageCircle, QrCode, Repeat2, UserCheck, UserPlus, X } from 'lucide-react';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -23,6 +23,7 @@ export function ProfilePage() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [reposts, setReposts] = useState<Post[]>([]);
   const [gifts, setGifts] = useState<ProfileGift[]>([]);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
@@ -31,7 +32,7 @@ export function ProfilePage() {
   const [followError, setFollowError] = useState<string | null>(null);
   const [selectedGift, setSelectedGift] = useState<GiftDetails | null>(null);
   const [showQr, setShowQr] = useState(false);
-  const [profileTab, setProfileTab] = useState<'posts' | 'gifts'>('posts');
+  const [profileTab, setProfileTab] = useState<'posts' | 'reposts' | 'gifts'>('posts');
   const [selectedAlias, setSelectedAlias] = useState<PublicProfile['aliases'][number] | null>(null);
 
   useEffect(() => {
@@ -39,8 +40,9 @@ export function ProfilePage() {
     Promise.all([
       apiRequest<{ user: PublicProfile }>(`/users/${encodeURIComponent(username)}`),
       apiRequest<{ posts: Post[] }>(`/users/${encodeURIComponent(username)}/posts`),
+      apiRequest<{ posts: Post[] }>(`/users/${encodeURIComponent(username)}/reposts`),
       apiRequest<{ gifts: ProfileGift[] }>(`/users/${encodeURIComponent(username)}/gifts`),
-    ]).then(([profileData, postsData, giftsData]) => { setProfile(profileData.user); setPosts(postsData.posts); setGifts(giftsData.gifts); })
+    ]).then(([profileData, postsData, repostsData, giftsData]) => { setProfile(profileData.user); setPosts(postsData.posts.filter((post) => !post.repostOfPostId)); setReposts(repostsData.posts); setGifts(giftsData.gifts); })
       .catch(() => setMissing(true)).finally(() => setLoading(false));
   }, [username]);
 
@@ -143,8 +145,8 @@ export function ProfilePage() {
       <div className="profile-copy"><h1>{profile.displayName}{profile.verified && <BadgeCheck className="verified" size={21} aria-label="Подтверждённый аккаунт" />}{gifts.find((gift) => gift.worn) && <button className="profile-worn-gift-button" type="button" onClick={() => setSelectedGift(gifts.find((gift) => gift.worn) ?? null)} aria-label="Открыть надетый подарок"><img className="profile-worn-gift" src={gifts.find((gift) => gift.worn)?.image} alt="Надетый подарок" /></button>}</h1><div className="profile-identity"><p>@{profile.username}{profile.aliases.length > 0 && <><span className="profile-alias-caption">а также</span>{profile.aliases.map((alias) => <button key={alias.id} type="button" onClick={() => setSelectedAlias(alias)}>@{alias.username}</button>)}</>}</p><small className="profile-last-seen">{lastSeen}</small></div><p className="profile-bio">{profile.bio || 'Пользователь пока ничего о себе не рассказал.'}</p>{birthday && <span><CalendarDays size={16} />{birthday}</span>}<span><CalendarDays size={16} />В Tyson с {joined}</span></div>
       <div className="profile-stats"><span><strong>{posts.length}</strong> публикаций</span><span><strong>{profile.followerCount}</strong> подписчиков</span><span><strong>{profile.followingCount}</strong> подписок</span></div>
     </header>
-    <div className="profile-tabs" role="tablist" aria-label="Разделы профиля"><button className={profileTab === 'posts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'posts'} onClick={() => setProfileTab('posts')}>Публикации</button><button className={profileTab === 'gifts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'gifts'} onClick={() => setProfileTab('gifts')}><Gift size={17} />Подарки{gifts.length > 0 && <span>{gifts.length}</span>}</button></div>
-    {profileTab === 'posts' ? <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setPosts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div> : <section className="profile-gift-gallery" aria-label="Подарки профиля">{gifts.length ? gifts.map((gift) => <button className={gift.worn ? 'profile-gift-tile worn' : 'profile-gift-tile'} style={{ '--gift-accent': gift.accentColor } as CSSProperties} type="button" onClick={() => setSelectedGift(gift)} key={gift.id}><img src={gift.image} alt={gift.title} />{gift.worn && <span>Надет</span>}</button>) : <div className="empty-profile">У пользователя пока нет подарков.</div>}</section>}
+    <div className="profile-tabs" role="tablist" aria-label="Разделы профиля"><button className={profileTab === 'posts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'posts'} onClick={() => setProfileTab('posts')}>Публикации</button><button className={profileTab === 'reposts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'reposts'} onClick={() => setProfileTab('reposts')}><Repeat2 size={17} />Репосты{reposts.length > 0 && <span>{reposts.length}</span>}</button><button className={profileTab === 'gifts' ? 'active' : ''} type="button" role="tab" aria-selected={profileTab === 'gifts'} onClick={() => setProfileTab('gifts')}><Gift size={17} />Подарки{gifts.length > 0 && <span>{gifts.length}</span>}</button></div>
+    {profileTab === 'posts' ? <div className="profile-posts">{posts.length ? posts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setPosts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Здесь появятся публикации пользователя.</div>}</div> : profileTab === 'reposts' ? <div className="profile-posts">{reposts.length ? reposts.map((post) => <PostCard key={post.id} post={post} onDeleted={(postId) => setReposts((current) => current.filter((item) => item.id !== postId))} />) : <div className="empty-profile">Репостов пока нет.</div>}</div> : <section className="profile-gift-gallery" aria-label="Подарки профиля">{gifts.length ? gifts.map((gift) => <button className={gift.worn ? 'profile-gift-tile worn' : 'profile-gift-tile'} style={{ '--gift-accent': gift.accentColor } as CSSProperties} type="button" onClick={() => setSelectedGift(gift)} key={gift.id}><img src={gift.image} alt={gift.title} />{gift.worn && <span>Надет</span>}</button>) : <div className="empty-profile">У пользователя пока нет подарков.</div>}</section>}
     {selectedGift && <GiftDetailsModal gift={selectedGift} owner={{ username: profile.username, displayName: profile.displayName, avatarKey: profile.avatarKey }} mine={isOwner} onUpgrade={isOwner ? upgradeGift : undefined} onTransfer={isOwner ? () => void transferGift() : undefined} onWear={isOwner ? () => void wearGift() : undefined} onVisibility={isOwner ? () => void setGiftVisibility() : undefined} onSell={isOwner ? () => void sellGift() : undefined} onExchange={isOwner ? () => void exchangeGift() : undefined} onClose={() => setSelectedGift(null)} />}
     {showQr && <ProfileQrModal username={profile.username} onClose={() => setShowQr(false)} />}
     {selectedAlias && createPortal(<div className="alias-modal-backdrop" role="presentation" onClick={() => setSelectedAlias(null)}><section className="alias-modal" role="dialog" aria-modal="true" aria-label="Коллекционный username" onClick={(event) => event.stopPropagation()}><button className="alias-modal-close" type="button" aria-label="Закрыть" onClick={() => setSelectedAlias(null)}><X /></button><span className="alias-modal-icon"><AtSign size={38} /></span><h2>@{selectedAlias.username}</h2><strong>Коллекционный username</strong><p>Принадлежит пользователю <b>{profile.displayName}</b></p><p>Имя приобретено {new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(selectedAlias.createdAt))} за <b>{selectedAlias.purchasePrice} 💎</b>.</p><button className="alias-copy-button" type="button" onClick={() => void navigator.clipboard?.writeText(`${window.location.origin}/profile/${selectedAlias.username}`)}><Copy size={17} />Копировать ссылку</button></section></div>, document.body)}

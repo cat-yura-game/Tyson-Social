@@ -75,7 +75,7 @@ async function json<T>(c: Parameters<typeof fail>[0], schema: { parse(value: unk
 }
 
 const POST_SELECT = `SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.comment_count AS commentCount,
-  p.published_at AS publishedAt, p.updated_at AS updatedAt,
+  p.published_at AS publishedAt, p.updated_at AS updatedAt, p.edited_at AS editedAt, p.repost_of_post_id AS repostOfPostId,
   u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
   u.worn_gift_id AS wornGiftId,
   (SELECT COALESCE(ug.variant, gt.base_image) FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = u.worn_gift_id) AS wornGiftImage,
@@ -226,6 +226,33 @@ contentRoutes.post('/posts', async (c) => {
     })());
   }
   return ok(c, { id: postId, status }, 201);
+});
+
+contentRoutes.put('/posts/:id', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  const input = await json(c, postBodySchema); if (input instanceof Response) return input;
+  const post = await c.env.DB.prepare("SELECT id FROM posts WHERE id = ? AND author_user_id = ? AND status = 'published'").bind(c.req.param('id'), auth.user.id).first();
+  if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
+  const moderationText = input.title ? `${input.title}\n\n${input.body}` : input.body;
+  const moderation = await moderatePublicContent(c.env, moderationText, [], extractLinks(moderationText));
+  if (moderation.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Publication was blocked by safety checks.');
+  if (moderation.decision === 'review') return fail(c, 422, 'CONTENT_REVIEW', 'Publication needs safety review.');
+  const now = new Date().toISOString();
+  await c.env.DB.prepare('UPDATE posts SET title = ?, body = ?, edited_at = ?, updated_at = ? WHERE id = ? AND author_user_id = ?').bind(input.title, input.body, now, now, c.req.param('id'), auth.user.id).run();
+  return ok(c, { editedAt: now });
+});
+
+contentRoutes.post('/posts/:id/repost', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  const input = await json(c, z.object({ body: z.string().trim().max(10_000).default('') }).strict()); if (input instanceof Response) return input;
+  const source = await c.env.DB.prepare("SELECT id FROM posts WHERE id = ? AND status = 'published'").bind(c.req.param('id')).first();
+  if (!source) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
+  const moderation = await moderatePublicContent(c.env, input.body, [], extractLinks(input.body));
+  if (moderation.decision !== 'allow') return fail(c, 422, 'CONTENT_BLOCKED', 'Repost was blocked by safety checks.');
+  const id = crypto.randomUUID(); const now = new Date().toISOString();
+  await c.env.DB.prepare(`INSERT INTO posts (id, author_user_id, title, body, status, repost_of_post_id, published_at, created_at, updated_at)
+    VALUES (?, ?, '', ?, 'published', ?, ?, ?, ?)`).bind(id, auth.user.id, input.body, source.id, now, now, now).run();
+  return ok(c, { id }, 201);
 });
 
 contentRoutes.put('/posts/:id/pin', async (c) => {

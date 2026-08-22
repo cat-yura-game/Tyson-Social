@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, MessageCircle, Plus, Trash2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Edit3, MessageCircle, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRawRequest, apiRequest, mediaUrl } from '../api/client';
@@ -8,6 +8,7 @@ interface Story {
   id: string;
   storageKey: string;
   mediaType: 'image' | 'video';
+  caption: string;
   createdAt: string;
   expiresAt: string;
   authorId: string;
@@ -79,9 +80,10 @@ export function StoriesBar() {
     setError(null);
     if (!ACCEPTED_TYPES.includes(file.type)) { setError('Выберите изображение, MP4, WebM или MOV.'); return; }
     if (file.size > MAX_STORY_BYTES) { setError('Файл сторис должен быть не больше 10 МиБ для Telegram-аккаунтов.'); return; }
+    const caption = window.prompt('Подпись к сторис (необязательно)', '') ?? '';
     setUploading(true);
     try {
-      await apiRawRequest('/stories', { method: 'POST', headers: { 'content-type': file.type }, body: file });
+      await apiRawRequest('/stories', { method: 'POST', headers: { 'content-type': file.type, 'x-story-caption': caption.slice(0, 280) }, body: file });
       await loadStories();
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : 'Не удалось опубликовать сторис.');
@@ -99,6 +101,12 @@ export function StoriesBar() {
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Не удалось удалить сторис.');
     }
+  };
+  const editStoryCaption = async (story: Story) => {
+    const caption = window.prompt('Подпись к сторис', story.caption);
+    if (caption === null) return;
+    try { await apiRequest(`/stories/${encodeURIComponent(story.id)}`, { method: 'PUT', body: JSON.stringify({ caption }) }); setStories((current) => current.map((item) => item.id === story.id ? { ...item, caption: caption.trim().slice(0, 280) } : item)); }
+    catch (editError) { setError(editError instanceof Error ? editError.message : 'Не удалось изменить сторис.'); }
   };
 
   const activeStory = activeIndex === null ? null : stories[activeIndex];
@@ -133,10 +141,10 @@ export function StoriesBar() {
     </section>
     {activeStory && <div className="story-viewer" role="dialog" aria-modal="true" aria-label={`Сторис ${activeStory.displayName}`}>
       <div className="story-viewer-card">
-        <header><button className="story-viewer-close" type="button" onClick={() => setActiveIndex(null)} aria-label="Закрыть"><X /></button><span className="story-viewer-avatar">{activeStory.avatarKey ? <img src={mediaUrl(activeStory.avatarKey) ?? ''} alt="" /> : activeStory.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{activeStory.displayName}</strong><small>{new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(activeStory.createdAt))}</small></span>{activeStory.authorId === user?.id && <button className="story-delete-button" type="button" onClick={() => void deleteStory(activeStory)} aria-label="Удалить сторис"><Trash2 size={18} /><span>Удалить</span></button>}</header>
+        <header><button className="story-viewer-close" type="button" onClick={() => setActiveIndex(null)} aria-label="Закрыть"><X /></button><span className="story-viewer-avatar">{activeStory.avatarKey ? <img src={mediaUrl(activeStory.avatarKey) ?? ''} alt="" /> : activeStory.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{activeStory.displayName}</strong><small>{new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(activeStory.createdAt))}</small></span>{activeStory.authorId === user?.id && <><button className="story-delete-button" type="button" onClick={() => void editStoryCaption(activeStory)} aria-label="Изменить подпись"><Edit3 size={18} /><span>Изменить</span></button><button className="story-delete-button" type="button" onClick={() => void deleteStory(activeStory)} aria-label="Удалить сторис"><Trash2 size={18} /><span>Удалить</span></button></>}</header>
         {activeStory.mediaType === 'video'
           ? <video key={activeStory.id} src={mediaUrl(activeStory.storageKey) ?? ''} autoPlay controls playsInline />
-          : <img src={mediaUrl(activeStory.storageKey) ?? ''} alt={`Сторис ${activeStory.displayName}`} />}
+          : <img src={mediaUrl(activeStory.storageKey) ?? ''} alt={`Сторис ${activeStory.displayName}`} />}{activeStory.caption && <p className="story-caption">{activeStory.caption}</p>}
         <footer className="story-interactions"><div>{(['❤️', '🔥', '😂', '😮', '👏'] as const).map((reaction) => <button className={activeStory.viewerReaction === reaction ? 'active' : ''} key={reaction} type="button" onClick={() => void reactToStory(reaction)}>{reaction}</button>)}<small>{activeStory.reactionCount || ''}</small></div>{activeStory.authorId !== user?.id && <button type="button" onClick={() => void replyToStory()}><MessageCircle size={16} />Ответить</button>}</footer>
       </div>
       <button className="story-viewer-nav previous" type="button" onClick={() => move(-1)} aria-label="Предыдущая сторис"><ChevronLeft /></button>

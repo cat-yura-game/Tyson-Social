@@ -6,6 +6,8 @@ export interface Post {
   commentCount: number;
   publishedAt: string;
   updatedAt: string;
+  editedAt?: string | null;
+  repostOfPostId?: string | null;
   authorId: string;
   username: string;
   displayName: string;

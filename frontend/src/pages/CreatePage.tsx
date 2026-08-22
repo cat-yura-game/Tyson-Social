@@ -1,4 +1,4 @@
-import { Bold, Heading2, ImagePlus, Italic, Link2, List, Pilcrow, Plus, Quote, Rocket, Send, Sparkles, Strikethrough, X } from 'lucide-react';
+import { Bold, Heading2, ImagePlus, Italic, Link2, List, Pilcrow, Plus, Quote, Rocket, Save, Send, Sparkles, Strikethrough, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../api/client';
@@ -42,6 +42,12 @@ export function CreatePage() {
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
   const [coauthorUsernames, setCoauthorUsernames] = useState('');
+  const draftKey = `tyson:post-draft:${user?.id ?? 'guest'}`;
+
+  useEffect(() => {
+    try { const saved = JSON.parse(localStorage.getItem(draftKey) ?? '{}') as { title?: string; body?: string; coauthorUsernames?: string }; setTitle(saved.title ?? ''); setBody(saved.body ?? ''); setCoauthorUsernames(saved.coauthorUsernames ?? ''); } catch { /* ignore invalid draft */ }
+  }, [draftKey]);
+  const saveDraft = () => { localStorage.setItem(draftKey, JSON.stringify({ title, body, coauthorUsernames })); window.alert('Черновик сохранён на этом устройстве.'); };
 
   useEffect(() => {
     if (!image) { setPreview(null); return; }
@@ -171,6 +177,7 @@ export function CreatePage() {
         method: 'POST',
         body: request ?? JSON.stringify({ title, body, ...(poll ? { poll } : {}), ...(coauthorUsernames.trim() ? { coauthorUsernames: coauthorUsernames.split(/[\s,]+/u) } : {}) }),
       });
+      localStorage.removeItem(draftKey);
       if (result.status === 'published' && promotionViews > 0) {
         try {
           await apiRequest(`/posts/${result.id}/promote`, { method: 'POST', body: JSON.stringify({ views: promotionViews }) });
@@ -190,7 +197,7 @@ export function CreatePage() {
   return <section className="surface-page narrow-page">
     <header className="page-heading"><div><p className="eyebrow">Новая публикация</p><h1>Поделитесь идеей</h1></div></header>
     <form className="composer-card" onSubmit={(event) => void submit(event)}>
-      <div className="composer-author"><span className="avatar avatar-small">{user?.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{user?.displayName}</strong><small>Публикация от вашего имени</small></span></div>
+      <div className="composer-author"><span className="avatar avatar-small">{user?.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{user?.displayName}</strong><small>Публикация от вашего имени</small></span><button className="secondary-button composer-draft-button" type="button" onClick={saveDraft}><Save size={16} />Черновик</button></div>
       <input className="composer-title-input" maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Заголовок (необязательно)" aria-label="Заголовок публикации" />
       <div className="formatting-toolbar" aria-label="Форматирование текста"><button type="button" onClick={() => insertPrefix('## ')} title="Заголовок"><Heading2 size={17} /><span>Заголовок</span></button><button type="button" onClick={makeBold} title="Жирный текст"><Bold size={17} /><span>Жирный</span></button><button type="button" onClick={() => wrapSelection('*', '*', 'курсив')} title="Курсив"><Italic size={17} /><span>Курсив</span></button><button type="button" onClick={() => wrapSelection('~~', '~~', 'зачёркнутый текст')} title="Зачёркнуть"><Strikethrough size={17} /></button><button type="button" onClick={insertLink} title="Добавить ссылку"><Link2 size={17} /><span>Ссылка</span></button><button type="button" onClick={() => insertPrefix('- ')} title="Список"><List size={17} /></button><button type="button" onClick={() => insertPrefix('> ')} title="Цитата"><Quote size={17} /></button><button type="button" onClick={newParagraph} title="Новый абзац"><Pilcrow size={17} /><span>Абзац</span></button><button className="ai-rewrite-trigger" type="button" onClick={() => void openRewrite()} title="Изменить стиль с AI"><Sparkles size={17} /><span>Изменить с AI</span></button></div>
       <textarea ref={bodyInput} required minLength={1} maxLength={10000} value={body} onChange={(event) => setBody(event.target.value)} placeholder="О чём вы думаете? Нажмите Enter для новой строки." aria-label="Текст публикации" />

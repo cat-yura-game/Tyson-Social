@@ -99,6 +99,7 @@ export function MessagesPage() {
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingKind, setRecordingKind] = useState<'audio' | 'video'>('audio');
+  const [remoteActivity, setRemoteActivity] = useState<'typing' | 'recording_audio' | 'recording_video' | null>(null);
   const [maxUploadBytes, setMaxUploadBytes] = useState(STANDARD_UPLOAD_BYTES);
   const [error, setError] = useState<string | null>(null);
   const busy = useRef(false);
@@ -117,6 +118,17 @@ export function MessagesPage() {
   const sharedPostId = searchParams.get('sharePost');
   const sharedCommentId = searchParams.get('shareComment');
   const sharedCommentPostId = searchParams.get('post');
+
+  useEffect(() => {
+    if (!active || active.isSaved) { setRemoteActivity(null); return; }
+    const load = () => void apiRequest<{ activity: typeof remoteActivity }>(`/messages/conversations/${active.id}/activity`).then((result) => setRemoteActivity(result.activity)).catch(() => setRemoteActivity(null));
+    load(); const timer = window.setInterval(load, 3_000); return () => window.clearInterval(timer);
+  }, [active?.id, active?.isSaved]);
+  useEffect(() => {
+    if (!active || active.isSaved) return;
+    const activity = recording ? (recordingKind === 'video' ? 'recording_video' : 'recording_audio') : draft.trim() ? 'typing' : null;
+    void apiRequest(`/messages/conversations/${active.id}/activity`, { method: 'PUT', body: JSON.stringify({ activity }) }).catch(() => undefined);
+  }, [active?.id, active?.isSaved, draft, recording, recordingKind]);
 
   const loadConversations = useCallback(async () => {
     const result = await apiRequest<{ conversations: Conversation[] }>('/messages/conversations');
@@ -605,7 +617,7 @@ export function MessagesPage() {
       {conversations.map((conversation) => <button key={conversation.id} className={conversation.id === activeId ? 'conversation active' : 'conversation'} onClick={() => { setActiveId(conversation.id); setSearchParams(sharedPostId ? { conversation: conversation.id, sharePost: sharedPostId } : { conversation: conversation.id }); }}><span className={`avatar avatar-small${conversation.isSaved ? ' saved-avatar' : ''}`}>{conversation.isSaved ? <Bookmark size={20} /> : conversation.kind === 'group' ? <UsersRound size={18} /> : conversation.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(conversation.otherAvatarKey) ?? ''} alt="" /> : conversation.otherDisplayName.slice(0, 1).toUpperCase()}</span><span><strong>{conversation.otherDisplayName}</strong><small>{conversation.isSaved ? 'Личный защищённый архив' : conversation.kind === 'group' ? `${conversation.memberCount} участника` : `@${conversation.otherUsername}`}</small></span></button>)}
     </aside>
     <div className="chat-panel">{activeId === TYSON_AI_CHAT_ID ? <MessengerAiChat onBack={closeMobileChat} /> : active ? <>
-      <header><button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={closeMobileChat}><ChevronLeft /></button>{active.isSaved || active.kind === 'group' ? <div className="chat-profile-link"><span className="avatar avatar-small saved-avatar">{active.isSaved ? <Bookmark size={19} /> : <UsersRound size={18} />}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>{active.isSaved ? 'Ваш личный архив' : `${active.memberCount} участника`}</small></span></div> : <Link className="chat-profile-link" to={`/profile/${encodeURIComponent(active.otherUsername)}`} aria-label={`Открыть профиль ${active.otherDisplayName}`}><span className="avatar avatar-small">{active.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(active.otherAvatarKey) ?? ''} alt="" /> : active.otherDisplayName.slice(0, 1).toUpperCase()}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>@{active.otherUsername}</small></span></Link>}<span className="chat-security"><LockKeyhole size={14} />{active.securityMode === 'secret' ? 'E2EE' : 'Защищено'}</span></header>
+      <header><button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={closeMobileChat}><ChevronLeft /></button>{active.isSaved || active.kind === 'group' ? <div className="chat-profile-link"><span className="avatar avatar-small saved-avatar">{active.isSaved ? <Bookmark size={19} /> : <UsersRound size={18} />}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>{active.isSaved ? 'Ваш личный архив' : `${active.memberCount} участника`}</small></span></div> : <Link className="chat-profile-link" to={`/profile/${encodeURIComponent(active.otherUsername)}`} aria-label={`Открыть профиль ${active.otherDisplayName}`}><span className="avatar avatar-small">{active.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(active.otherAvatarKey) ?? ''} alt="" /> : active.otherDisplayName.slice(0, 1).toUpperCase()}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small className={remoteActivity ? 'messenger-activity' : ''}>{remoteActivity === 'typing' ? 'печатает…' : remoteActivity === 'recording_audio' ? 'записывает голосовое…' : remoteActivity === 'recording_video' ? 'записывает видеосообщение…' : `@${active.otherUsername}`}</small></span></Link>}<span className="chat-security"><LockKeyhole size={14} />{active.securityMode === 'secret' ? 'E2EE' : 'Защищено'}</span></header>
       <div className="message-stream">{messages.map((message, index) => {
         const displayedContent = basicContent(message.content);
         const sticker = displayedContent.type === 'sticker' ? getSticker(displayedContent.stickerId) : null;

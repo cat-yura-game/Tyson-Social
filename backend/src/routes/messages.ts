@@ -98,6 +98,29 @@ messageRoutes.get('/upload-limit', async (c) => {
   return ok(c, { maxBytes: await uploadLimitForUser(c.env.DB, user.id) });
 });
 
+messageRoutes.put('/conversations/:id/activity', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  if (!await isMember(c.env.DB, c.req.param('id'), user.id)) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  const input = await parse(c, { parse: (value) => {
+    if (!value || typeof value !== 'object' || !('activity' in value)) throw new Error('Invalid activity.');
+    const activity = (value as { activity?: unknown }).activity;
+    if (activity !== null && activity !== 'typing' && activity !== 'recording_audio' && activity !== 'recording_video') throw new Error('Invalid activity.');
+    return { activity };
+  } }); if (input instanceof Response) return input;
+  if (input.activity === null) await c.env.DB.prepare('DELETE FROM conversation_activity WHERE conversation_id = ? AND user_id = ?').bind(c.req.param('id'), user.id).run();
+  else await c.env.DB.prepare(`INSERT INTO conversation_activity (conversation_id, user_id, activity, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(conversation_id, user_id) DO UPDATE SET activity = excluded.activity, updated_at = excluded.updated_at`).bind(c.req.param('id'), user.id, input.activity, new Date().toISOString()).run();
+  return ok(c, { activity: input.activity });
+});
+
+messageRoutes.get('/conversations/:id/activity', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  if (!await isMember(c.env.DB, c.req.param('id'), user.id)) return fail(c, 404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  const row = await c.env.DB.prepare(`SELECT activity FROM conversation_activity WHERE conversation_id = ? AND user_id != ?
+    AND updated_at > ? ORDER BY updated_at DESC LIMIT 1`).bind(c.req.param('id'), user.id, new Date(Date.now() - 15_000).toISOString()).first<{ activity: 'typing' | 'recording_audio' | 'recording_video' }>();
+  return ok(c, { activity: row?.activity ?? null });
+});
+
 messageRoutes.get('/following', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const query = c.req.query('q')?.trim().slice(0, 80) ?? '';

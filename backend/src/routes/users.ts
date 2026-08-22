@@ -391,7 +391,7 @@ userRoutes.get('/:username/posts', async (c) => {
   if (!/^[a-z0-9_]{3,30}$/u.test(username)) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
   const viewerId = c.get('authUser')?.id ?? '';
   const rows = await c.env.DB.prepare(`SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.comment_count AS commentCount, p.pinned_at AS pinnedAt,
-    p.published_at AS publishedAt, p.updated_at AS updatedAt, u.id AS authorId, u.username,
+    p.published_at AS publishedAt, p.updated_at AS updatedAt, p.edited_at AS editedAt, p.repost_of_post_id AS repostOfPostId, u.id AS authorId, u.username,
     u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
     u.worn_gift_id AS wornGiftId,
     (SELECT COALESCE(ug.variant, gt.base_image) FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = u.worn_gift_id) AS wornGiftImage,
@@ -403,6 +403,19 @@ userRoutes.get('/:username/posts', async (c) => {
     WHERE (u.username = ? COLLATE NOCASE OR EXISTS (SELECT 1 FROM username_aliases a WHERE a.user_id = u.id AND a.username = ? COLLATE NOCASE)) AND p.status = 'published'
     ORDER BY p.pinned_at DESC, p.published_at DESC LIMIT 100`).bind(viewerId, viewerId, username, username).all();
   return ok(c, { posts: rows.results });
+});
+
+userRoutes.get('/:username/reposts', async (c) => {
+  const username = c.req.param('username').trim().toLowerCase();
+  const viewerId = c.get('authUser')?.id ?? '';
+  const rows = await c.env.DB.prepare(`SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.comment_count AS commentCount, p.pinned_at AS pinnedAt,
+    p.published_at AS publishedAt, p.updated_at AS updatedAt, p.edited_at AS editedAt, p.repost_of_post_id AS repostOfPostId, u.id AS authorId, u.username,
+    u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
+    NULL AS wornGiftId, NULL AS wornGiftImage, NULL AS mediaKey, '' AS viewerReaction, 0 AS diamondCount, 0 AS viewerDiamondGiven
+    FROM posts p JOIN users u ON u.id = p.author_user_id
+    WHERE (u.username = ? COLLATE NOCASE OR EXISTS (SELECT 1 FROM username_aliases a WHERE a.user_id = u.id AND a.username = ? COLLATE NOCASE))
+      AND p.status = 'published' AND p.repost_of_post_id IS NOT NULL ORDER BY p.published_at DESC LIMIT 100`).bind(username, username).all();
+  return ok(c, { posts: rows.results, viewerId });
 });
 
 userRoutes.put('/:username/follow', async (c) => {

@@ -23,7 +23,7 @@ storyRoutes.get('/', async (c) => {
   const viewerId = c.get('authUser')?.id ?? '';
   const now = new Date().toISOString();
   const rows = await c.env.DB.prepare(`SELECT s.id, s.storage_key AS storageKey, s.media_type AS mediaType,
-    s.content_type AS contentType, s.created_at AS createdAt, s.expires_at AS expiresAt,
+    s.content_type AS contentType, s.caption, s.created_at AS createdAt, s.expires_at AS expiresAt,
     u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.is_verified AS verified,
     (SELECT COUNT(*) FROM story_reactions r WHERE r.story_id = s.id) AS reactionCount,
     COALESCE((SELECT reaction FROM story_reactions r WHERE r.story_id = s.id AND r.user_id = ?), '') AS viewerReaction
@@ -63,6 +63,15 @@ storyRoutes.post('/:id/reply', async (c) => {
   return ok(c, { id }, 201);
 });
 
+storyRoutes.put('/:id', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const input = z.object({ caption: z.string().trim().max(280) }).strict().safeParse(await c.req.json().catch(() => null));
+  if (!input.success) return fail(c, 422, 'VALIDATION_ERROR', 'Caption must contain up to 280 characters.');
+  const result = await c.env.DB.prepare('UPDATE stories SET caption = ? WHERE id = ? AND author_user_id = ?').bind(input.data.caption, c.req.param('id'), user.id).run();
+  if ((result.meta.changes ?? 0) !== 1) return fail(c, 404, 'STORY_NOT_FOUND', 'Story not found.');
+  return ok(c, { caption: input.data.caption });
+});
+
 storyRoutes.post('/', async (c) => {
   const user = c.get('authUser');
   if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
@@ -70,6 +79,7 @@ storyRoutes.post('/', async (c) => {
     .bind(user.id, new Date().toISOString()).first<{ count: number }>();
   if ((activeCount?.count ?? 0) >= 20) return fail(c, 429, 'STORY_LIMIT_REACHED', 'You can have up to 20 active stories.');
   const contentType = c.req.header('content-type')?.split(';')[0]?.trim().toLowerCase() ?? '';
+  const caption = (c.req.header('x-story-caption') ?? '').trim().slice(0, 280);
   const declaredLength = Number(c.req.header('content-length') ?? 0);
   const maxUploadBytes = await uploadLimitForUser(c.env.DB, user.id);
   if (declaredLength > maxUploadBytes) return fail(c, 413, 'STORY_TOO_LARGE', `Story media must not exceed ${Math.round(maxUploadBytes / 1024 / 1024)} MiB.`);
@@ -100,15 +110,15 @@ storyRoutes.post('/', async (c) => {
     expiresAt: expiresAt.toISOString(),
   }, Math.floor(expiresAt.getTime() / 1000));
   try {
-    await c.env.DB.prepare(`INSERT INTO stories (id, author_user_id, storage_key, media_type, content_type, created_at, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, user.id, storageKey, mediaType, contentType, createdAt.toISOString(), expiresAt.toISOString()).run();
+    await c.env.DB.prepare(`INSERT INTO stories (id, author_user_id, storage_key, media_type, content_type, caption, created_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, user.id, storageKey, mediaType, contentType, caption, createdAt.toISOString(), expiresAt.toISOString()).run();
   } catch (error) {
     await storage.delete(storageKey);
     throw error;
   }
   await completeDailyTask(c.env, user.id, 'story');
-  return ok(c, { story: { id, storageKey, mediaType, contentType, createdAt: createdAt.toISOString(), expiresAt: expiresAt.toISOString() } }, 201);
+  return ok(c, { story: { id, storageKey, mediaType, contentType, caption, createdAt: createdAt.toISOString(), expiresAt: expiresAt.toISOString() } }, 201);
 });
 
 storyRoutes.delete('/:id', async (c) => {

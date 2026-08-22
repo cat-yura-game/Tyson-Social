@@ -1,4 +1,4 @@
-import { BadgeCheck, Heart, MessageCircle, MoreHorizontal, Pin, Rocket, Share2, Sparkles, ThumbsDown, Trash2 } from 'lucide-react';
+import { BadgeCheck, Edit3, Heart, MessageCircle, MoreHorizontal, Pin, Repeat2, Rocket, Share2, Sparkles, ThumbsDown, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
@@ -109,6 +109,18 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
     }
   };
   const togglePin = async () => { try { await apiRequest(`/posts/${post.id}/pin`, { method: 'PUT', body: JSON.stringify({ pinned: !pinned }) }); setPinned((value) => !value); setOwnerMenu(false); } catch (error) { window.alert(error instanceof Error ? error.message : 'Не удалось изменить закрепление.'); } };
+  const editPost = async () => {
+    const title = window.prompt('Заголовок публикации', post.title) ?? null; if (title === null) return;
+    const body = window.prompt('Текст публикации', post.body) ?? null; if (body === null || !body.trim()) return;
+    try { await apiRequest(`/posts/${post.id}`, { method: 'PUT', body: JSON.stringify({ title, body }) }); window.location.reload(); }
+    catch (error) { window.alert(error instanceof Error ? error.message : 'Не удалось изменить публикацию.'); }
+  };
+  const repost = async () => {
+    if (!user) { navigate('/login'); return; }
+    const body = window.prompt('Комментарий к репосту (необязательно)', ''); if (body === null) return;
+    try { await apiRequest(`/posts/${post.id}/repost`, { method: 'POST', body: JSON.stringify({ body }) }); window.alert('Репост опубликован в вашей ленте.'); }
+    catch (error) { window.alert(error instanceof Error ? error.message : 'Не удалось сделать репост.'); }
+  };
   const coauthors = (() => { try { return JSON.parse(post.coauthorsJson ?? '[]') as Array<{ username: string; displayName: string }>; } catch { return []; } })();
 
   if (deleted) return null;
@@ -119,10 +131,10 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
         <Link to={`/profile/${post.username}`} className="avatar">{post.avatarKey ? <img className="avatar-image" src={mediaUrl(post.avatarKey) ?? ''} alt="" /> : post.displayName.slice(0, 1).toUpperCase()}</Link>
         <div className="post-author"><span><Link to={`/profile/${post.username}`}><strong>{post.displayName}</strong>{post.verified && <BadgeCheck className="verified" size={17} aria-label="Подтверждённый аккаунт" />}</Link>{post.wornGiftImage && post.wornGiftId && <WornGiftButton giftId={post.wornGiftId} image={post.wornGiftImage} owner={{ username: post.username, displayName: post.displayName, avatarKey: post.avatarKey }} />}</span><span>@{post.username} · {Math.abs(minutes) < 60 ? time.format(minutes, 'minute') : new Date(post.publishedAt).toLocaleDateString('ru-RU')}</span></div>
         {user?.id === post.authorId
-          ? <div className="post-owner-menu"><button className="icon-button" type="button" aria-label="Действия с публикацией" onClick={() => setOwnerMenu((value) => !value)}><MoreHorizontal size={20} /></button>{ownerMenu && <div className="post-owner-menu-popover"><button type="button" onClick={() => void togglePin()}><Pin size={16} />{pinned ? 'Открепить от профиля' : 'Закрепить в профиле'}</button>{promoted ? <button type="button" onClick={() => void cancelPromotion()}><Rocket size={16} />Отменить продвижение</button> : <button type="button" onClick={() => void promotePost()}><Rocket size={16} />Продвинуть</button>}<button className="danger" type="button" disabled={deleting} onClick={() => void deletePost()}><Trash2 size={16} />Удалить</button></div>}</div>
+          ? <div className="post-owner-menu"><button className="icon-button" type="button" aria-label="Действия с публикацией" onClick={() => setOwnerMenu((value) => !value)}><MoreHorizontal size={20} /></button>{ownerMenu && <div className="post-owner-menu-popover"><button type="button" onClick={() => void editPost()}><Edit3 size={16} />Редактировать</button><button type="button" onClick={() => void togglePin()}><Pin size={16} />{pinned ? 'Открепить от профиля' : 'Закрепить в профиле'}</button>{promoted ? <button type="button" onClick={() => void cancelPromotion()}><Rocket size={16} />Отменить продвижение</button> : <button type="button" onClick={() => void promotePost()}><Rocket size={16} />Продвинуть</button>}<button className="danger" type="button" disabled={deleting} onClick={() => void deletePost()}><Trash2 size={16} />Удалить</button></div>}</div>
           : <button className="icon-button" type="button" aria-label="Действия с публикацией"><MoreHorizontal size={20} /></button>}
       </header>
-      <div className="post-body">{pinned && <span className="pinned-label"><Pin size={12} />Закреплено в профиле</span>}{promoted && <span className="promoted-label"><Rocket size={12} />Продвигается</span>}{post.title && <Link to={`/post/${post.id}`}><h2 className="post-title">{post.title}</h2></Link>}{coauthors.length > 0 && <p className="post-coauthors">С соавторами: {coauthors.map((person, index) => <span key={person.username}>{index > 0 && ', '}<Link to={`/profile/${person.username}`}>{person.displayName}</Link></span>)}</p>}<RichPostText text={post.body} /></div>
+      <div className="post-body">{pinned && <span className="pinned-label"><Pin size={12} />Закреплено в профиле</span>}{promoted && <span className="promoted-label"><Rocket size={12} />Продвигается</span>}{post.repostOfPostId && <Link className="repost-label" to={`/post/${post.repostOfPostId}`}><Repeat2 size={14} />Репост публикации</Link>}{post.title && <Link to={`/post/${post.id}`}><h2 className="post-title">{post.title}</h2></Link>}{coauthors.length > 0 && <p className="post-coauthors">С соавторами: {coauthors.map((person, index) => <span key={person.username}>{index > 0 && ', '}<Link to={`/profile/${person.username}`}>{person.displayName}</Link></span>)}</p>}<RichPostText text={post.body} />{post.editedAt && <small className="post-edited-label">изменено</small>}</div>
       {post.mediaKey && <Link className="post-media" to={`/post/${post.id}`}><img loading="lazy" src={mediaUrl(post.mediaKey) ?? ''} alt="Изображение публикации" /></Link>}
       {poll && <section className="post-poll"><strong>{poll.question}</strong><div>{poll.options.map((option) => { const percent = poll.totalVotes ? Math.round(option.votes / poll.totalVotes * 100) : 0; const chosen = poll.viewerOptionId === option.id; return <button key={option.id} type="button" disabled={pollPending} className={chosen ? 'chosen' : ''} onClick={() => void vote(option.id)}><span style={{ width: poll.viewerOptionId ? `${percent}%` : '0%' }} /><b>{option.label}</b>{poll.viewerOptionId && <em>{percent}%</em>}</button>; })}</div><small>{poll.totalVotes} {poll.totalVotes === 1 ? 'голос' : 'голосов'}</small></section>}
       {summary && <aside className="post-summary"><span><Sparkles size={15} />Краткое содержание от AI</span><p>{summary}</p></aside>}
@@ -132,7 +144,7 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
         <button className={reaction === 'dislike' ? 'reaction-active' : ''} disabled={pending} type="button" aria-label="Не показывать похожее" onClick={() => void react('dislike')}><ThumbsDown size={19} /></button>
         <button className="diamond-reaction" disabled={pending || user?.id === post.authorId} type="button" aria-label="Отправить алмазы автору; удерживайте для выбора суммы" onPointerDown={() => { diamondHold.current = window.setTimeout(() => { diamondHold.current = null; pickDiamondAmount(); }, 550); }} onPointerUp={() => { if (diamondHold.current) { window.clearTimeout(diamondHold.current); diamondHold.current = null; void giveDiamond(); } }} onPointerCancel={() => { if (diamondHold.current) window.clearTimeout(diamondHold.current); diamondHold.current = null; }}><DiamondIcon size={19} /><span>{diamondCount}</span></button>
         <Link to={`/post/${post.id}`} aria-label={`${post.commentCount} комментариев`}><MessageCircle size={19} /><span>{post.commentCount}</span></Link>
-        <button type="button" aria-label="Отправить публикацию в Messenger" onClick={() => navigate(user ? `/messages?sharePost=${post.id}` : '/login')}><Share2 size={19} /></button>
+        <button type="button" aria-label="Отправить публикацию в Messenger" onClick={() => navigate(user ? `/messages?sharePost=${post.id}` : '/login')}><Share2 size={19} /></button><button type="button" aria-label="Сделать репост" onClick={() => void repost()}><Repeat2 size={19} /></button>
         {post.body.length > 500 && <button className="ai-action" type="button" disabled={summaryLoading} onClick={() => void summarize()}><Sparkles size={17} /><span>{summaryLoading ? 'Сокращаем…' : summary ? 'Скрыть краткое' : 'Коротко с AI'}</span></button>}
       </footer>
     </article>
