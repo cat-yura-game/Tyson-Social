@@ -21,6 +21,8 @@ export interface Env {
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
+  SECURE_TEST_TOKEN?: string;
+  SECURE_TEST_CONFIG?: string;
 }
 
 export interface AppVariables {
