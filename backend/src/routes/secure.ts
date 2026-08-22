@@ -22,7 +22,7 @@ secureRoutes.get('/test-config/:token/:profile', (c) => {
 secureRoutes.get('/test-subscription/:token', (c) => {
   if (!c.env.SECURE_TEST_TOKEN || c.req.param('token') !== c.env.SECURE_TEST_TOKEN) return fail(c, 404, 'CONFIG_NOT_FOUND', 'Test configuration not found.');
   const configs = [c.env.SECURE_TEST_CONFIG_AUTO, c.env.SECURE_TEST_CONFIG_NL, c.env.SECURE_TEST_CONFIG_DE, c.env.SECURE_TEST_CONFIG_WHITE_NL, c.env.SECURE_TEST_CONFIG_WHITE_RU];
-  if (configs.some((config) => !config)) return fail(c, 503, 'CONFIG_UNAVAILABLE', 'Test configuration is unavailable.');
+  if (configs.some((config) => !config)) return fail(c, 500, 'CONFIG_UNAVAILABLE', 'Test configuration is unavailable.');
   try {
     return new Response(JSON.stringify(configs.map((config) => JSON.parse(config!))), { headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="tyson-secure-test-subscription.json"', 'cache-control': 'no-store', 'profile-title': 'Tyson Secure Test' } });
   } catch { return fail(c, 500, 'CONFIG_UNAVAILABLE', 'Test configuration is unavailable.'); }
