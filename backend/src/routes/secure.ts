@@ -1,11 +1,42 @@
 import { Hono } from 'hono';
-import { fail } from '../lib/responses';
+import { fail, ok } from '../lib/responses';
 import type { AppVariables, Env } from '../types';
+import { z } from 'zod';
 
 export const secureRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 const PROFILE_TITLES: Record<string, string> = { auto: '⚡ Автоподбор', nl: '🇳🇱 Нидерланды', de: '🇩🇪 Германия', 'white-nl': '🇳🇱 Белый список', 'white-ru': '🇷🇺 Белый список' };
 const TEST_SUBSCRIPTION_TITLE = 'Tyson Secure Test';
 const TEST_SUBSCRIPTION_EXPIRES_AT = '1798761600'; // 1 January 2027, 00:00 UTC
+const SECURE_PLANS = { day: { cost: 5, days: 1, label: 'На 1 день' }, week: { cost: 20, days: 7, label: 'На 7 дней' }, month: { cost: 80, days: 30, label: 'На 30 дней' } } as const;
+const securePlanSchema = z.object({ plan: z.enum(['day', 'week', 'month']) }).strict();
+
+function requireUser(c: Parameters<typeof fail>[0]) {
+  const user = c.get('authUser');
+  if (!user) return { error: fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.') };
+  if (user.status === 'limited') return { error: fail(c, 403, 'ACCOUNT_LIMITED', 'This account is currently limited.') };
+  return { user };
+}
+
+function secureConfigs(env: Env) {
+  return [
+    env.SECURE_CONFIG_AUTO ?? env.SECURE_TEST_CONFIG_AUTO,
+    env.SECURE_CONFIG_NL ?? env.SECURE_TEST_CONFIG_NL,
+    env.SECURE_CONFIG_DE ?? env.SECURE_TEST_CONFIG_DE,
+    env.SECURE_CONFIG_WHITE_NL ?? env.SECURE_TEST_CONFIG_WHITE_NL,
+    env.SECURE_CONFIG_WHITE_RU ?? env.SECURE_TEST_CONFIG_WHITE_RU,
+  ];
+}
+
+function secureHeaders(expiresAt: string, catalogUrl: string) {
+  return {
+    'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="tyson-secure-subscription.json"', 'cache-control': 'no-store',
+    'profile-title': 'Tyson Secure', 'subscription-name': 'Tyson Secure',
+    'subscription-userinfo': `upload=0; download=0; total=0; expire=${Math.floor(new Date(expiresAt).getTime() / 1_000)}`,
+    'profile-update-interval': '1', 'sub-info-text': 'If a profile does not work, update the subscription. White-list bypass is not guaranteed.',
+    'sub-info-button-text': 'Tyson Secure', 'sub-info-button-link': catalogUrl,
+    'color-profile': '{"light":{"primary":"#007AFF","secondary":"#5E5CE6","background":"#F3F7FF"},"dark":{"primary":"#0A84FF","secondary":"#BF5AF2","background":"#101521"}}',
+  };
+}
 
 function namedConfig(raw: string, profile: string): Record<string, unknown> {
   const config = JSON.parse(raw) as { outbounds?: Array<{ tag?: string; protocol?: string }>; routing?: { balancers?: Array<{ selector?: string[]; fallbackTag?: string }> }; observatory?: { subjectSelector?: string[] }; remarks?: string };
@@ -23,6 +54,58 @@ function namedConfig(raw: string, profile: string): Record<string, unknown> {
   config.remarks = title;
   return config as Record<string, unknown>;
 }
+
+secureRoutes.get('/', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  const subscription = await c.env.DB.prepare('SELECT expires_at AS expiresAt FROM secure_subscriptions WHERE user_id = ?').bind(auth.user.id).first<{ expiresAt: string }>();
+  const active = Boolean(subscription && subscription.expiresAt > new Date().toISOString());
+  return ok(c, { active, expiresAt: active ? subscription?.expiresAt ?? null : null, plans: SECURE_PLANS });
+});
+
+secureRoutes.post('/purchase', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  let input: z.infer<typeof securePlanSchema>;
+  try { input = securePlanSchema.parse(await c.req.json()); } catch { return fail(c, 422, 'VALIDATION_ERROR', 'Invalid Secure plan.'); }
+  const plan = SECURE_PLANS[input.plan]; const now = new Date(); const timestamp = now.toISOString();
+  const current = await c.env.DB.prepare('SELECT expires_at AS expiresAt FROM secure_subscriptions WHERE user_id = ?').bind(auth.user.id).first<{ expiresAt: string }>();
+  const startsAt = current?.expiresAt && current.expiresAt > timestamp ? new Date(current.expiresAt) : now;
+  const expiresAt = new Date(startsAt.getTime() + plan.days * 86_400_000).toISOString(); const transactionId = crypto.randomUUID();
+  const result = await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at) SELECT ?, ?, ?, 'debit', 'tyson_secure', ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND diamond_balance >= ?)`)
+      .bind(transactionId, auth.user.id, -plan.cost, input.plan, timestamp, auth.user.id, plan.cost),
+    c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance - ? WHERE id = ? AND EXISTS (SELECT 1 FROM diamond_transactions WHERE id = ?)').bind(plan.cost, auth.user.id, transactionId),
+    c.env.DB.prepare(`INSERT INTO secure_subscriptions (user_id, expires_at, updated_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM diamond_transactions WHERE id = ?) ON CONFLICT(user_id) DO UPDATE SET expires_at = excluded.expires_at, updated_at = excluded.updated_at`)
+      .bind(auth.user.id, expiresAt, timestamp, transactionId),
+  ]);
+  if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'Not enough diamonds.');
+  const balance = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(auth.user.id).first<{ balance: number }>();
+  return ok(c, { active: true, expiresAt, balance: balance?.balance ?? 0, plan: input.plan });
+});
+
+secureRoutes.post('/access-link', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  const subscription = await c.env.DB.prepare('SELECT expires_at AS expiresAt FROM secure_subscriptions WHERE user_id = ?').bind(auth.user.id).first<{ expiresAt: string }>();
+  if (!subscription || subscription.expiresAt <= new Date().toISOString()) return fail(c, 403, 'SECURE_SUBSCRIPTION_REQUIRED', 'An active Tyson Secure subscription is required.');
+  let access = await c.env.DB.prepare('SELECT token FROM secure_access_tokens WHERE user_id = ?').bind(auth.user.id).first<{ token: string }>();
+  if (!access) {
+    const token = crypto.randomUUID();
+    await c.env.DB.prepare('INSERT INTO secure_access_tokens (user_id, token, created_at) VALUES (?, ?, ?)').bind(auth.user.id, token, new Date().toISOString()).run();
+    access = { token };
+  }
+  const base = new URL(c.req.url).origin;
+  return ok(c, { url: `${base}/api/secure/subscription/${access.token}`, expiresAt: subscription.expiresAt });
+});
+
+secureRoutes.get('/subscription/:token', async (c) => {
+  const access = await c.env.DB.prepare(`SELECT s.expires_at AS expiresAt FROM secure_access_tokens t JOIN secure_subscriptions s ON s.user_id = t.user_id WHERE t.token = ?`)
+    .bind(c.req.param('token')).first<{ expiresAt: string }>();
+  if (!access || access.expiresAt <= new Date().toISOString()) return fail(c, 404, 'SUBSCRIPTION_NOT_FOUND', 'Subscription not found.');
+  const configs = secureConfigs(c.env); if (configs.some((config) => !config)) return fail(c, 500, 'CONFIG_UNAVAILABLE', 'Secure configuration is unavailable.');
+  try {
+    const profiles = ['auto', 'nl', 'de', 'white-nl', 'white-ru']; const base = new URL(c.req.url).origin;
+    return new Response(JSON.stringify(configs.map((config, index) => namedConfig(config!, profiles[index] ?? 'auto'))), { headers: secureHeaders(access.expiresAt, `${base}/secure`) });
+  } catch { return fail(c, 500, 'CONFIG_UNAVAILABLE', 'Secure configuration is unavailable.'); }
+});
 
 secureRoutes.get('/test-config/:token', (c) => {
   if (!c.env.SECURE_TEST_TOKEN || !c.env.SECURE_TEST_CONFIG || c.req.param('token') !== c.env.SECURE_TEST_TOKEN) {

@@ -28,6 +28,11 @@ export interface Env {
   SECURE_TEST_CONFIG_DE?: string;
   SECURE_TEST_CONFIG_WHITE_NL?: string;
   SECURE_TEST_CONFIG_WHITE_RU?: string;
+  SECURE_CONFIG_AUTO?: string;
+  SECURE_CONFIG_NL?: string;
+  SECURE_CONFIG_DE?: string;
+  SECURE_CONFIG_WHITE_NL?: string;
+  SECURE_CONFIG_WHITE_RU?: string;
 }
 
 export interface AppVariables {

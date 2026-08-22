@@ -14,6 +14,7 @@ import { AdminPage } from './pages/AdminPage';
 import { EarnDiamondsPage } from './pages/EarnDiamondsPage';
 import { DiamondsPage } from './pages/DiamondsPage';
 import { CollectibleGiftPage } from './pages/CollectibleGiftPage';
+import { SecurePage } from './pages/SecurePage';
 
 const MessagesPage = lazy(() => import('./pages/MessagesPage').then((module) => ({ default: module.MessagesPage })));
 const AiPage = lazy(() => import('./pages/AiPage').then((module) => ({ default: module.AiPage })));
@@ -41,6 +42,7 @@ function ProductRoutes() {
         <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
         <Route path="/gifts" element={<RequireAuth><DiamondsPage /></RequireAuth>} />
         <Route path="/earn" element={<RequireAuth><EarnDiamondsPage /></RequireAuth>} />
+        <Route path="/secure" element={<RequireAuth><SecurePage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>
