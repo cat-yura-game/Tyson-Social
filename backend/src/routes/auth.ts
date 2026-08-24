@@ -161,8 +161,6 @@ authRoutes.post('/register', async (c) => {
 authRoutes.post('/email/verify', async (c) => {
   const user = c.get('authUser');
   if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
-  if (user.emailVerified) return ok(c, { verified: true });
-
   let input;
   try {
     input = emailVerificationSchema.parse(await parseJsonBody(c.req.raw));
@@ -170,9 +168,9 @@ authRoutes.post('/email/verify', async (c) => {
     return validationFailure(c, error);
   }
 
-  const verification = await c.env.DB.prepare(`SELECT id, token_hash AS tokenHash, expires_at AS expiresAt
+  const verification = await c.env.DB.prepare(`SELECT id, token_hash AS tokenHash, expires_at AS expiresAt, pending_email AS pendingEmail
     FROM email_verifications WHERE user_id = ? AND consumed_at IS NULL ORDER BY created_at DESC LIMIT 1`)
-    .bind(user.id).first<{ id: string; tokenHash: string; expiresAt: string }>();
+    .bind(user.id).first<{ id: string; tokenHash: string; expiresAt: string; pendingEmail: string | null }>();
   if (!verification || Date.parse(verification.expiresAt) <= Date.now() || verification.tokenHash !== await sha256(input.code)) {
     return fail(c, 422, 'INVALID_VERIFICATION_CODE', 'Код неверный или уже истёк.');
   }
@@ -180,8 +178,8 @@ authRoutes.post('/email/verify', async (c) => {
   const now = new Date().toISOString();
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE email_verifications SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL').bind(now, verification.id),
-    c.env.DB.prepare(`UPDATE users SET email_verified_at = ?, status = CASE WHEN status = 'pending_email' THEN 'active' ELSE status END, updated_at = ? WHERE id = ?`)
-      .bind(now, now, user.id),
+    c.env.DB.prepare(`UPDATE users SET email = COALESCE(?, email), email_verified_at = ?, status = CASE WHEN status = 'pending_email' THEN 'active' ELSE status END, updated_at = ? WHERE id = ?`)
+      .bind(verification.pendingEmail, now, now, user.id),
   ]);
   return ok(c, { verified: true });
 });
@@ -189,7 +187,9 @@ authRoutes.post('/email/verify', async (c) => {
 authRoutes.post('/email/resend', async (c) => {
   const user = c.get('authUser');
   if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
-  if (user.emailVerified) return ok(c, { sent: false, verified: true });
+  const latest = await c.env.DB.prepare('SELECT pending_email AS pendingEmail FROM email_verifications WHERE user_id = ? AND consumed_at IS NULL ORDER BY created_at DESC LIMIT 1')
+    .bind(user.id).first<{ pendingEmail: string | null }>();
+  if (user.emailVerified && !latest?.pendingEmail) return ok(c, { sent: false, verified: true });
 
   const rate = await consumeRateLimit(c.env.DB, {
     scope: 'email_verification_resend', subjectHash: await sha256(user.id), limit: 3, windowSeconds: 60 * 60, now: new Date(),
@@ -201,9 +201,9 @@ authRoutes.post('/email/resend', async (c) => {
 
   const code = createEmailVerificationCode();
   const now = new Date();
-  await c.env.DB.prepare('INSERT INTO email_verifications (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.id, await sha256(code), new Date(now.getTime() + VERIFICATION_SECONDS * 1000).toISOString()).run();
-  try { await sendVerificationEmail(c.env, { to: user.email, code }); }
+  await c.env.DB.prepare('INSERT INTO email_verifications (id, user_id, token_hash, expires_at, pending_email) VALUES (?, ?, ?, ?, ?)')
+    .bind(crypto.randomUUID(), user.id, await sha256(code), new Date(now.getTime() + VERIFICATION_SECONDS * 1000).toISOString(), latest?.pendingEmail ?? null).run();
+  try { await sendVerificationEmail(c.env, { to: latest?.pendingEmail ?? user.email, code }); }
   catch (error) { console.error('Email verification resend failed', error); return fail(c, 502, 'EMAIL_DELIVERY_FAILED', 'Не удалось отправить письмо. Попробуйте позже.'); }
   return ok(c, { sent: true });
 });
@@ -219,12 +219,8 @@ authRoutes.post('/email/change', async (c) => {
     if (used && used.id !== user.id) return fail(c, 409, 'EMAIL_IN_USE', 'Этот email уже используется.');
   }
   const code = createEmailVerificationCode(); const now = new Date();
-  await c.env.DB.batch([
-    c.env.DB.prepare('UPDATE users SET email = ?, email_verified_at = NULL, status = ?, updated_at = ? WHERE id = ?')
-      .bind(input.email, 'pending_email', now.toISOString(), user.id),
-    c.env.DB.prepare('INSERT INTO email_verifications (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.id, await sha256(code), new Date(now.getTime() + VERIFICATION_SECONDS * 1000).toISOString()),
-  ]);
+  await c.env.DB.prepare('INSERT INTO email_verifications (id, user_id, token_hash, expires_at, pending_email) VALUES (?, ?, ?, ?, ?)')
+    .bind(crypto.randomUUID(), user.id, await sha256(code), new Date(now.getTime() + VERIFICATION_SECONDS * 1000).toISOString(), input.email).run();
   try { await sendVerificationEmail(c.env, { to: input.email, code }); }
   catch (error) { console.error('Email change delivery failed', error); return fail(c, 502, 'EMAIL_DELIVERY_FAILED', 'Не удалось отправить письмо на этот адрес.'); }
   return ok(c, { email: input.email, sent: true });

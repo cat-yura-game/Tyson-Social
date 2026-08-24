@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { ArrowLeft, CheckCircle2, Mail, Sparkles } from 'lucide-react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { Brand } from '../components/Brand';
@@ -8,11 +8,13 @@ import { Brand } from '../components/Brand';
 export function EmailVerificationPage() {
   const { user, refresh } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [code, setCode] = useState('');
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   if (!user) return <Navigate to="/login" replace />;
-  if (user.emailVerified) return <Navigate to="/" replace />;
+  const changingEmail = searchParams.get('change') === '1';
+  if (user.emailVerified && !changingEmail) return <Navigate to="/" replace />;
 
   const verify = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setPending(true); setMessage(null);
