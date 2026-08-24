@@ -1,7 +1,7 @@
 import { BellRing, ChevronRight, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-type IosGuide = 'ios26' | 'ios18' | 'legacy';
+type IosGuide = 'ios26' | 'ios18';
 
 function isIosBrowser() {
   const platform = navigator.platform;
@@ -16,8 +16,7 @@ function detectedGuide(): IosGuide {
   const version = /(?:OS |Version\/)(\d+)[_.]?/u.exec(navigator.userAgent)?.[1];
   const major = Number(version ?? 0);
   if (major >= 26) return 'ios26';
-  if (major >= 18) return 'ios18';
-  return 'legacy';
+  return 'ios18';
 }
 
 function GuideSteps({ guide }: { guide: IosGuide }) {
@@ -37,9 +36,9 @@ export function IosPwaInstallPrompt() {
   }, []);
 
   if (!visible) return null;
-  const label = guide === 'ios26' ? 'iOS 26 и новее' : guide === 'ios18' ? 'iOS 18–25' : 'iOS 17 и ниже';
+  const label = guide === 'ios26' ? 'iOS 26 и новее' : 'iOS 18 и ниже';
   return <>
     <aside className="ios-pwa-prompt" aria-label="Установите Tyson"><span className="ios-pwa-prompt-logo"><img src="/logo.png" alt="" /></span><div><strong>Установите Tyson</strong><p>Получайте уведомления и открывайте соцсеть как приложение.</p><button type="button" onClick={() => setInstructionsOpen(true)}>Как установить <ChevronRight size={15} /></button></div><button className="ios-pwa-close" type="button" aria-label="Закрыть" onClick={() => { sessionStorage.setItem('tyson-pwa-prompt-dismissed', '1'); setVisible(false); }}><X size={17} /></button></aside>
-    {instructionsOpen && <div className="ios-pwa-modal-backdrop" role="presentation" onMouseDown={() => setInstructionsOpen(false)}><section className="ios-pwa-modal" role="dialog" aria-modal="true" aria-labelledby="ios-pwa-title" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">{label}</p><h2 id="ios-pwa-title">Установите Tyson</h2></div><button type="button" aria-label="Закрыть инструкцию" onClick={() => setInstructionsOpen(false)}><X size={20} /></button></header><div className="ios-pwa-guide-switch" role="tablist" aria-label="Версия iOS">{([['ios26', 'iOS 26+'], ['ios18', 'iOS 18–25'], ['legacy', 'iOS 17−']] as const).map(([value, title]) => <button key={value} type="button" role="tab" aria-selected={guide === value} className={guide === value ? 'selected' : ''} onClick={() => setGuide(value)}>{title}</button>)}</div><p className="ios-pwa-intro"><BellRing size={17} />После установки можно включить уведомления от Tyson.</p><GuideSteps guide={guide} /><button className="primary-button" type="button" onClick={() => setInstructionsOpen(false)}>Понятно</button></section></div>}
+    {instructionsOpen && <div className="ios-pwa-modal-backdrop" role="presentation" onMouseDown={() => setInstructionsOpen(false)}><section className="ios-pwa-modal" role="dialog" aria-modal="true" aria-labelledby="ios-pwa-title" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">{label}</p><h2 id="ios-pwa-title">Установите Tyson</h2></div><button type="button" aria-label="Закрыть инструкцию" onClick={() => setInstructionsOpen(false)}><X size={20} /></button></header><div className="ios-pwa-guide-switch" role="tablist" aria-label="Версия iOS">{([['ios26', 'iOS 26+'], ['ios18', 'iOS 18 и ниже']] as const).map(([value, title]) => <button key={value} type="button" role="tab" aria-selected={guide === value} className={guide === value ? 'selected' : ''} onClick={() => setGuide(value)}>{title}</button>)}</div><p className="ios-pwa-intro"><BellRing size={17} />После установки можно включить уведомления от Tyson.</p><GuideSteps guide={guide} /><button className="primary-button" type="button" onClick={() => setInstructionsOpen(false)}>Понятно</button></section></div>}
   </>;
 }
