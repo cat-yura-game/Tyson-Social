@@ -11,6 +11,7 @@ type GiftType = { id: string; slug: string; title: string; basePrice: number; up
 type UserGift = { id: string; giftTypeId: string; serialNumber: number; variant: string | null; inscription: string | null; isCollectible: number; accentColor: string; isPublic: number; worn: number; activeListingId: string | null; purchasedAt: string; upgradedAt: string | null; title: string; basePrice: number; maxSupply: number; baseImage: string; collectibleVariantsJson: string; upgradePrice: number; isLimited: number; isUnlimited: number; canUpgrade: number; canTransfer: number; canWear: number; exchangeReward: number; exchangeWindowDays: number | null };
 type MarketListing = UserGift & { listingId: string; price: number; sellerUsername: string; sellerDisplayName: string; sellerAvatarKey: string | null };
 type PublicCollectible = UserGift & { ownerUsername: string; ownerDisplayName: string; ownerAvatarKey: string | null };
+type DiamondTransaction = { id: string; amount: number; type: 'credit' | 'debit'; reason: string; createdAt: string };
 
 function requireUser(c: Parameters<typeof fail>[0]): AuthUser | Response { return c.get('authUser') ?? fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.'); }
 function variants(raw: string): string[] { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) && parsed.every((item) => typeof item === 'string') ? parsed : []; } catch { return []; } }
@@ -30,6 +31,13 @@ giftRoutes.get('/diamonds/balance', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const row = await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
   return ok(c, { balance: row?.balance ?? 0 });
+});
+
+giftRoutes.get('/diamonds/transactions', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const rows = await c.env.DB.prepare(`SELECT id, amount, type, reason, created_at AS createdAt
+    FROM diamond_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 100`).bind(user.id).all<DiamondTransaction>();
+  return ok(c, { transactions: rows.results });
 });
 
 giftRoutes.get('/diamonds/tasks', async (c) => {

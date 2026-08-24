@@ -11,4 +11,12 @@
 .stars-package-grid strong svg { color: #1598eb; }
 .stars-package-grid span { color: #c78300; font-weight: 800; }
 .stars-sheet-note { display: block; margin: 16px 0 2px; color: var(--muted); text-align: center; }
+.diamond-history { display: grid; max-width: 620px; margin: 0 auto; border: 1px solid var(--line); border-radius: 19px; overflow: hidden; background: var(--paper); }
+.diamond-history article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 15px; border-bottom: 1px solid var(--line); }
+.diamond-history article:last-child { border-bottom: 0; }
+.diamond-history article > div { display: grid; gap: 4px; min-width: 0; }
+.diamond-history strong { font-size: 14px; }
+.diamond-history small { color: var(--muted); font-size: 11px; }
+.diamond-history b { display: inline-flex; align-items: center; gap: 4px; flex: none; font-size: 14px; }
+.diamond-history b.credit { color: #159b65; }.diamond-history b.debit { color: #d65c61; }
 @media (max-width: 390px) { .diamonds-hero-actions { gap: 5px; } .diamonds-topup-button, .diamonds-earn-button { padding-inline: 11px !important; } }
