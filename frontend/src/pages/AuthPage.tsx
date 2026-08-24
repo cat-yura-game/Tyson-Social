@@ -27,7 +27,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       } else {
         await login({ email, password });
       }
-      navigate('/', { replace: true });
+      navigate(registerMode ? '/verify-email' : '/', { replace: true });
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Не удалось связаться с сервером Tyson.');
     } finally {

@@ -21,6 +21,10 @@ export const loginSchema = z.object({
   password,
 }).strict();
 
+export const emailVerificationSchema = z.object({
+  code: z.string().trim().regex(/^\d{6}$/u),
+}).strict();
+
 export const updateProfileSchema = z.object({
   displayName: z.string().trim().min(1).max(80).optional(),
   bio: z.string().trim().max(500).optional(),

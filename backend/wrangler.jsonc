@@ -45,7 +45,7 @@
       "vars": {
         "APP_ENV": "production",
         "ALLOWED_ORIGINS": "https://tysonsocial.eu.cc",
-        "EMAIL_DELIVERY_MODE": "disabled",
+        "EMAIL_DELIVERY_MODE": "provider",
         "MODERATION_MODE": "gemini",
         "GEMINI_MODERATION_MODEL": "gemini-3.5-flash-lite",
         "GEMINI_SUMMARY_MODEL": "gemini-3.5-flash-lite",
