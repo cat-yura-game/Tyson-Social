@@ -47,7 +47,9 @@ app.use('*', async (c, next) => {
   if (destination) return c.redirect(destination, 308);
   return next();
 });
-app.use('/api/*', secureCors);
+app.use('/api/*', (c, next) => (
+  c.req.path === '/api/telegram/bot/webhook' ? next() : secureCors(c, next)
+));
 app.use('/api/*', sessionContext);
 app.route('/api', api);
 

@@ -91,7 +91,10 @@ telegramStarRoutes.post('/telegram/bot/webhook', async (c) => {
     }
     return c.json({ ok: true });
   }
-  if (update.message?.text === '/start') await telegramCall<number>(c.env, 'sendMessage', { chat_id: update.message.chat.id, text: 'Добро пожаловать в Tyson Social! Откройте раздел «Алмазы», выберите пакет и оплатите его Telegram Stars: https://tysonsocial.eu.cc/gifts' });
-  if (update.message?.text === '/paysupport') await telegramCall<number>(c.env, 'sendMessage', { chat_id: update.message.chat.id, text: 'По вопросам оплаты напишите нам через Tyson Social: https://tysonsocial.eu.cc' });
+  const message = update.message;
+  const command = message?.text?.trim().split(/\s+/u)[0]?.split('@')[0];
+  if (message && (command === '/start' || command === '/help')) await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'Добро пожаловать в Tyson Social! Откройте раздел «Алмазы», выберите пакет и оплатите его Telegram Stars: https://tysonsocial.eu.cc/gifts' });
+  if (message && (command === '/paysupport' || command === '/support')) await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'По вопросам оплаты напишите нам через Tyson Social: https://tysonsocial.eu.cc' });
+  if (message && command === '/terms') await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'Оплачивая алмазы, вы получаете их на баланс Tyson сразу после подтверждения Telegram. Возврат и поддержка: https://tysonsocial.eu.cc' });
   return c.json({ ok: true });
 });
