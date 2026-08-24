@@ -341,6 +341,23 @@ button { color: inherit; }
 .auth-form input { width: 100%; border: 0; outline: 0; }
 .forgot-link { display: block; margin: 12px 0; text-align: right; color: var(--green); font-size: 11px; font-weight: 700; }
 .auth-form .primary-button { margin-top: 20px; }
+.verification-form { text-align: center; }
+.verification-form > p:not(.eyebrow) { margin: 0 auto; max-width: 320px; }
+.verification-hero { position: relative; display: grid; width: 76px; height: 76px; place-items: center; margin: 0 auto 20px; border: 1px solid #cdeee0; border-radius: 25px; background: linear-gradient(145deg, #e9fbf2, #d5f4e4); color: #1e744d; box-shadow: 0 16px 30px rgb(26 116 76 / 15%), inset 0 1px 0 rgb(255 255 255 / 85%); }
+.verification-hero-icon { display: grid; width: 51px; height: 51px; place-items: center; border-radius: 18px; background: var(--green); color: white; box-shadow: 0 8px 16px rgb(23 61 43 / 22%); }
+.verification-sparkle { position: absolute; right: -7px; top: -7px; display: grid; width: 26px; height: 26px; place-items: center; border: 3px solid white; border-radius: 50%; background: var(--lime); color: var(--green); }
+.verification-email { display: inline-flex; max-width: 100%; align-items: center; gap: 9px; margin: 15px auto 5px; padding: 8px 13px 8px 8px; overflow: hidden; border: 1px solid #dce7df; border-radius: 999px; background: #f7faf7; color: #31473a; font-size: 12px; font-weight: 750; }
+.verification-email > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.verification-email-mark { display: grid; flex: 0 0 27px; width: 27px; height: 27px; place-items: center; border-radius: 9px; background: linear-gradient(145deg, #264f39, #173d2b); color: var(--lime); font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 800; }
+.verification-form label { margin-top: 23px; text-align: left; }
+.verification-code-input input { font-size: 20px; font-weight: 800; letter-spacing: .28em; text-align: center; }
+.verification-code-input input::placeholder { color: #b4bbb6; letter-spacing: .2em; }
+.verification-form .primary-button { margin-top: 18px; }
+.verification-resend { display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-top: 14px; border: 0; background: transparent; color: var(--green); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.verification-resend:hover { text-decoration: underline; }
+.verification-resend:disabled { cursor: wait; opacity: .6; }
+.verification-help { display: block; margin-top: 19px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.verification-success { margin: 16px 0 0; padding: 11px 13px; border-radius: 10px; background: #e9f8ef; color: #1d754b !important; font-size: 12px !important; }
 .auth-switch { margin-top: 18px; text-align: center; }
 .auth-switch a { color: var(--green); font-weight: 800; }
 .auth-separator { display: flex; align-items: center; gap: 12px; margin: 17px 0; color: var(--muted); font-size: 11px; }
