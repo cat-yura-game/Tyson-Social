@@ -348,7 +348,8 @@ button { color: inherit; }
 .verification-sparkle { position: absolute; right: -7px; top: -7px; display: grid; width: 26px; height: 26px; place-items: center; border: 3px solid white; border-radius: 50%; background: var(--lime); color: var(--green); }
 .verification-email { display: inline-flex; max-width: 100%; align-items: center; gap: 9px; margin: 15px auto 5px; padding: 8px 13px 8px 8px; overflow: hidden; border: 1px solid #dce7df; border-radius: 999px; background: #f7faf7; color: #31473a; font-size: 12px; font-weight: 750; }
 .verification-email > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.verification-email-mark { display: grid; flex: 0 0 27px; width: 27px; height: 27px; place-items: center; border-radius: 9px; background: linear-gradient(145deg, #264f39, #173d2b); color: var(--lime); font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 800; }
+.verification-email-mark { display: grid; flex: 0 0 27px; width: 27px; height: 27px; place-items: center; overflow: hidden; border-radius: 9px; background: white; box-shadow: inset 0 0 0 1px #d9e4dc; }
+.verification-email-mark img { width: 100%; height: 100%; object-fit: contain; }
 .verification-form label { margin-top: 23px; text-align: left; }
 .verification-code-input input { font-size: 20px; font-weight: 800; letter-spacing: .28em; text-align: center; }
 .verification-code-input input::placeholder { color: #b4bbb6; letter-spacing: .2em; }
