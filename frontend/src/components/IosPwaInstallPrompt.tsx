@@ -30,7 +30,9 @@ export function IosPwaInstallPrompt() {
   const [guide, setGuide] = useState<IosGuide>('ios18');
 
   useEffect(() => {
-    if (isIosBrowser() && !isStandalone() && sessionStorage.getItem('tyson-pwa-prompt-dismissed') !== '1') {
+    const standalone = isStandalone();
+    document.documentElement.dataset.tysonPwa = standalone ? 'true' : 'false';
+    if (isIosBrowser() && !standalone && sessionStorage.getItem('tyson-pwa-prompt-dismissed') !== '1') {
       setGuide(detectedGuide()); setVisible(true);
     }
   }, []);
