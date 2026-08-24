@@ -29,5 +29,5 @@ export async function sendVerificationEmail(env: Env, input: VerificationEmail):
     }),
   });
 
-  if (!response.ok) throw new Error(`Resend delivery failed: ${response.status}`);
+  if (!response.ok) throw new Error(`Resend delivery failed: ${response.status} ${await response.text()}`);
 }

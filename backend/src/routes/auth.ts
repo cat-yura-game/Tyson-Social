@@ -203,9 +203,8 @@ authRoutes.post('/email/resend', async (c) => {
   const now = new Date();
   await c.env.DB.prepare('INSERT INTO email_verifications (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)')
     .bind(crypto.randomUUID(), user.id, await sha256(code), new Date(now.getTime() + VERIFICATION_SECONDS * 1000).toISOString()).run();
-  c.executionCtx.waitUntil(sendVerificationEmail(c.env, { to: user.email, code }).catch((error) => {
-    console.error('Email verification resend failed', error);
-  }));
+  try { await sendVerificationEmail(c.env, { to: user.email, code }); }
+  catch (error) { console.error('Email verification resend failed', error); return fail(c, 502, 'EMAIL_DELIVERY_FAILED', 'Не удалось отправить письмо. Попробуйте позже.'); }
   return ok(c, { sent: true });
 });
 
@@ -226,7 +225,8 @@ authRoutes.post('/email/change', async (c) => {
     c.env.DB.prepare('INSERT INTO email_verifications (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)')
       .bind(crypto.randomUUID(), user.id, await sha256(code), new Date(now.getTime() + VERIFICATION_SECONDS * 1000).toISOString()),
   ]);
-  c.executionCtx.waitUntil(sendVerificationEmail(c.env, { to: input.email, code }).catch((error) => console.error('Email change delivery failed', error)));
+  try { await sendVerificationEmail(c.env, { to: input.email, code }); }
+  catch (error) { console.error('Email change delivery failed', error); return fail(c, 502, 'EMAIL_DELIVERY_FAILED', 'Не удалось отправить письмо на этот адрес.'); }
   return ok(c, { email: input.email, sent: true });
 });
 
