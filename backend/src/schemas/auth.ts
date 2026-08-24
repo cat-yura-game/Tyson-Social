@@ -40,6 +40,7 @@ export const updateProfileSchema = z.object({
     return month >= 1 && month <= 12 && day >= 1 && day <= new Date(2000, month, 0).getDate();
   }, 'Invalid birthday').nullable().optional(),
   birthdayYear: z.number().int().min(1900).max(new Date().getFullYear()).nullable().optional(),
+  profileColor: z.enum(['forest', 'ocean', 'sunset', 'violet', 'rose', 'graphite']).optional(),
 }).strict()
   .refine((value) => Object.keys(value).length > 0, 'At least one field is required.')
   .refine(

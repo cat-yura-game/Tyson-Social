@@ -10,7 +10,7 @@ import { ProfileQrModal } from '../components/ProfileQrModal';
 import type { Post } from '../types/content';
 import './profile-analytics.css';
 
-type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarKey' | 'bio' | 'verified' | 'createdAt' | 'lastSeenAt' | 'birthdayMonthDay' | 'birthdayYear'> & {
+type PublicProfile = Pick<AuthUser, 'id' | 'username' | 'displayName' | 'avatarKey' | 'bio' | 'verified' | 'createdAt' | 'lastSeenAt' | 'birthdayMonthDay' | 'birthdayYear' | 'profileColor'> & {
   followerCount: number;
   followingCount: number;
   viewerFollowing: boolean;
@@ -149,7 +149,7 @@ export function ProfilePage() {
     finally { setAnalyticsLoading(false); }
   };
   return <section className="profile-page">
-    <div className="profile-cover" />
+    <div className={`profile-cover profile-cover-${profile.profileColor || 'forest'}`} />
     <header className="profile-header">
       {avatar ? <img className="profile-avatar profile-avatar-image" src={avatar} alt="" /> : <div className="avatar profile-avatar">{profile.displayName.slice(0, 1).toUpperCase()}</div>}
       <div className="profile-controls">{isOwner && <><Link className="secondary-button" to="/settings">Редактировать профиль</Link><button className="secondary-button" type="button" aria-expanded={analyticsOpen} onClick={() => void openAnalytics()}><BarChart3 size={17} />Аналитика</button></>}<button className="secondary-button profile-qr-trigger" type="button" onClick={() => setShowQr(true)}><QrCode size={17} />QR-код</button>{user && !isOwner && <><button className={profile.viewerFollowing ? 'secondary-button follow-button following' : 'secondary-button follow-button'} type="button" disabled={followPending} onClick={() => void toggleFollow()}>{profile.viewerFollowing ? <UserCheck size={17} /> : <UserPlus size={17} />}{followPending ? 'Подождите…' : profile.viewerFollowing ? 'Вы подписаны' : 'Подписаться'}</button><button className="secondary-button message-profile-button" type="button" disabled={openingChat} onClick={() => void openChat()}><MessageCircle size={17} />{openingChat ? 'Открываем…' : 'Написать'}</button></>}</div>

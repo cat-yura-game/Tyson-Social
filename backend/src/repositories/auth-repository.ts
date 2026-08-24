@@ -20,6 +20,7 @@ interface UserRow {
   last_seen_at: string | null;
   birthday_month_day: string | null;
   birthday_year: number | null;
+  profile_color: string;
   created_at: string;
 }
 
@@ -39,12 +40,13 @@ function projectUser(row: UserRow): AuthUser {
     lastSeenAt: row.last_seen_at,
     birthdayMonthDay: row.birthday_month_day,
     birthdayYear: row.birthday_year,
+    profileColor: row.profile_color,
     createdAt: row.created_at,
   };
 }
 
 const USER_COLUMNS = `id, email, username, display_name, avatar_key, bio, role, status,
-  email_verified_at, is_verified, username_changed_at, last_seen_at, birthday_month_day, birthday_year, created_at`;
+  email_verified_at, is_verified, username_changed_at, last_seen_at, birthday_month_day, birthday_year, profile_color, created_at`;
 
 export async function findUserByEmail(db: D1Database, email: string): Promise<UserWithPassword | null> {
   const row = await db.prepare(`SELECT ${USER_COLUMNS}, password_hash FROM users WHERE email = ? LIMIT 1`)
@@ -104,6 +106,7 @@ export async function updateProfile(db: D1Database, userId: string, input: {
   username?: string | undefined;
   birthdayMonthDay?: string | null | undefined;
   birthdayYear?: number | null | undefined;
+  profileColor?: string | undefined;
 }): Promise<AuthUser | null> {
   const now = new Date().toISOString();
   const result = await db.prepare(`UPDATE users SET
@@ -113,11 +116,13 @@ export async function updateProfile(db: D1Database, userId: string, input: {
     username_changed_at = CASE WHEN ? IS NOT NULL AND username_changed_at IS NULL THEN ? ELSE username_changed_at END,
     birthday_month_day = CASE WHEN ? THEN ? ELSE birthday_month_day END,
     birthday_year = CASE WHEN ? THEN ? ELSE birthday_year END,
+    profile_color = COALESCE(?, profile_color),
     updated_at = ?
     WHERE id = ? AND (? IS NULL OR username_changed_at IS NULL)`)
     .bind(input.displayName ?? null, input.bio ?? null, input.username ?? null, input.username ?? null,
       Object.hasOwn(input, 'birthdayMonthDay') ? 1 : 0, input.birthdayMonthDay ?? null,
       Object.hasOwn(input, 'birthdayYear') ? 1 : 0, input.birthdayYear ?? null,
+      input.profileColor ?? null,
       now, userId, input.username ?? null).run();
   if (!result.meta.changes) return null;
   const row = await db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).bind(userId).first<UserRow>();

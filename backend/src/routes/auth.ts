@@ -117,6 +117,7 @@ authRoutes.post('/register', async (c) => {
     lastSeenAt: now.toISOString(),
     birthdayMonthDay: null,
     birthdayYear: null,
+    profileColor: 'forest',
     createdAt: now.toISOString(),
   };
 
@@ -274,6 +275,7 @@ authRoutes.post('/login', async (c) => {
     lastSeenAt: user.lastSeenAt,
     birthdayMonthDay: user.birthdayMonthDay,
     birthdayYear: user.birthdayYear,
+    profileColor: user.profileColor,
     createdAt: user.createdAt,
   };
   const now = new Date();

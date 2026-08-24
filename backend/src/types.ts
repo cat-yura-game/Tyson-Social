@@ -46,6 +46,7 @@ export interface AuthUser {
   lastSeenAt: string | null;
   birthdayMonthDay: string | null;
   birthdayYear: number | null;
+  profileColor: string;
   createdAt: string;
 }
 

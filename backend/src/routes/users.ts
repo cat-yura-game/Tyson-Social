@@ -44,6 +44,7 @@ function publicProfile(user: AuthUser) {
     lastSeenAt: user.lastSeenAt,
     birthdayMonthDay: user.birthdayMonthDay,
     birthdayYear: user.birthdayYear,
+    profileColor: user.profileColor,
     createdAt: user.createdAt,
   };
 }
