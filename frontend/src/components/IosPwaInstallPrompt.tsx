@@ -13,7 +13,7 @@ function isStandalone() {
 }
 
 function detectedGuide(): IosGuide {
-  const version = /(?:OS |Version\/)(\d+)[_.]?/u.exec(navigator.userAgent)?.[1];
+  const version = /Version\/(\d+)/u.exec(navigator.userAgent)?.[1] ?? /OS (\d+)[_.]?/u.exec(navigator.userAgent)?.[1];
   const major = Number(version ?? 0);
   if (major >= 26) return 'ios26';
   return 'ios18';
