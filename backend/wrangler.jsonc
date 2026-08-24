@@ -11,7 +11,7 @@
   "vars": {
     "APP_ENV": "development",
     "ALLOWED_ORIGINS": "http://localhost:5173,https://tysonsocial.eu.cc",
-    "EMAIL_DELIVERY_MODE": "disabled",
+    "EMAIL_DELIVERY_MODE": "provider",
     "MODERATION_MODE": "gemini",
     "GEMINI_MODERATION_MODEL": "gemini-3.5-flash-lite",
     "GEMINI_SUMMARY_MODEL": "gemini-3.5-flash-lite",
