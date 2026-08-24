@@ -15,6 +15,7 @@ import { EarnDiamondsPage } from './pages/EarnDiamondsPage';
 import { DiamondsPage } from './pages/DiamondsPage';
 import { CollectibleGiftPage } from './pages/CollectibleGiftPage';
 import { EmailVerificationPage } from './pages/EmailVerificationPage';
+import { IosPwaInstallPrompt } from './components/IosPwaInstallPrompt';
 
 const MessagesPage = lazy(() => import('./pages/MessagesPage').then((module) => ({ default: module.MessagesPage })));
 const AiPage = lazy(() => import('./pages/AiPage').then((module) => ({ default: module.AiPage })));
@@ -50,10 +51,6 @@ function ProductRoutes() {
 
 export function App() {
   const { pathname } = useLocation();
-  if (pathname === '/login') return <AuthPage mode="login" />;
-  if (pathname === '/register') return <AuthPage mode="register" />;
-  if (pathname === '/forgot-password') return <AuthPage mode="login" />;
-  if (pathname === '/verify-email') return <RequireAuth><EmailVerificationPage /></RequireAuth>;
-  if (pathname === '/auth/telegram/callback') return <TelegramCallbackPage />;
-  return <ProductRoutes />;
+  const page = pathname === '/login' ? <AuthPage mode="login" /> : pathname === '/register' ? <AuthPage mode="register" /> : pathname === '/forgot-password' ? <AuthPage mode="login" /> : pathname === '/verify-email' ? <RequireAuth><EmailVerificationPage /></RequireAuth> : pathname === '/auth/telegram/callback' ? <TelegramCallbackPage /> : <ProductRoutes />;
+  return <>{page}<IosPwaInstallPrompt /></>;
 }
