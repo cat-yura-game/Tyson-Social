@@ -2,6 +2,7 @@ import { Bell, CheckCheck, Gem, MessageCircle, UserPlus, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
+import { useAuth } from '../auth/AuthProvider';
 
 interface NotificationItem {
   id: string;
@@ -18,6 +19,7 @@ interface NotificationItem {
 const icons = { follow: UserPlus, comment: MessageCircle, diamond: Gem };
 
 export function NotificationBell({ enabled }: { enabled: boolean }) {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
@@ -27,10 +29,15 @@ export function NotificationBell({ enabled }: { enabled: boolean }) {
   const refresh = useCallback(async () => {
     if (!enabled) { setItems([]); setUnread(0); return; }
     try {
-      const data = await apiRequest<{ notifications: NotificationItem[]; unreadCount: number }>('/notifications');
-      setItems(data.notifications); setUnread(data.unreadCount);
+      const [data, telegram] = await Promise.all([
+        apiRequest<{ notifications: NotificationItem[]; unreadCount: number }>('/notifications'),
+        apiRequest<{ linked: boolean }>('/auth/telegram/status'),
+      ]);
+      const needsVerification = !user?.emailVerified && !telegram.linked;
+      const important: NotificationItem[] = needsVerification ? [{ id: 'email-verification', type: 'diamond', entityId: null, message: 'Важно: вы не подтвердили почту. Зайдите в профиль, чтобы подтвердить её.', readAt: null, createdAt: new Date().toISOString(), actorUsername: null, actorDisplayName: 'Tyson', actorAvatarKey: null }] : [];
+      setItems([...important, ...data.notifications]); setUnread(data.unreadCount + important.length);
     } catch { /* The header remains usable during a temporary API failure. */ }
-  }, [enabled]);
+  }, [enabled, user?.emailVerified]);
 
   useEffect(() => {
     void refresh();
@@ -58,7 +65,7 @@ export function NotificationBell({ enabled }: { enabled: boolean }) {
       void apiRequest(`/notifications/${encodeURIComponent(item.id)}/read`, { method: 'POST' });
     }
     setOpen(false);
-    navigate(item.type === 'follow' && item.actorUsername ? `/profile/${item.actorUsername}` : item.entityId ? `/post/${item.entityId}` : '/');
+    navigate(item.id === 'email-verification' && user ? `/profile/${user.username}` : item.type === 'follow' && item.actorUsername ? `/profile/${item.actorUsername}` : item.entityId ? `/post/${item.entityId}` : '/');
   };
 
   return <>

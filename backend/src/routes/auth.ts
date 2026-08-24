@@ -10,7 +10,7 @@ import {
   findUserByEmail,
   revokeSession,
 } from '../repositories/auth-repository';
-import { emailVerificationSchema, loginSchema, parseJsonBody, registerSchema } from '../schemas/auth';
+import { changeEmailSchema, emailVerificationSchema, loginSchema, parseJsonBody, registerSchema } from '../schemas/auth';
 import { hashPassword, verifyPassword } from '../security/passwords';
 import { keyedHash, randomToken, sha256 } from '../security/tokens';
 import type { AppVariables, AuthUser, Env } from '../types';
@@ -207,6 +207,27 @@ authRoutes.post('/email/resend', async (c) => {
     console.error('Email verification resend failed', error);
   }));
   return ok(c, { sent: true });
+});
+
+authRoutes.post('/email/change', async (c) => {
+  const user = c.get('authUser');
+  if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  let input;
+  try { input = changeEmailSchema.parse(await parseJsonBody(c.req.raw)); }
+  catch (error) { return validationFailure(c, error); }
+  if (input.email !== user.email) {
+    const used = await findUserByEmail(c.env.DB, input.email);
+    if (used && used.id !== user.id) return fail(c, 409, 'EMAIL_IN_USE', 'Этот email уже используется.');
+  }
+  const code = createEmailVerificationCode(); const now = new Date();
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE users SET email = ?, email_verified_at = NULL, status = ?, updated_at = ? WHERE id = ?')
+      .bind(input.email, 'pending_email', now.toISOString(), user.id),
+    c.env.DB.prepare('INSERT INTO email_verifications (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), user.id, await sha256(code), new Date(now.getTime() + VERIFICATION_SECONDS * 1000).toISOString()),
+  ]);
+  c.executionCtx.waitUntil(sendVerificationEmail(c.env, { to: input.email, code }).catch((error) => console.error('Email change delivery failed', error)));
+  return ok(c, { email: input.email, sent: true });
 });
 
 authRoutes.post('/login', async (c) => {

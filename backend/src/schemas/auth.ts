@@ -25,6 +25,10 @@ export const emailVerificationSchema = z.object({
   code: z.string().trim().regex(/^\d{6}$/u),
 }).strict();
 
+export const changeEmailSchema = z.object({
+  email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
+}).strict();
+
 export const updateProfileSchema = z.object({
   displayName: z.string().trim().min(1).max(80).optional(),
   bio: z.string().trim().max(500).optional(),
