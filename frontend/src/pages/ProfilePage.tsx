@@ -62,7 +62,7 @@ export function ProfilePage() {
     return `Был(а) в сети ${new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(date)}`;
   })() : 'Был(а) в сети недавно';
   const birthday = profile.birthdayMonthDay ? (() => {
-    const [month, day] = profile.birthdayMonthDay.split('-').map(Number);
+    const [day, month] = profile.birthdayMonthDay.split('-').map(Number);
     const date = new Date(profile.birthdayYear ?? 2000, month - 1, day);
     const text = new Intl.DateTimeFormat('ru-RU', profile.birthdayYear ? { day: 'numeric', month: 'long', year: 'numeric' } : { day: 'numeric', month: 'long' }).format(date);
     return `День рождения: ${text}`;

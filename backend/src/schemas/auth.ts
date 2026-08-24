@@ -35,8 +35,8 @@ export const updateProfileSchema = z.object({
   username: username.optional(),
   birthdayMonthDay: z.string().regex(/^\d{2}-\d{2}$/u).refine((value) => {
     const parts = value.split('-').map(Number);
-    const month = parts[0] ?? 0;
-    const day = parts[1] ?? 0;
+    const day = parts[0] ?? 0;
+    const month = parts[1] ?? 0;
     return month >= 1 && month <= 12 && day >= 1 && day <= new Date(2000, month, 0).getDate();
   }, 'Invalid birthday').nullable().optional(),
   birthdayYear: z.number().int().min(1900).max(new Date().getFullYear()).nullable().optional(),
