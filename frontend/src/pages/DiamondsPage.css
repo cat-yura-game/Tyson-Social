@@ -1,0 +1,14 @@
+.diamonds-hero-actions { position: relative; z-index: 1; display: flex; justify-content: center; gap: 8px; }
+.diamonds-hero-actions .diamonds-earn-button { margin-top: 13px; }
+.diamonds-topup-button { margin-top: 13px; padding: 10px 15px; border: 1px solid rgb(255 255 255 / 42%); border-radius: 999px; background: rgb(255 255 255 / 94%); color: #087dc7; font: inherit; font-size: 13px; font-weight: 850; cursor: pointer; box-shadow: 0 9px 18px rgb(4 125 194 / 12%); }
+.stars-sheet { max-width: 470px; }
+.stars-sheet-intro { margin: 2px 0 18px; color: var(--muted); text-align: center; }
+.stars-package-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.stars-package-grid button { display: grid; gap: 8px; padding: 17px 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--card); color: var(--text); cursor: pointer; transition: transform .15s ease, border-color .15s ease; }
+.stars-package-grid button:hover:not(:disabled) { transform: translateY(-2px); border-color: #138ee6; }
+.stars-package-grid button:disabled { opacity: .62; cursor: progress; }
+.stars-package-grid strong { display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 19px; }
+.stars-package-grid strong svg { color: #1598eb; }
+.stars-package-grid span { color: #c78300; font-weight: 800; }
+.stars-sheet-note { display: block; margin: 16px 0 2px; color: var(--muted); text-align: center; }
+@media (max-width: 390px) { .diamonds-hero-actions { gap: 5px; } .diamonds-topup-button, .diamonds-earn-button { padding-inline: 11px !important; } }

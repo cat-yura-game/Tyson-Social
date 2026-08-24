@@ -17,6 +17,8 @@ export interface Env {
   TELEGRAM_OIDC_CLIENT_ID: string;
   TELEGRAM_OIDC_CLIENT_SECRET?: string;
   TELEGRAM_OIDC_REDIRECT_URI: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_BOT_WEBHOOK_SECRET?: string;
   FRONTEND_URL: string;
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;

@@ -13,11 +13,13 @@ import { adminRoutes } from './admin';
 import { giftRoutes } from './gifts';
 import { notificationRoutes } from './notifications';
 import { pushRoutes } from './push';
+import { telegramStarRoutes } from './telegram-stars';
 
 export const api = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 api.route('/health', healthRoutes);
 api.route('/auth/telegram', telegramAuthRoutes);
+api.route('/', telegramStarRoutes);
 api.route('/auth', authRoutes);
 api.route('/', giftRoutes);
 api.route('/users', userRoutes);
