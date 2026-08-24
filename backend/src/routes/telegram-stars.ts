@@ -17,6 +17,7 @@ const PACKAGES = [
   { id: 'stars_500', stars: 500, diamonds: 8000 },
 ] as const;
 const invoiceSchema = z.object({ packageId: z.enum(PACKAGES.map((item) => item.id) as [string, ...string[]]) });
+const telegramNotificationSchema = z.object({ enabled: z.boolean(), messagesEnabled: z.boolean(), interactionsEnabled: z.boolean(), postsEnabled: z.boolean(), securityEnabled: z.boolean() }).strict();
 type Order = { id: string; userId: string; starsAmount: number; diamondAmount: number; status: 'pending' | 'paid' | 'refunded' | 'cancelled' };
 type TelegramResponse<T> = { ok: boolean; result?: T };
 
@@ -34,6 +35,26 @@ async function telegramCall<T>(env: Env, method: string, body: unknown): Promise
 }
 
 telegramStarRoutes.get('/diamonds/stars/packages', (c) => ok(c, { packages: PACKAGES.map(packageDto) }));
+
+telegramStarRoutes.get('/telegram/notifications/settings', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const [identity, settings] = await Promise.all([
+    c.env.DB.prepare('SELECT telegram_user_id AS telegramUserId FROM telegram_identities WHERE user_id = ?').bind(user.id).first<{ telegramUserId: string | null }>(),
+    c.env.DB.prepare(`SELECT enabled, messages_enabled AS messagesEnabled, interactions_enabled AS interactionsEnabled,
+      posts_enabled AS postsEnabled, security_enabled AS securityEnabled FROM telegram_notification_settings WHERE user_id = ?`).bind(user.id).first<{ enabled: number; messagesEnabled: number; interactionsEnabled: number; postsEnabled: number; securityEnabled: number }>(),
+  ]);
+  return ok(c, { telegramLinked: Boolean(identity?.telegramUserId), connected: Boolean(settings), connectUrl: 'https://t.me/TysonSocialBot?start=notifications', settings: settings ? { enabled: settings.enabled === 1, messagesEnabled: settings.messagesEnabled === 1, interactionsEnabled: settings.interactionsEnabled === 1, postsEnabled: settings.postsEnabled === 1, securityEnabled: settings.securityEnabled === 1 } : null });
+});
+
+telegramStarRoutes.put('/telegram/notifications/settings', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const parsed = telegramNotificationSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return fail(c, 422, 'INVALID_NOTIFICATION_SETTINGS', 'Некорректные настройки уведомлений.');
+  const result = await c.env.DB.prepare(`UPDATE telegram_notification_settings SET enabled = ?, messages_enabled = ?, interactions_enabled = ?, posts_enabled = ?, security_enabled = ?, updated_at = ? WHERE user_id = ?`)
+    .bind(parsed.data.enabled ? 1 : 0, parsed.data.messagesEnabled ? 1 : 0, parsed.data.interactionsEnabled ? 1 : 0, parsed.data.postsEnabled ? 1 : 0, parsed.data.securityEnabled ? 1 : 0, new Date().toISOString(), user.id).run();
+  if ((result.meta.changes ?? 0) !== 1) return fail(c, 409, 'TELEGRAM_NOT_CONNECTED', 'Сначала подключите Telegram-уведомления.');
+  return ok(c, parsed.data);
+});
 
 telegramStarRoutes.post('/diamonds/stars/invoice', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
@@ -60,7 +81,7 @@ telegramStarRoutes.post('/telegram/bot/webhook', async (c) => {
   if (!c.env.TELEGRAM_BOT_WEBHOOK_SECRET || c.req.header('X-Telegram-Bot-Api-Secret-Token') !== c.env.TELEGRAM_BOT_WEBHOOK_SECRET) return c.text('Not found', 404);
   const update = await c.req.json().catch(() => null) as {
     pre_checkout_query?: { id: string; invoice_payload: string; currency: string; total_amount: number };
-    message?: { text?: string; chat: { id: number }; successful_payment?: { invoice_payload: string; currency: string; total_amount: number; telegram_payment_charge_id: string } };
+    message?: { text?: string; chat: { id: number }; from?: { id: number }; successful_payment?: { invoice_payload: string; currency: string; total_amount: number; telegram_payment_charge_id: string } };
   } | null;
   if (!update) return c.json({ ok: true });
   if (update.pre_checkout_query) {
@@ -93,6 +114,19 @@ telegramStarRoutes.post('/telegram/bot/webhook', async (c) => {
   }
   const message = update.message;
   const command = message?.text?.trim().split(/\s+/u)[0]?.split('@')[0];
+  const startParameter = message?.text?.trim().split(/\s+/u)[1];
+  if (message && command === '/start' && startParameter === 'notifications' && message.from) {
+    const identity = await c.env.DB.prepare('SELECT user_id AS userId FROM telegram_identities WHERE telegram_user_id = ?').bind(String(message.from.id)).first<{ userId: string }>();
+    if (identity) {
+      const now = new Date().toISOString();
+      await c.env.DB.prepare(`INSERT INTO telegram_notification_settings (user_id, chat_id, created_at, updated_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET chat_id = excluded.chat_id, enabled = 1, updated_at = excluded.updated_at`).bind(identity.userId, String(message.chat.id), now, now).run();
+      await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'Уведомления Tyson в Telegram подключены. Настроить категории можно в Tyson → Настройки → Уведомления.' });
+      return c.json({ ok: true });
+    }
+    await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'Сначала подключите этот Telegram к аккаунту Tyson в настройках сайта, затем повторите попытку.' });
+    return c.json({ ok: true });
+  }
   if (message && (command === '/start' || command === '/help')) await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'Добро пожаловать в Tyson Social! Откройте раздел «Алмазы», выберите пакет и оплатите его Telegram Stars: https://tysonsocial.eu.cc/gifts' });
   if (message && (command === '/paysupport' || command === '/support')) await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'По вопросам оплаты напишите нам через Tyson Social: https://tysonsocial.eu.cc' });
   if (message && command === '/terms') await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'Оплачивая алмазы, вы получаете их на баланс Tyson сразу после подтверждения Telegram. Возврат и поддержка: https://tysonsocial.eu.cc' });
