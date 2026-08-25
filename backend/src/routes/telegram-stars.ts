@@ -38,8 +38,8 @@ async function telegramCall<T>(env: Env, method: string, body: unknown): Promise
 const BOT_MENU = {
   inline_keyboard: [
     [{ text: '✦ Открыть Tyson', url: 'https://tysonsocial.eu.cc' }],
-    [{ text: '🔗 Привязать аккаунт', url: 'https://tysonsocial.eu.cc/settings' }, { text: '👥 Мои рефералы', callback_data: 'referrals' }],
-    [{ text: '💎 Алмазы', url: 'https://tysonsocial.eu.cc/gifts' }, { text: '❔ Помощь', callback_data: 'help' }],
+    [{ text: '👤 Мой аккаунт', callback_data: 'account' }, { text: '👥 Мои рефералы', callback_data: 'referrals' }],
+    [{ text: '💎 Алмазы', callback_data: 'diamonds' }, { text: '❔ Помощь', callback_data: 'help' }],
   ],
 };
 
@@ -59,6 +59,21 @@ async function sendReferralStats(env: Env, db: D1Database, chatId: number, teleg
   }
   const stats = await referralStats(db, identity.userId);
   await telegramCall<number>(env, 'sendMessage', { chat_id: chatId, text: `👥 *Ваши рефералы*\n\nВаша ссылка:\n${stats.link}\n\n👀 Перешли в бота: *${stats.started}*\n✅ Зарегистрировались: *${stats.registered}*\n\nЗа каждую регистрацию по ссылке вы получаете *50 💎*.`, parse_mode: 'Markdown', reply_markup: BOT_MENU });
+}
+
+async function sendAccountCard(env: Env, db: D1Database, chatId: number, telegramUserId: string): Promise<void> {
+  const account = await db.prepare(`SELECT u.id, u.username, u.display_name AS displayName, u.diamond_balance AS diamondBalance,
+    EXISTS(SELECT 1 FROM telegram_identities ti WHERE ti.user_id = u.id) AS telegramLinked
+    FROM telegram_identities ti JOIN users u ON u.id = ti.user_id WHERE ti.telegram_user_id = ?`).bind(telegramUserId)
+    .first<{ id: string; username: string; displayName: string; diamondBalance: number; telegramLinked: number }>();
+  if (!account) {
+    await telegramCall<number>(env, 'sendMessage', { chat_id: chatId, text: 'Аккаунт Tyson ещё не привязан. Откройте настройки Tyson и подключите Telegram — после этого здесь появятся баланс и быстрые действия.', reply_markup: { inline_keyboard: [[{ text: '🔗 Привязать аккаунт', url: 'https://tysonsocial.eu.cc/settings' }], [{ text: '◀️ В меню', callback_data: 'home' }]] } });
+    return;
+  }
+  await telegramCall<number>(env, 'sendMessage', { chat_id: chatId, text: `👤 *${account.displayName}*\n@${account.username}\n\n💎 Баланс: *${account.diamondBalance.toLocaleString('ru-RU')}*\n🔗 Telegram: подключён\n\nВыберите действие:`, parse_mode: 'Markdown', reply_markup: { inline_keyboard: [
+    [{ text: '👤 Открыть профиль', url: `https://tysonsocial.eu.cc/profile/${encodeURIComponent(account.username)}` }, { text: '💎 Пополнить', url: 'https://tysonsocial.eu.cc/gifts' }],
+    [{ text: '👥 Рефералы', callback_data: 'referrals' }, { text: '◀️ В меню', callback_data: 'home' }],
+  ] } });
 }
 
 telegramStarRoutes.get('/diamonds/stars/packages', (c) => ok(c, { packages: PACKAGES.map(packageDto) }));
@@ -122,8 +137,11 @@ telegramStarRoutes.post('/telegram/bot/webhook', async (c) => {
     const callbackChatId = callback.message?.chat.id;
     if (!callbackChatId) return c.json({ ok: true });
     await telegramCall<boolean>(c.env, 'answerCallbackQuery', { callback_query_id: callback.id });
+    if (callback.data === 'account') await sendAccountCard(c.env, c.env.DB, callbackChatId, String(callback.from.id));
+    if (callback.data === 'diamonds') await sendAccountCard(c.env, c.env.DB, callbackChatId, String(callback.from.id));
     if (callback.data === 'referrals') await sendReferralStats(c.env, c.env.DB, callbackChatId, String(callback.from.id));
-    if (callback.data === 'help') await telegramCall<number>(c.env, 'sendMessage', { chat_id: callbackChatId, text: 'Помощь Tyson\n\n• Привяжите аккаунт в Tyson → Настройки → Telegram.\n• Откройте «Мои рефералы», чтобы получить ссылку.\n• По вопросам оплаты используйте /support.', reply_markup: BOT_MENU });
+    if (callback.data === 'home') await sendBotWelcome(c.env, callbackChatId);
+    if (callback.data === 'help') await telegramCall<number>(c.env, 'sendMessage', { chat_id: callbackChatId, text: '❔ *Помощь Tyson*\n\n• В «Мой аккаунт» — баланс и профиль.\n• В «Мои рефералы» — личная ссылка и статистика.\n• Для привязки откройте Tyson → Настройки → Telegram.\n• По вопросам оплаты используйте /support.', parse_mode: 'Markdown', reply_markup: BOT_MENU });
     return c.json({ ok: true });
   }
   if (update.pre_checkout_query) {
