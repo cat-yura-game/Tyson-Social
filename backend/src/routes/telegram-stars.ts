@@ -39,7 +39,7 @@ const BOT_MENU = {
   inline_keyboard: [
     [{ text: '✦ Открыть Tyson', url: 'https://tysonsocial.eu.cc' }],
     [{ text: '👤 Мой аккаунт', callback_data: 'account' }, { text: '👥 Мои рефералы', callback_data: 'referrals' }],
-    [{ text: '💎 Алмазы', callback_data: 'diamonds' }, { text: '❔ Помощь', callback_data: 'help' }],
+    [{ text: '💎 Купить алмазы', callback_data: 'buy_diamonds' }, { text: '❔ Помощь', callback_data: 'help' }],
   ],
 };
 
@@ -71,9 +71,40 @@ async function sendAccountCard(env: Env, db: D1Database, chatId: number, telegra
     return;
   }
   await telegramCall<number>(env, 'sendMessage', { chat_id: chatId, text: `👤 ${account.displayName}\n@${account.username}\n\n💎 Баланс: ${account.diamondBalance.toLocaleString('ru-RU')}\n🔗 Telegram: подключён\n\nВыберите действие:`, reply_markup: { inline_keyboard: [
-    [{ text: '👤 Открыть профиль', url: `https://tysonsocial.eu.cc/profile/${encodeURIComponent(account.username)}` }, { text: '💎 Пополнить', url: 'https://tysonsocial.eu.cc/gifts' }],
+    [{ text: '👤 Открыть профиль', url: `https://tysonsocial.eu.cc/profile/${encodeURIComponent(account.username)}` }, { text: '💎 Купить алмазы', callback_data: 'buy_diamonds' }],
     [{ text: '👥 Рефералы', callback_data: 'referrals' }, { text: '◀️ В меню', callback_data: 'home' }],
   ] } });
+}
+
+function diamondMenu() {
+  return { inline_keyboard: [
+    [{ text: '💎 50 · 5 ⭐', callback_data: 'buy:stars_5' }, { text: '💎 110 · 10 ⭐', callback_data: 'buy:stars_10' }],
+    [{ text: '💎 170 · 15 ⭐', callback_data: 'buy:stars_15' }, { text: '💎 300 · 25 ⭐', callback_data: 'buy:stars_25' }],
+    [{ text: '💎 650 · 50 ⭐', callback_data: 'buy:stars_50' }, { text: '💎 1 400 · 100 ⭐', callback_data: 'buy:stars_100' }],
+    [{ text: '💎 3 750 · 250 ⭐', callback_data: 'buy:stars_250' }, { text: '💎 8 000 · 500 ⭐', callback_data: 'buy:stars_500' }],
+    [{ text: '◀️ В меню', callback_data: 'home' }],
+  ] };
+}
+
+async function sendDiamondMenu(env: Env, chatId: number): Promise<void> {
+  await telegramCall<number>(env, 'sendMessage', { chat_id: chatId, text: '💎 Алмазы Tyson\n\nВыберите пакет — Telegram покажет защищённый счёт в Stars прямо в этом чате. Алмазы поступят на баланс Tyson сразу после оплаты.', reply_markup: diamondMenu() });
+}
+
+async function createBotInvoice(env: Env, db: D1Database, chatId: number, telegramUserId: string, packageId: string): Promise<void> {
+  const identity = await db.prepare('SELECT user_id AS userId FROM telegram_identities WHERE telegram_user_id = ?').bind(telegramUserId).first<{ userId: string }>();
+  if (!identity) {
+    await telegramCall<number>(env, 'sendMessage', { chat_id: chatId, text: 'Сначала привяжите Tyson-аккаунт в настройках сайта — тогда алмазы поступят на нужный баланс.', reply_markup: BOT_MENU });
+    return;
+  }
+  const pack = PACKAGES.find((item) => item.id === packageId);
+  if (!pack) return;
+  const id = crypto.randomUUID(); const now = new Date().toISOString();
+  await db.prepare(`INSERT INTO telegram_star_orders (id, user_id, package_id, stars_amount, diamond_amount, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`).bind(id, identity.userId, pack.id, pack.stars, pack.diamonds, now, now).run();
+  await telegramCall<unknown>(env, 'sendInvoice', {
+    chat_id: chatId, title: 'Алмазы Tyson', description: `${pack.diamonds.toLocaleString('ru-RU')} алмазов для Tyson Social`,
+    payload: `tyson-stars:${id}`, currency: 'XTR', prices: [{ label: packageDto(pack).label, amount: pack.stars }],
+  });
 }
 
 telegramStarRoutes.get('/diamonds/stars/packages', (c) => ok(c, { packages: PACKAGES.map(packageDto) }));
@@ -138,7 +169,8 @@ telegramStarRoutes.post('/telegram/bot/webhook', async (c) => {
     if (!callbackChatId) return c.json({ ok: true });
     await telegramCall<boolean>(c.env, 'answerCallbackQuery', { callback_query_id: callback.id });
     if (callback.data === 'account') await sendAccountCard(c.env, c.env.DB, callbackChatId, String(callback.from.id));
-    if (callback.data === 'diamonds') await sendAccountCard(c.env, c.env.DB, callbackChatId, String(callback.from.id));
+    if (callback.data === 'buy_diamonds') await sendDiamondMenu(c.env, callbackChatId);
+    if (callback.data?.startsWith('buy:')) await createBotInvoice(c.env, c.env.DB, callbackChatId, String(callback.from.id), callback.data.slice(4));
     if (callback.data === 'referrals') await sendReferralStats(c.env, c.env.DB, callbackChatId, String(callback.from.id));
     if (callback.data === 'home') await sendBotWelcome(c.env, callbackChatId);
     if (callback.data === 'help') await telegramCall<number>(c.env, 'sendMessage', { chat_id: callbackChatId, text: '❔ Помощь Tyson\n\n• В «Мой аккаунт» — баланс и профиль.\n• В «Мои рефералы» — личная ссылка и статистика.\n• Для привязки откройте Tyson → Настройки → Telegram.\n• По вопросам оплаты используйте /support.', reply_markup: BOT_MENU });
