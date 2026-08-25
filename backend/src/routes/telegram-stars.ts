@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { fail, ok } from '../lib/responses';
 import type { AppVariables, AuthUser, Env } from '../types';
-import { recordTelegramBotStart, referralStats, TELEGRAM_BOT_URL } from '../services/telegram-referrals';
+import { recordTelegramBotStart, referralStats } from '../services/telegram-referrals';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const telegramStarRoutes = new Hono<App>();
@@ -33,6 +33,32 @@ async function telegramCall<T>(env: Env, method: string, body: unknown): Promise
   const payload = await response.json().catch(() => null) as TelegramResponse<T> | null;
   if (!response.ok || !payload?.ok || payload.result === undefined) throw new Error(`Telegram ${method} failed.`);
   return payload.result;
+}
+
+const BOT_MENU = {
+  inline_keyboard: [
+    [{ text: '✦ Открыть Tyson', url: 'https://tysonsocial.eu.cc' }],
+    [{ text: '🔗 Привязать аккаунт', url: 'https://tysonsocial.eu.cc/settings' }, { text: '👥 Мои рефералы', callback_data: 'referrals' }],
+    [{ text: '💎 Алмазы', url: 'https://tysonsocial.eu.cc/gifts' }, { text: '❔ Помощь', callback_data: 'help' }],
+  ],
+};
+
+async function sendBotWelcome(env: Env, chatId: number): Promise<void> {
+  await telegramCall<number>(env, 'sendMessage', {
+    chat_id: chatId,
+    text: '🐾 *Добро пожаловать в Tyson Social!*\n\nЗдесь можно получать уведомления, приглашать друзей и пополнять алмазы.\n\nПодключи Telegram к Tyson в настройках сайта — и бот станет твоим быстрым помощником.',
+    parse_mode: 'Markdown', reply_markup: BOT_MENU,
+  });
+}
+
+async function sendReferralStats(env: Env, db: D1Database, chatId: number, telegramUserId: string): Promise<void> {
+  const identity = await db.prepare('SELECT user_id AS userId FROM telegram_identities WHERE telegram_user_id = ?').bind(telegramUserId).first<{ userId: string }>();
+  if (!identity) {
+    await telegramCall<number>(env, 'sendMessage', { chat_id: chatId, text: 'Сначала привяжите Tyson-аккаунт в настройках сайта, затем вернитесь сюда.', reply_markup: BOT_MENU });
+    return;
+  }
+  const stats = await referralStats(db, identity.userId);
+  await telegramCall<number>(env, 'sendMessage', { chat_id: chatId, text: `👥 *Ваши рефералы*\n\nВаша ссылка:\n${stats.link}\n\n👀 Перешли в бота: *${stats.started}*\n✅ Зарегистрировались: *${stats.registered}*\n\nЗа каждую регистрацию по ссылке вы получаете *50 💎*.`, parse_mode: 'Markdown', reply_markup: BOT_MENU });
 }
 
 telegramStarRoutes.get('/diamonds/stars/packages', (c) => ok(c, { packages: PACKAGES.map(packageDto) }));
@@ -88,8 +114,18 @@ telegramStarRoutes.post('/telegram/bot/webhook', async (c) => {
   const update = await c.req.json().catch(() => null) as {
     pre_checkout_query?: { id: string; invoice_payload: string; currency: string; total_amount: number };
     message?: { text?: string; chat: { id: number }; from?: { id: number }; successful_payment?: { invoice_payload: string; currency: string; total_amount: number; telegram_payment_charge_id: string } };
+    callback_query?: { id: string; data?: string; from: { id: number }; message?: { chat: { id: number } } };
   } | null;
   if (!update) return c.json({ ok: true });
+  if (update.callback_query?.message) {
+    const callback = update.callback_query;
+    const callbackChatId = callback.message?.chat.id;
+    if (!callbackChatId) return c.json({ ok: true });
+    await telegramCall<boolean>(c.env, 'answerCallbackQuery', { callback_query_id: callback.id });
+    if (callback.data === 'referrals') await sendReferralStats(c.env, c.env.DB, callbackChatId, String(callback.from.id));
+    if (callback.data === 'help') await telegramCall<number>(c.env, 'sendMessage', { chat_id: callbackChatId, text: 'Помощь Tyson\n\n• Привяжите аккаунт в Tyson → Настройки → Telegram.\n• Откройте «Мои рефералы», чтобы получить ссылку.\n• По вопросам оплаты используйте /support.', reply_markup: BOT_MENU });
+    return c.json({ ok: true });
+  }
   if (update.pre_checkout_query) {
     const query = update.pre_checkout_query; const id = query.invoice_payload.replace(/^tyson-stars:/u, '');
     const order = await c.env.DB.prepare(`SELECT id, user_id AS userId, stars_amount AS starsAmount, diamond_amount AS diamondAmount, status
@@ -138,15 +174,10 @@ telegramStarRoutes.post('/telegram/bot/webhook', async (c) => {
     return c.json({ ok: true });
   }
   if (message && command === '/referrals' && message.from) {
-    const identity = await c.env.DB.prepare('SELECT user_id AS userId FROM telegram_identities WHERE telegram_user_id = ?').bind(String(message.from.id)).first<{ userId: string }>();
-    if (!identity) await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: `Сначала привяжите Tyson-аккаунт: ${TELEGRAM_BOT_URL}?start=link` });
-    else {
-      const stats = await referralStats(c.env.DB, identity.userId);
-      await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: `Ваша реферальная ссылка:\n${stats.link}\n\nПерешли в бота: ${stats.started}\nЗарегистрировались: ${stats.registered}\n\nЗа каждую регистрацию по ссылке — 50 💎.` });
-    }
+    await sendReferralStats(c.env, c.env.DB, message.chat.id, String(message.from.id));
     return c.json({ ok: true });
   }
-  if (message && (command === '/start' || command === '/help')) await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: `Добро пожаловать в Tyson Social!\n\nПривяжите аккаунт в Tyson → Настройки → Telegram, чтобы получать уведомления и участвовать в рефералах.\n\nПриглашайте друзей: за регистрацию по вашей ссылке — 50 💎. После привязки используйте /referrals.\n\nОткрыть Tyson: https://tysonsocial.eu.cc` });
+  if (message && (command === '/start' || command === '/help')) await sendBotWelcome(c.env, message.chat.id);
   if (message && (command === '/paysupport' || command === '/support')) await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'По вопросам оплаты напишите нам через Tyson Social: https://tysonsocial.eu.cc' });
   if (message && command === '/terms') await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'Оплачивая алмазы, вы получаете их на баланс Tyson сразу после подтверждения Telegram. Возврат и поддержка: https://tysonsocial.eu.cc' });
   return c.json({ ok: true });
