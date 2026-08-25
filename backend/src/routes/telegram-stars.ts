@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { fail, ok } from '../lib/responses';
 import type { AppVariables, AuthUser, Env } from '../types';
+import { recordTelegramBotStart, referralStats, TELEGRAM_BOT_URL } from '../services/telegram-referrals';
 
 type App = { Bindings: Env; Variables: AppVariables };
 export const telegramStarRoutes = new Hono<App>();
@@ -35,6 +36,11 @@ async function telegramCall<T>(env: Env, method: string, body: unknown): Promise
 }
 
 telegramStarRoutes.get('/diamonds/stars/packages', (c) => ok(c, { packages: PACKAGES.map(packageDto) }));
+
+telegramStarRoutes.get('/telegram/referral', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  return ok(c, await referralStats(c.env.DB, user.id));
+});
 
 telegramStarRoutes.get('/telegram/notifications/settings', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
@@ -115,6 +121,10 @@ telegramStarRoutes.post('/telegram/bot/webhook', async (c) => {
   const message = update.message;
   const command = message?.text?.trim().split(/\s+/u)[0]?.split('@')[0];
   const startParameter = message?.text?.trim().split(/\s+/u)[1];
+  if (message?.from && command === '/start') {
+    const referralCode = startParameter?.startsWith('ref_') ? startParameter.slice(4) : undefined;
+    await recordTelegramBotStart(c.env.DB, String(message.from.id), String(message.chat.id), referralCode);
+  }
   if (message && command === '/start' && startParameter === 'notifications' && message.from) {
     const identity = await c.env.DB.prepare('SELECT user_id AS userId FROM telegram_identities WHERE telegram_user_id = ?').bind(String(message.from.id)).first<{ userId: string }>();
     if (identity) {
@@ -127,7 +137,16 @@ telegramStarRoutes.post('/telegram/bot/webhook', async (c) => {
     await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'Сначала подключите этот Telegram к аккаунту Tyson в настройках сайта, затем повторите попытку.' });
     return c.json({ ok: true });
   }
-  if (message && (command === '/start' || command === '/help')) await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'Добро пожаловать в Tyson Social! Откройте раздел «Алмазы», выберите пакет и оплатите его Telegram Stars: https://tysonsocial.eu.cc/gifts' });
+  if (message && command === '/referrals' && message.from) {
+    const identity = await c.env.DB.prepare('SELECT user_id AS userId FROM telegram_identities WHERE telegram_user_id = ?').bind(String(message.from.id)).first<{ userId: string }>();
+    if (!identity) await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: `Сначала привяжите Tyson-аккаунт: ${TELEGRAM_BOT_URL}?start=link` });
+    else {
+      const stats = await referralStats(c.env.DB, identity.userId);
+      await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: `Ваша реферальная ссылка:\n${stats.link}\n\nПерешли в бота: ${stats.started}\nЗарегистрировались: ${stats.registered}\n\nЗа каждую регистрацию по ссылке — 50 💎.` });
+    }
+    return c.json({ ok: true });
+  }
+  if (message && (command === '/start' || command === '/help')) await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: `Добро пожаловать в Tyson Social!\n\nПривяжите аккаунт в Tyson → Настройки → Telegram, чтобы получать уведомления и участвовать в рефералах.\n\nПриглашайте друзей: за регистрацию по вашей ссылке — 50 💎. После привязки используйте /referrals.\n\nОткрыть Tyson: https://tysonsocial.eu.cc` });
   if (message && (command === '/paysupport' || command === '/support')) await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'По вопросам оплаты напишите нам через Tyson Social: https://tysonsocial.eu.cc' });
   if (message && command === '/terms') await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: 'Оплачивая алмазы, вы получаете их на баланс Tyson сразу после подтверждения Telegram. Возврат и поддержка: https://tysonsocial.eu.cc' });
   return c.json({ ok: true });

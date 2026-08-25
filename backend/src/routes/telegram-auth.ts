@@ -9,6 +9,7 @@ import { createTelegramAuthorizationUrl, exchangeTelegramCode } from '../service
 import type { AppVariables, Env } from '../types';
 import { hashPassword } from '../security/passwords';
 import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
+import { completeTelegramReferral } from '../services/telegram-referrals';
 
 const STATE_TTL_MS = 10 * 60_000;
 const TICKET_TTL_MS = 2 * 60_000;
@@ -142,6 +143,7 @@ telegramAuthRoutes.get('/callback', async (c) => {
         c.env.DB.prepare(`UPDATE users SET status = CASE WHEN status = 'pending_email' THEN 'active' ELSE status END,
           updated_at = ? WHERE id = ?`).bind(now, claimedState.userId),
       ]);
+      await completeTelegramReferral(c.env.DB, identity.telegramUserId, claimedState.userId);
       return c.redirect(frontendUrl(c.env, '/settings', { telegram: 'linked' }));
     }
 
@@ -173,6 +175,7 @@ telegramAuthRoutes.get('/callback', async (c) => {
       await c.env.DB.prepare(`UPDATE telegram_identities SET display_name = ?, username = ?, picture_url = ?, last_login_at = ?
         WHERE user_id = ?`).bind(identity.displayName, identity.username, identity.pictureUrl, now, userId).run();
     }
+    await completeTelegramReferral(c.env.DB, identity.telegramUserId, userId);
     const ticket = randomToken();
     await c.env.DB.prepare(`INSERT INTO telegram_login_tickets (token_hash, user_id, expires_at, created_at)
       VALUES (?, ?, ?, ?)`).bind(await sha256(ticket), userId, new Date(Date.now() + TICKET_TTL_MS).toISOString(), now).run();
