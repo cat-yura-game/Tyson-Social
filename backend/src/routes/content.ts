@@ -101,7 +101,7 @@ contentRoutes.get('/feed', async (c) => {
   const topicFilter = topic ? ' AND instr(lower(p.body), lower(?)) > 0' : '';
   const followingFilter = view === 'following' ? ` AND EXISTS (SELECT 1 FROM user_follows f
     WHERE f.follower_user_id = ? AND f.followed_user_id = p.author_user_id)` : '';
-  const statement = c.env.DB.prepare(`${POST_SELECT} WHERE p.status = 'published'${followingFilter}${topicFilter} ORDER BY p.published_at DESC LIMIT 50`);
+  const statement = c.env.DB.prepare(`${POST_SELECT} WHERE p.status = 'published' AND p.pinned_at IS NULL${followingFilter}${topicFilter} ORDER BY p.published_at DESC LIMIT 50`);
   const bindings = [viewerId, viewerId, ...(view === 'following' ? [viewerId] : []), ...(topic ? [topic] : [])];
   const rows = await statement.bind(...bindings).all();
   let posts = rows.results as unknown as FeedCandidate[];

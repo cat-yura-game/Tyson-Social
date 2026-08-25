@@ -36,7 +36,7 @@ function ProductRoutes() {
         <Route path="/gift/:id" element={<CollectibleGiftPage />} />
         <Route path="/create" element={<RequireAuth><CreatePage /></RequireAuth>} />
         <Route path="/messages" element={<RequireAuth><Suspense fallback={<div className="app-loading">Подготовка защищённого мессенджера…</div>}><MessagesPage /></Suspense></RequireAuth>} />
-        <Route path="/ai" element={<RequireAuth><Suspense fallback={<div className="app-loading">Запускаем Tyson AI…</div>}><AiPage /></Suspense></RequireAuth>} />
+        <Route path="/ai" element={<Suspense fallback={<div className="app-loading">Запускаем Tyson AI…</div>}><AiPage /></Suspense>} />
         <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
         <Route path="/settings/:section" element={<RequireAuth><SettingsPage /></RequireAuth>} />
         <Route path="/company" element={<RequireAuth><PlaceholderPage kind="company" /></RequireAuth>} />

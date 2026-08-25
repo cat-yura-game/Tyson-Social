@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 import { ThinkingState } from '@aicss/react/thinking-state';
 import { TextResponse } from '@aicss/react/text-response';
 import { API_URL, apiRequest, mediaUrl } from '../api/client';
+import { useAuth } from '../auth/AuthProvider';
 import { RichAiText } from '../components/RichAiText';
 
 interface Conversation {
@@ -40,7 +41,7 @@ interface Quota {
   telegramLinked: boolean;
 }
 
-export function AiPage() {
+function MemberAiPage() {
   const imageInput = useRef<HTMLInputElement>(null);
   const streamRef = useRef<HTMLDivElement>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -202,4 +203,63 @@ export function AiPage() {
       </form>
     </div>
   </section>;
+}
+
+interface GuestMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+function GuestAiPage() {
+  const streamRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<GuestMessage[]>([]);
+  const [content, setContent] = useState('');
+  const [remaining, setRemaining] = useState(3);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, sending]);
+
+  const send = async (event: FormEvent) => {
+    event.preventDefault();
+    const question = content.trim();
+    if (!question || sending || remaining === 0) return;
+    setSending(true); setError(null);
+    try {
+      const result = await apiRequest<{ answer: string; quota: { remaining: number } }>('/ai/guest/chat', {
+        method: 'POST', body: JSON.stringify({ content: question }),
+      });
+      setMessages((current) => [...current, { id: crypto.randomUUID(), role: 'user', content: question }, { id: crypto.randomUUID(), role: 'assistant', content: result.answer }]);
+      setContent(''); setRemaining(result.quota.remaining);
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : 'Gemini временно недоступна.');
+      if ((sendError as { status?: number }).status === 429) setRemaining(0);
+    } finally { setSending(false); }
+  };
+
+  return <section className="ai-page ai-guest">
+    <div className="ai-chat">
+      <header><span className="ai-logo"><Sparkles /></span><div><strong>Tyson AI</strong><small>Gemini Flash Lite · гостевой режим</small></div></header>
+      <div className="ai-message-stream" ref={streamRef}>
+        {!messages.length && <div className="ai-welcome"><span><Sparkles size={30} /></span><h1>Попробуйте Tyson AI</h1><p>Три бесплатных запроса в сутки. Здесь не сохраняются история и память.</p><a className="button secondary" href="/login">Войти в Tyson</a></div>}
+        {messages.map((message) => <article className={`ai-message ${message.role}`} key={message.id}>
+          <strong>{message.role === 'assistant' ? 'Tyson AI' : 'Вы'}</strong>
+          {message.role === 'assistant' ? <TextResponse><RichAiText text={message.content} /></TextResponse> : <p>{message.content}</p>}
+        </article>)}
+        {sending && <article className="ai-message assistant ai-thinking" aria-live="polite"><div className="ai-thinking-head"><span className="ai-thinking-dot" aria-hidden="true" /><ThinkingState /></div><p>Готовлю ответ<span>…</span></p></article>}
+      </div>
+      <form className={`ai-composer ${content.trim() ? 'ai-composer-expanded' : ''}`} onSubmit={(event) => void send(event)}>
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <div><textarea value={content} onChange={(event) => setContent(event.target.value)} maxLength={8000} rows={1} placeholder="Спросить Tyson AI" disabled={sending || remaining === 0} /><button className="ai-send" type="submit" disabled={sending || remaining === 0 || !content.trim()} aria-label="Отправить"><Send /></button></div>
+        <footer><span>Без истории и памяти</span><strong>{remaining} из 3 запросов сегодня</strong></footer>
+      </form>
+    </div>
+  </section>;
+}
+
+export function AiPage() {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="app-loading">Запускаем Tyson AI…</div>;
+  return user ? <MemberAiPage /> : <GuestAiPage />;
 }

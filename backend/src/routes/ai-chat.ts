@@ -14,6 +14,7 @@ import {
 import { uploadLimitForUser } from '../services/upload-limits';
 import type { AppVariables, Env } from '../types';
 import { aiDailyRequestLimit } from '../ai/chat-quota';
+import { keyedHash } from '../security/tokens';
 import { z } from 'zod';
 
 const IMAGE_LIFETIME_MS = 24 * 60 * 60 * 1000;
@@ -27,7 +28,9 @@ const aiSettingsSchema = z.object({
   memoryEnabled: z.boolean().default(false),
 }).strict();
 const proPlanSchema = z.object({ plan: z.enum(['day', 'week', 'month']) }).strict();
+const guestChatSchema = z.object({ content: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH) }).strict();
 const PRO_PLANS = { day: { cost: 5, days: 1, label: 'Попробовать Pro' }, week: { cost: 20, days: 7, label: 'AI Pro на неделю' }, month: { cost: 80, days: 30, label: 'AI Pro на месяц' } } as const;
+const GUEST_DAILY_LIMIT = 3;
 
 function chatModelFor(env: Env, tier: ChatModelTier) {
   if (tier === 'flash') return { model: env.GEMINI_CHAT_FLASH_MODEL, thinkingLevel: 'medium' as const };
@@ -69,6 +72,10 @@ function requireUser(c: Parameters<typeof fail>[0]) {
   return { user };
 }
 
+function clientIp(c: Parameters<typeof fail>[0]): string {
+  return c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+}
+
 async function quotaState(db: D1Database, userId: string) {
   const date = new Date().toISOString().slice(0, 10);
   const [telegram, subscription] = await Promise.all([db.prepare('SELECT 1 FROM telegram_identities WHERE user_id = ?').bind(userId).first(), db.prepare('SELECT expires_at AS expiresAt FROM ai_pro_subscriptions WHERE user_id = ?').bind(userId).first<{ expiresAt: string }>()]);
@@ -78,6 +85,37 @@ async function quotaState(db: D1Database, userId: string) {
     .bind(userId, date).first<{ used: number }>();
   return { date, limit, used: usage?.used ?? 0, telegramLinked: Boolean(telegram), pro, proExpiresAt: pro ? subscription?.expiresAt ?? null : null };
 }
+
+aiChatRoutes.post('/guest/chat', async (c) => {
+  let input: z.infer<typeof guestChatSchema>;
+  try { input = guestChatSchema.parse(await c.req.json()); }
+  catch { return fail(c, 422, 'VALIDATION_ERROR', 'Enter a message up to 8,000 characters.'); }
+
+  if (!c.env.SESSION_SECRET) return fail(c, 502, 'AI_PROVIDER_UNAVAILABLE', 'Tyson AI is temporarily unavailable.');
+  const date = new Date().toISOString().slice(0, 10);
+  const ipHash = await keyedHash(c.env.SESSION_SECRET, clientIp(c));
+  const consumed = await c.env.DB.prepare(`INSERT INTO guest_ai_daily_usage (usage_date, ip_hash, request_count, updated_at)
+    VALUES (?, ?, 1, ?) ON CONFLICT(usage_date, ip_hash) DO UPDATE SET
+      request_count = request_count + 1, updated_at = excluded.updated_at
+    WHERE request_count < ? RETURNING request_count AS used`)
+    .bind(date, ipHash, new Date().toISOString(), GUEST_DAILY_LIMIT).first<{ used: number }>();
+  if (!consumed) return fail(c, 429, 'AI_DAILY_LIMIT_REACHED', 'Бесплатный лимит: 3 запроса в сутки. Войдите в Tyson, чтобы получить больше запросов.');
+
+  try {
+    if (!c.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured.');
+    const result = await new GeminiClient(c.env.GEMINI_API_KEY, c.env.GEMINI_CHAT_MODEL).generate({
+      systemInstruction: 'You are Tyson AI, a helpful assistant inside the Tyson social network. Answer in the user language. Be accurate, concise and safe. Never claim to have performed actions you cannot perform. This is a one-off guest request: do not claim to remember the user or earlier messages.',
+      parts: [{ text: input.content }],
+      maxOutputTokens: 2_000,
+      thinkingLevel: 'minimal',
+    });
+    return ok(c, { answer: result.text, modelVersion: result.modelVersion, quota: { limit: GUEST_DAILY_LIMIT, used: consumed.used, remaining: Math.max(0, GUEST_DAILY_LIMIT - consumed.used) } });
+  } catch (error) {
+    if (error instanceof GeminiBlockedError) return fail(c, 422, 'AI_CONTENT_BLOCKED', 'Gemini не смогла ответить на этот запрос из-за правил безопасности.');
+    console.error(JSON.stringify({ event: 'guest_ai_chat_failed', error: error instanceof Error ? error.message : 'unknown' }));
+    return fail(c, 502, 'AI_PROVIDER_UNAVAILABLE', 'Gemini временно недоступна. Попробуйте ещё раз.');
+  }
+});
 
 aiChatRoutes.get('/pro', async (c) => { const auth = requireUser(c); if ('error' in auth) return auth.error; const quota = await quotaState(c.env.DB, auth.user.id); return ok(c, { active: quota.pro, expiresAt: quota.proExpiresAt, plans: PRO_PLANS }); });
 aiChatRoutes.post('/pro/purchase', async (c) => {
