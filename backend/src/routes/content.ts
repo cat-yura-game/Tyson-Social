@@ -29,16 +29,16 @@ interface CreatePostImage {
   contentType: AllowedImageType;
 }
 
-async function createPostInput(c: Parameters<typeof fail>[0], maxUploadBytes: number): Promise<{ title: string; body: string; image: CreatePostImage | null; poll: z.infer<typeof pollSchema> | null; coauthorUsernames: string[] } | Response> {
+async function createPostInput(c: Parameters<typeof fail>[0], maxUploadBytes: number): Promise<{ title: string; body: string; scheduledAt: string | null; image: CreatePostImage | null; poll: z.infer<typeof pollSchema> | null; coauthorUsernames: string[] } | Response> {
   const contentType = c.req.header('content-type')?.toLowerCase() ?? '';
   if (!contentType.includes('multipart/form-data')) {
     const raw = await c.req.json().catch(() => null);
-    const input = postBodySchema.safeParse(raw);
+    const input = postBodySchema.safeParse(raw && typeof raw === 'object' ? { title: (raw as { title?: unknown }).title, body: (raw as { body?: unknown }).body, scheduledAt: (raw as { scheduledAt?: unknown }).scheduledAt } : raw);
     if (!input.success) return fail(c, 422, 'VALIDATION_ERROR', 'The submitted post is invalid.', input.error.flatten());
     const poll = raw && typeof raw === 'object' && 'poll' in raw && (raw as { poll?: unknown }).poll ? pollSchema.safeParse((raw as { poll: unknown }).poll) : null;
     if (poll && !poll.success) return fail(c, 422, 'VALIDATION_ERROR', 'The poll is invalid.', poll.error.flatten());
     const coauthorUsernames = raw && typeof raw === 'object' && Array.isArray((raw as { coauthorUsernames?: unknown }).coauthorUsernames) ? (raw as { coauthorUsernames: unknown[] }).coauthorUsernames.filter((item): item is string => typeof item === 'string').map((item) => item.trim().replace(/^@/u, '').toLowerCase()).filter(Boolean).slice(0, 3) : [];
-    return { title: input.data.title, body: input.data.body, image: null, poll: poll?.data ?? null, coauthorUsernames };
+    return { title: input.data.title, body: input.data.body, scheduledAt: input.data.scheduledAt ?? null, image: null, poll: poll?.data ?? null, coauthorUsernames };
   }
 
   const declaredLength = Number(c.req.header('content-length') ?? 0);
@@ -47,18 +47,18 @@ async function createPostInput(c: Parameters<typeof fail>[0], maxUploadBytes: nu
   }
   try {
     const form = await c.req.formData();
-    const input = postBodySchema.parse({ title: form.get('title') ?? '', body: form.get('body') });
+    const input = postBodySchema.parse({ title: form.get('title') ?? '', body: form.get('body'), scheduledAt: form.get('scheduledAt') || undefined });
     const uploaded = form.get('image');
     const rawPoll = form.get('poll'); const poll = rawPoll ? pollSchema.parse(JSON.parse(String(rawPoll))) : null;
     const coauthorUsernames = String(form.get('coauthorUsernames') ?? '').split(/[\s,]+/u).map((item) => item.trim().replace(/^@/u, '').toLowerCase()).filter(Boolean).slice(0, 3);
-    if (uploaded === null) return { title: input.title, body: input.body, image: null, poll, coauthorUsernames };
+    if (uploaded === null) return { title: input.title, body: input.body, scheduledAt: input.scheduledAt ?? null, image: null, poll, coauthorUsernames };
     if (!(uploaded instanceof File)) return fail(c, 422, 'INVALID_IMAGE', 'A valid image file is required.');
     const imageContentType = uploaded.type.toLowerCase();
     const bytes = await uploaded.arrayBuffer();
     assertValidMedia(imageContentType, bytes.byteLength, maxUploadBytes);
     if (imageContentType === 'image/avif') throw new Error('Post images must be JPEG, PNG or WebP.');
     assertImageSignature(imageContentType, new Uint8Array(bytes));
-    return { title: input.title, body: input.body, image: { bytes, contentType: imageContentType }, poll, coauthorUsernames };
+    return { title: input.title, body: input.body, scheduledAt: input.scheduledAt ?? null, image: { bytes, contentType: imageContentType }, poll, coauthorUsernames };
   } catch (error) {
     if (error instanceof Response) return error;
     return fail(c, 422, 'INVALID_POST', error instanceof ZodError ? 'The submitted post is invalid.' : error instanceof Error ? error.message : 'Invalid post data.', error instanceof ZodError ? error.flatten() : undefined);
@@ -190,11 +190,13 @@ contentRoutes.post('/posts', async (c) => {
   const result = await moderatePublicContent(c.env, moderationText, input.image && imageBase64 ? [{ mimeType: input.image.contentType, objectKey: 'pending-upload', base64Data: imageBase64 }] : [], extractLinks(moderationText));
   const postId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const status = result.decision === 'allow' ? 'published' : result.decision === 'block' ? 'blocked' : 'review';
+  const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null;
+  if (scheduledAt && (!Number.isFinite(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now())) return fail(c, 422, 'INVALID_SCHEDULE', 'Choose a future publication time.');
+  const status = result.decision === 'allow' ? (scheduledAt ? 'draft' : 'published') : result.decision === 'block' ? 'blocked' : 'review';
   const storage = new KvMediaStorage(c.env.MEDIA);
   const mediaKey = input.image && result.decision !== 'block' ? createMediaKey(auth.user.id, input.image.contentType) : null;
   const statements = [
-    c.env.DB.prepare(`INSERT INTO posts (id, author_user_id, title, body, status, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(postId, auth.user.id, input.title, input.body, status, status === 'published' ? now : null, now, now),
+    c.env.DB.prepare(`INSERT INTO posts (id, author_user_id, title, body, status, scheduled_at, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(postId, auth.user.id, input.title, input.body, status, scheduledAt?.toISOString() ?? null, status === 'published' ? now : null, now, now),
     c.env.DB.prepare(`INSERT INTO moderation_results (id, subject_type, subject_id, decision, risk_score, categories_json, reason, provider, model_version, input_hash, created_at) VALUES (?, 'post', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), postId, result.decision, result.riskScore, JSON.stringify(result.categories), result.reason, result.provider, result.modelVersion, await sha256(`${moderationText}:${imageBase64 ? await sha256(imageBase64) : ''}`), now),
   ];
   if (input.poll) {
@@ -228,8 +230,22 @@ contentRoutes.post('/posts', async (c) => {
       await Promise.all(subscribers.results.map((subscriber) => sendPushToUser(c.env, subscriber.userId, { title: auth.user.displayName, body: 'Опубликовал новую запись', url: `/post/${postId}`, tag: `post-${postId}` })));
     })());
   }
-  return ok(c, { id: postId, status }, 201);
+  return ok(c, { id: postId, status: scheduledAt && status === 'draft' ? 'scheduled' : status, scheduledAt: scheduledAt?.toISOString() ?? null }, 201);
 });
+
+export async function publishScheduledPosts(env: Env): Promise<number> {
+  const now = new Date().toISOString();
+  const posts = await env.DB.prepare(`SELECT p.id, p.author_user_id AS authorId, u.display_name AS displayName FROM posts p JOIN users u ON u.id = p.author_user_id
+    WHERE p.status = 'draft' AND p.scheduled_at IS NOT NULL AND p.scheduled_at <= ? LIMIT 100`).bind(now).all<{ id: string; authorId: string; displayName: string }>();
+  for (const post of posts.results) {
+    const published = await env.DB.prepare(`UPDATE posts SET status = 'published', published_at = ?, updated_at = ?
+      WHERE id = ? AND status = 'draft' AND scheduled_at <= ?`).bind(now, now, post.id, now).run();
+    if (!published.meta.changes) continue;
+    const subscribers = await env.DB.prepare('SELECT user_id AS userId FROM author_push_preferences WHERE author_user_id = ?').bind(post.authorId).all<{ userId: string }>();
+    await Promise.all(subscribers.results.map((subscriber) => sendPushToUser(env, subscriber.userId, { title: post.displayName, body: 'Опубликовал новую запись', url: `/post/${post.id}`, tag: `post-${post.id}` })));
+  }
+  return posts.results.length;
+}
 
 contentRoutes.put('/posts/:id', async (c) => {
   const auth = requireUser(c); if ('error' in auth) return auth.error;
@@ -454,7 +470,7 @@ contentRoutes.post('/posts/:id/diamond', async (c) => {
 });
 
 contentRoutes.get('/posts/:id/comments', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT c.id, c.body, c.created_at AS createdAt, u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey,
+  const rows = await c.env.DB.prepare(`SELECT c.id, c.body, c.parent_comment_id AS parentCommentId, c.created_at AS createdAt, u.id AS authorId, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey,
     u.worn_gift_id AS wornGiftId,
     (SELECT COALESCE(ug.variant, gt.base_image) FROM user_gifts ug JOIN gift_types gt ON gt.id = ug.gift_type_id WHERE ug.id = u.worn_gift_id) AS wornGiftImage,
     COALESCE((SELECT SUM(amount) FROM comment_diamond_reactions d WHERE d.comment_id = c.id), 0) AS diamondCount
@@ -492,18 +508,24 @@ contentRoutes.post('/posts/:id/comments', async (c) => {
   const input = await json(c, commentBodySchema); if (input instanceof Response) return input;
   const post = await c.env.DB.prepare(`SELECT id, author_user_id AS authorId FROM posts WHERE id = ? AND status = 'published'`).bind(c.req.param('id')).first<{ id: string; authorId: string }>();
   if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
+  let parentAuthorId = post.authorId;
+  if (input.parentCommentId) {
+    const parent = await c.env.DB.prepare(`SELECT author_user_id AS authorId FROM comments WHERE id = ? AND post_id = ? AND status = 'published'`).bind(input.parentCommentId, post.id).first<{ authorId: string }>();
+    if (!parent) return fail(c, 404, 'PARENT_COMMENT_NOT_FOUND', 'The comment you are replying to was not found.');
+    parentAuthorId = parent.authorId;
+  }
   const result = await moderatePublicContent(c.env, input.body, [], extractLinks(input.body));
   if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Comment was blocked by safety checks.');
   const id = crypto.randomUUID(); const now = new Date().toISOString(); const status = result.decision === 'allow' ? 'published' : 'review';
   await c.env.DB.batch([
-    c.env.DB.prepare(`INSERT INTO comments (id, post_id, author_user_id, body, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(id, c.req.param('id'), auth.user.id, input.body, status, now, now),
+    c.env.DB.prepare(`INSERT INTO comments (id, post_id, author_user_id, parent_comment_id, body, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, c.req.param('id'), auth.user.id, input.parentCommentId ?? null, input.body, status, now, now),
     c.env.DB.prepare(`UPDATE posts SET comment_count = comment_count + ? WHERE id = ?`).bind(status === 'published' ? 1 : 0, c.req.param('id')),
     c.env.DB.prepare(`INSERT INTO recommendation_events (id, user_id, post_id, event_type, created_at) VALUES (?, ?, ?, 'comment', ?)`).bind(crypto.randomUUID(), auth.user.id, c.req.param('id'), now),
     c.env.DB.prepare(`INSERT INTO notifications (id, user_id, actor_user_id, type, entity_id, message, dedupe_key, created_at)
-      SELECT ?, ?, ?, 'comment', ?, 'прокомментировал вашу публикацию', ?, ? WHERE ? = 'published' AND ? != ?`)
-      .bind(crypto.randomUUID(), post.authorId, auth.user.id, c.req.param('id'), `comment:${id}`, now, status, post.authorId, auth.user.id),
+      SELECT ?, ?, ?, 'comment', ?, ?, ?, ? WHERE ? = 'published' AND ? != ?`)
+      .bind(crypto.randomUUID(), parentAuthorId, auth.user.id, c.req.param('id'), input.parentCommentId ? 'ответил на ваш комментарий' : 'прокомментировал вашу публикацию', `comment:${id}`, now, status, parentAuthorId, auth.user.id),
   ]);
-  if (status === 'published' && post.authorId !== auth.user.id) c.executionCtx.waitUntil(sendPushToUser(c.env, post.authorId, { title: 'Новый комментарий', body: `${auth.user.displayName} прокомментировал вашу публикацию`, url: `/post/${c.req.param('id')}`, tag: `comment-${id}` }));
+  if (status === 'published' && parentAuthorId !== auth.user.id) c.executionCtx.waitUntil(sendPushToUser(c.env, parentAuthorId, { title: input.parentCommentId ? 'Ответ на комментарий' : 'Новый комментарий', body: `${auth.user.displayName} ${input.parentCommentId ? 'ответил на ваш комментарий' : 'прокомментировал вашу публикацию'}`, url: `/post/${c.req.param('id')}`, tag: `comment-${id}` }));
   if (status === 'published') await completeDailyTask(c.env, auth.user.id, 'comment');
   return ok(c, { id, status }, 201);
 });

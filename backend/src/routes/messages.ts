@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
 import { fail, ok } from '../lib/responses';
-import { cloneAttachmentSchema, cloudMessageSchema, conversationSchema, deleteMessageSchema, deviceSchema, editCloudMessageSchema, groupConversationSchema, messageBatchSchema } from '../schemas/messages';
+import { cloneAttachmentSchema, cloudMessageSchema, conversationSchema, deleteMessageSchema, deviceSchema, editCloudMessageSchema, groupConversationSchema, groupMemberRoleSchema, groupMembersSchema, messageBatchSchema } from '../schemas/messages';
 import type { AppVariables, AuthUser, Env } from '../types';
 import { decryptCloudMessage, encryptCloudMessage } from '../services/cloud-message-crypto';
 import { uploadLimitForUser } from '../services/upload-limits';
@@ -27,6 +27,12 @@ async function parse<T>(c: Parameters<typeof fail>[0], schema: { parse(value: un
 
 async function isMember(db: D1Database, conversationId: string, userId: string): Promise<boolean> {
   return Boolean(await db.prepare(`SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL`).bind(conversationId, userId).first());
+}
+
+async function groupRole(db: D1Database, conversationId: string, userId: string): Promise<'owner' | 'admin' | 'member' | null> {
+  const row = await db.prepare(`SELECT m.role FROM conversation_members m JOIN conversations c ON c.id = m.conversation_id
+    WHERE m.conversation_id = ? AND m.user_id = ? AND m.left_at IS NULL AND c.kind = 'group'`).bind(conversationId, userId).first<{ role: 'owner' | 'admin' | 'member' }>();
+  return row?.role ?? null;
 }
 
 async function pushNewMessage(c: Parameters<typeof fail>[0], conversationId: string, sender: AuthUser): Promise<void> {
@@ -193,18 +199,46 @@ messageRoutes.post('/conversations', async (c) => {
 messageRoutes.post('/groups', async (c) => {
   const user = requireUser(c); if (user instanceof Response) return user;
   const input = await parse(c, groupConversationSchema); if (input instanceof Response) return input;
-  const usernames = [...new Set(input.memberUsernames.filter((username) => username !== user.username.toLowerCase()))];
-  if (usernames.length < 2) return fail(c, 422, 'GROUP_MEMBERS_REQUIRED', 'Choose at least two other members.');
-  const placeholders = usernames.map(() => '?').join(',');
-  const members = await c.env.DB.prepare(`SELECT id, username FROM users WHERE lower(username) IN (${placeholders}) AND status NOT IN ('suspended', 'deleted')`).bind(...usernames).all<{ id: string; username: string }>();
-  if (members.results.length !== usernames.length) return fail(c, 404, 'USER_NOT_FOUND', 'One or more members were not found.');
   const id = crypto.randomUUID(); const now = new Date().toISOString();
-  await c.env.DB.batch([
-    c.env.DB.prepare(`INSERT INTO conversations (id, kind, title, security_mode, created_by_user_id, created_at, updated_at) VALUES (?, 'group', ?, 'cloud', ?, ?, ?)`).bind(id, input.title, user.id, now, now),
-    c.env.DB.prepare('INSERT INTO conversation_members (conversation_id, user_id, joined_at) VALUES (?, ?, ?)').bind(id, user.id, now),
-    ...members.results.map((member) => c.env.DB.prepare('INSERT INTO conversation_members (conversation_id, user_id, joined_at) VALUES (?, ?, ?)').bind(id, member.id, now)),
-  ]);
-  return ok(c, { conversation: { id, kind: 'group', title: input.title, memberCount: members.results.length + 1, securityMode: 'cloud' } }, 201);
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT INTO conversations (id, kind, title, username, security_mode, created_by_user_id, created_at, updated_at) VALUES (?, 'group', ?, ?, 'cloud', ?, ?, ?)`).bind(id, input.title, input.username, user.id, now, now),
+      c.env.DB.prepare(`INSERT INTO conversation_members (conversation_id, user_id, role, joined_at) VALUES (?, ?, 'owner', ?)`).bind(id, user.id, now),
+    ]);
+  } catch { return fail(c, 409, 'GROUP_USERNAME_TAKEN', 'This group username is already taken.'); }
+  return ok(c, { conversation: { id, kind: 'group', title: input.title, username: input.username, memberCount: 1, securityMode: 'cloud' } }, 201);
+});
+
+messageRoutes.get('/groups/:id', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const role = await groupRole(c.env.DB, c.req.param('id'), user.id); if (!role) return fail(c, 404, 'GROUP_NOT_FOUND', 'Group not found.');
+  const group = await c.env.DB.prepare('SELECT title, username FROM conversations WHERE id = ? AND kind = \'group\'').bind(c.req.param('id')).first<{ title: string; username: string }>();
+  const members = await c.env.DB.prepare(`SELECT u.id, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, m.role
+    FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND m.left_at IS NULL ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.display_name`).bind(c.req.param('id')).all();
+  return ok(c, { group: { ...group, role }, members: members.results });
+});
+
+messageRoutes.post('/groups/:id/members', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  const role = await groupRole(c.env.DB, c.req.param('id'), user.id); if (role !== 'owner' && role !== 'admin') return fail(c, 403, 'GROUP_ADMIN_REQUIRED', 'Only group administrators can add members.');
+  const input = await parse(c, groupMembersSchema); if (input instanceof Response) return input;
+  const usernames = [...new Set(input.usernames.filter((username) => username !== user.username.toLowerCase()))];
+  const placeholders = usernames.map(() => '?').join(',');
+  const people = await c.env.DB.prepare(`SELECT id FROM users WHERE lower(username) IN (${placeholders}) AND status IN ('active', 'pending_email')`).bind(...usernames).all<{ id: string }>();
+  if (people.results.length !== usernames.length) return fail(c, 404, 'USER_NOT_FOUND', 'One or more users were not found.');
+  const now = new Date().toISOString();
+  await c.env.DB.batch([...people.results.map((person) => c.env.DB.prepare(`INSERT INTO conversation_members (conversation_id, user_id, role, joined_at, left_at) VALUES (?, ?, ?, ?, NULL)
+    ON CONFLICT(conversation_id, user_id) DO UPDATE SET role = excluded.role, joined_at = excluded.joined_at, left_at = NULL`).bind(c.req.param('id'), person.id, input.role, now)), c.env.DB.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').bind(now, c.req.param('id'))]);
+  return ok(c, { added: people.results.length });
+});
+
+messageRoutes.patch('/groups/:id/members/:userId', async (c) => {
+  const user = requireUser(c); if (user instanceof Response) return user;
+  if (await groupRole(c.env.DB, c.req.param('id'), user.id) !== 'owner') return fail(c, 403, 'GROUP_OWNER_REQUIRED', 'Only the owner can manage administrators.');
+  const input = await parse(c, groupMemberRoleSchema); if (input instanceof Response) return input;
+  const changed = await c.env.DB.prepare(`UPDATE conversation_members SET role = ? WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL AND role != 'owner'`).bind(input.role, c.req.param('id'), c.req.param('userId')).run();
+  if (!changed.meta.changes) return fail(c, 404, 'GROUP_MEMBER_NOT_FOUND', 'Group member not found.');
+  return ok(c, { role: input.role });
 });
 
 messageRoutes.get('/conversations', async (c) => {
@@ -218,7 +252,7 @@ messageRoutes.get('/conversations', async (c) => {
     JOIN conversation_members theirs ON theirs.conversation_id = c.id AND theirs.user_id != ? AND theirs.left_at IS NULL
     JOIN users u ON u.id = theirs.user_id
     WHERE c.kind = 'direct' ORDER BY c.updated_at DESC LIMIT 100`).bind(user.id, user.id).all();
-  const groups = await c.env.DB.prepare(`SELECT c.id, c.updated_at AS updatedAt, c.security_mode AS securityMode, c.title,
+  const groups = await c.env.DB.prepare(`SELECT c.id, c.updated_at AS updatedAt, c.security_mode AS securityMode, c.title, c.username,
     COUNT(m.user_id) AS memberCount FROM conversations c JOIN conversation_members mine ON mine.conversation_id = c.id AND mine.user_id = ? AND mine.left_at IS NULL
     JOIN conversation_members m ON m.conversation_id = c.id AND m.left_at IS NULL WHERE c.kind = 'group' GROUP BY c.id ORDER BY c.updated_at DESC LIMIT 100`).bind(user.id).all();
   return ok(c, { conversations: [{
@@ -231,7 +265,7 @@ messageRoutes.get('/conversations', async (c) => {
     otherVerified: false,
     isSaved: true,
     securityMode: 'cloud',
-  }, ...rows.results.map((row) => ({ ...row, kind: 'direct', isSaved: false })), ...groups.results.map((group) => ({ ...group, kind: 'group', otherUserId: '', otherUsername: '', otherDisplayName: group.title, otherAvatarKey: null, otherVerified: false, isSaved: false }))] });
+  }, ...rows.results.map((row) => ({ ...row, kind: 'direct', isSaved: false })), ...groups.results.map((group) => ({ ...group, kind: 'group', otherUserId: '', otherUsername: group.username, otherDisplayName: group.title, otherAvatarKey: null, otherVerified: false, isSaved: false }))] });
 });
 
 messageRoutes.post('/conversations/:id/attachments', async (c) => {

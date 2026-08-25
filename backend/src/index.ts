@@ -8,6 +8,7 @@ import { api } from './routes';
 import type { AppVariables, Env } from './types';
 import { deleteExpiredStories } from './routes/stories';
 import { deleteExpiredAiChatImages } from './routes/ai-chat';
+import { publishScheduledPosts } from './routes/content';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 const OFFICIAL_SITE_ORIGIN = 'https://tysonsocial.eu.cc';
@@ -62,6 +63,6 @@ app.onError((error, c) => {
 export default {
   fetch: app.fetch,
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(Promise.all([deleteExpiredStories(env), deleteExpiredAiChatImages(env)]));
+    ctx.waitUntil(Promise.all([deleteExpiredStories(env), deleteExpiredAiChatImages(env), publishScheduledPosts(env)]));
   },
 };

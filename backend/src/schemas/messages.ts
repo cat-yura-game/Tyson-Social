@@ -14,8 +14,10 @@ export const conversationSchema = z.object({
 }).strict();
 export const groupConversationSchema = z.object({
   title: z.string().trim().min(1).max(80),
-  memberUsernames: z.array(z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/u).transform((value) => value.toLowerCase())).min(2).max(49),
+  username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/u).transform((value) => value.toLowerCase()),
 }).strict();
+export const groupMembersSchema = z.object({ usernames: z.array(z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/u).transform((value) => value.toLowerCase())).min(1).max(49), role: z.enum(['admin', 'member']).default('member') }).strict();
+export const groupMemberRoleSchema = z.object({ role: z.enum(['admin', 'member']) }).strict();
 
 const imageContent = z.object({
   type: z.literal('image'), attachmentId: z.string().uuid(), key: z.string().min(32).max(256), nonce: z.string().min(16).max(256),

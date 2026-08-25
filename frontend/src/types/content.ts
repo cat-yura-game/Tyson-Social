@@ -32,6 +32,7 @@ export interface Poll { id: string; question: string; endsAt: string | null; tot
 export interface Comment {
   id: string;
   body: string;
+  parentCommentId?: string | null;
   createdAt: string;
   authorId: string;
   username: string;

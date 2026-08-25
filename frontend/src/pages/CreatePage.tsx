@@ -42,6 +42,7 @@ export function CreatePage() {
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
   const [coauthorUsernames, setCoauthorUsernames] = useState('');
+  const [scheduledAt, setScheduledAt] = useState('');
   const draftKey = `tyson:post-draft:${user?.id ?? 'guest'}`;
 
   useEffect(() => {
@@ -172,10 +173,11 @@ export function CreatePage() {
         request.set('image', image);
         if (poll) request.set('poll', JSON.stringify(poll));
         if (coauthorUsernames.trim()) request.set('coauthorUsernames', coauthorUsernames);
+        if (scheduledAt) request.set('scheduledAt', new Date(scheduledAt).toISOString());
       }
       const result = await apiRequest<{ id: string; status: string }>('/posts', {
         method: 'POST',
-        body: request ?? JSON.stringify({ title, body, ...(poll ? { poll } : {}), ...(coauthorUsernames.trim() ? { coauthorUsernames: coauthorUsernames.split(/[\s,]+/u) } : {}) }),
+        body: request ?? JSON.stringify({ title, body, ...(poll ? { poll } : {}), ...(scheduledAt ? { scheduledAt: new Date(scheduledAt).toISOString() } : {}), ...(coauthorUsernames.trim() ? { coauthorUsernames: coauthorUsernames.split(/[\s,]+/u) } : {}) }),
       });
       localStorage.removeItem(draftKey);
       if (result.status === 'published' && promotionViews > 0) {
@@ -219,10 +221,11 @@ export function CreatePage() {
         {pollOpen && <div className="poll-composer-fields"><input maxLength={200} value={pollQuestion} onChange={(event) => setPollQuestion(event.target.value)} placeholder="Вопрос" />{pollOptions.map((option, index) => <div key={index}><input maxLength={100} value={option} onChange={(event) => setPollOptions((current) => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} placeholder={`Вариант ${index + 1}`} />{pollOptions.length > 2 && <button type="button" aria-label="Удалить вариант" onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={15} /></button>}</div>)}{pollOptions.length < 4 && <button type="button" className="poll-add-option" onClick={() => setPollOptions((current) => [...current, ''])}>+ Вариант</button>}</div>}
       </section>
       <label className="coauthor-composer"><span>Отметить соавторов</span><input maxLength={100} value={coauthorUsernames} onChange={(event) => setCoauthorUsernames(event.target.value)} placeholder="username через запятую (до 3)" /><small>Соавторы будут показаны рядом с автором публикации.</small></label>
+      <label className="coauthor-composer"><span>Отложенная публикация</span><input type="datetime-local" value={scheduledAt} min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)} onChange={(event) => setScheduledAt(event.target.value)} /><small>{scheduledAt ? 'Пост выйдет автоматически в выбранное время.' : 'Оставьте пустым, чтобы опубликовать сразу.'}</small></label>
       <div className="moderation-note"><Sparkles size={18} /><span>Перед публикацией Gemini проверит текст и изображение на спам, мошенничество и нарушения правил.</span></div>
       <label className="post-promotion-option"><span><Rocket size={19} /><span><strong>Продвинуть публикацию</strong><small>2 💎 за уникальный просмотр аккаунтом в сутки</small></span></span><select value={promotionViews} onChange={(event) => setPromotionViews(Number(event.target.value))}><option value={0}>Не продвигать</option><option value={5}>5 просмотров · 10 💎</option><option value={10}>10 просмотров · 20 💎</option><option value={25}>25 просмотров · 50 💎</option><option value={50}>50 просмотров · 100 💎</option></select></label>
       {error && <p className="form-error" role="alert">{error}</p>}
-      <button className="primary-button" disabled={pending || !body.trim()} type="submit">{pending ? 'Проверяем…' : 'Опубликовать'}<Send size={18} /></button>
+      <button className="primary-button" disabled={pending || !body.trim()} type="submit">{pending ? 'Проверяем…' : scheduledAt ? 'Запланировать' : 'Опубликовать'}<Send size={18} /></button>
     </form>
   </section>;
 }

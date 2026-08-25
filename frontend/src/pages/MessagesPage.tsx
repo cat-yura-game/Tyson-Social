@@ -81,7 +81,9 @@ export function MessagesPage() {
   const [followedPeople, setFollowedPeople] = useState<FollowedPerson[]>([]);
   const [messageResults, setMessageResults] = useState<MessageSearchResult[]>([]);
   const [groupTitle, setGroupTitle] = useState('');
-  const [groupMembers, setGroupMembers] = useState('');
+  const [groupUsername, setGroupUsername] = useState('');
+  const [groupMemberUsername, setGroupMemberUsername] = useState('');
+  const [groupMemberAdmin, setGroupMemberAdmin] = useState(false);
   const [showGroupCreator, setShowGroupCreator] = useState(false);
   const [secretChatsEnabled, setSecretChatsEnabled] = useState(false);
   const [messageSoundsEnabled, setMessageSoundsEnabled] = useState(true);
@@ -118,6 +120,7 @@ export function MessagesPage() {
   const sharedPostId = searchParams.get('sharePost');
   const sharedCommentId = searchParams.get('shareComment');
   const sharedCommentPostId = searchParams.get('post');
+  const messageDraftKey = activeId && activeId !== TYSON_AI_CHAT_ID ? `tyson:message-draft:${user?.id ?? 'guest'}:${activeId}` : null;
 
   useEffect(() => {
     if (!active || active.isSaved) { setRemoteActivity(null); return; }
@@ -241,12 +244,17 @@ export function MessagesPage() {
     setMessageMenu(null);
     setEditingMessage(null);
     setForwardingMessage(null);
-    setDraft('');
+    try { setDraft(messageDraftKey ? localStorage.getItem(messageDraftKey) ?? '' : ''); } catch { setDraft(''); }
     knownMessageIds.current = new Set();
     void loadMessages();
     const timer = window.setInterval(() => void loadMessages(), 4000);
     return () => window.clearInterval(timer);
-  }, [loadMessages]);
+  }, [loadMessages, messageDraftKey]);
+
+  useEffect(() => {
+    if (!messageDraftKey) return;
+    try { if (draft) localStorage.setItem(messageDraftKey, draft); else localStorage.removeItem(messageDraftKey); } catch { /* local drafts are optional */ }
+  }, [draft, messageDraftKey]);
 
   useEffect(() => {
     messageEnd.current?.scrollIntoView({ block: 'end' });
@@ -284,8 +292,16 @@ export function MessagesPage() {
 
   const startGroup = async (event: FormEvent) => {
     event.preventDefault(); setError(null);
-    const memberUsernames = groupMembers.split(/[\s,]+/u).map((item) => item.replace(/^@/u, '').toLowerCase()).filter(Boolean);
-    try { const result = await apiRequest<{ conversation: { id: string } }>('/messages/groups', { method: 'POST', body: JSON.stringify({ title: groupTitle, memberUsernames }) }); setGroupTitle(''); setGroupMembers(''); setShowGroupCreator(false); await loadConversations(); setActiveId(result.conversation.id); setSearchParams({ conversation: result.conversation.id }); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Не удалось создать группу.'); }
+    try { const result = await apiRequest<{ conversation: { id: string } }>('/messages/groups', { method: 'POST', body: JSON.stringify({ title: groupTitle, username: groupUsername.replace(/^@/u, '').toLowerCase() }) }); setGroupTitle(''); setGroupUsername(''); setShowGroupCreator(false); await loadConversations(); setActiveId(result.conversation.id); setSearchParams({ conversation: result.conversation.id }); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Не удалось создать группу.'); }
+  };
+
+  const addGroupMember = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!active || active.kind !== 'group') return;
+    try {
+      await apiRequest(`/messages/groups/${active.id}/members`, { method: 'POST', body: JSON.stringify({ usernames: [groupMemberUsername.replace(/^@/u, '').toLowerCase()], role: groupMemberAdmin ? 'admin' : 'member' }) });
+      setGroupMemberUsername(''); setGroupMemberAdmin(false); await loadConversations();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Не удалось добавить участника.'); }
   };
 
   const createSecretEnvelopes = async (target: Conversation, content: MessageContent, sentAt: string, editedAt?: string) => {
@@ -344,8 +360,7 @@ export function MessagesPage() {
       await editTextMessage(editingMessage, text);
       return;
     }
-    await sendContent({ type: 'text', text });
-    setDraft('');
+    if (await sendContent({ type: 'text', text })) setDraft('');
   };
 
   const sendSticker = async (stickerId: StickerId) => {
@@ -612,12 +627,12 @@ export function MessagesPage() {
     <aside className="conversation-list">
       <div className="messages-title"><div><p className="eyebrow">Синхронизация между устройствами</p><h1>Messenger</h1></div><LockKeyhole size={21} /></div>
       <div className="messenger-unified-search"><div className="new-conversation"><Search size={17} /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Поиск людей и сообщений" />{secretChatsEnabled && <label className="secret-chat-option"><input type="checkbox" checked={startSecretChat} onChange={(event) => setStartSecretChat(event.target.checked)} />Секретный</label>}</div>{(followedPeople.length > 0 || messageResults.length > 0) && <div className="unified-search-results">{followedPeople.length > 0 && <><p>Написать</p>{followedPeople.map((person) => <button key={person.id} type="button" onClick={() => void openConversation(person.username)}><span className="avatar avatar-small">{person.avatarKey ? <img className="avatar-image" src={mediaUrl(person.avatarKey) ?? ''} alt="" /> : person.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{person.displayName}</strong><small>Открыть диалог</small></span></button>)}</>}{messageResults.length > 0 && <><p>Сообщения</p>{messageResults.map((result) => <button className="message-result" key={result.id} type="button" onClick={() => { setActiveId(result.conversationId); setSearchParams({ conversation: result.conversationId }); setSearchQuery(''); }}><strong>{result.excerpt}</strong><small>{new Date(result.sentAt).toLocaleDateString('ru-RU')}</small></button>)}</>}</div>}</div>
-      <button className="create-group-trigger" type="button" onClick={() => setShowGroupCreator((value) => !value)}><UsersRound size={17} />Создать группу</button>{showGroupCreator && <form className="group-creator" onSubmit={(event) => void startGroup(event)}><input required maxLength={80} value={groupTitle} onChange={(event) => setGroupTitle(event.target.value)} placeholder="Название группы" /><input required value={groupMembers} onChange={(event) => setGroupMembers(event.target.value)} placeholder="username участников через запятую" /><button type="submit">Создать</button></form>}
+      <button className="create-group-trigger" type="button" onClick={() => setShowGroupCreator((value) => !value)}><UsersRound size={17} />Создать группу</button>{showGroupCreator && <form className="group-creator" onSubmit={(event) => void startGroup(event)}><input required maxLength={80} value={groupTitle} onChange={(event) => setGroupTitle(event.target.value)} placeholder="Название группы" /><input required minLength={3} maxLength={30} value={groupUsername} onChange={(event) => setGroupUsername(event.target.value)} placeholder="username группы" /><small>Участников можно добавить после создания.</small><button type="submit">Создать группу</button></form>}
       <button className={activeId === TYSON_AI_CHAT_ID ? 'conversation ai-conversation active' : 'conversation ai-conversation'} onClick={() => { setActiveId(TYSON_AI_CHAT_ID); setSearchParams({ conversation: TYSON_AI_CHAT_ID }); }}><span className="avatar avatar-small ai-conversation-avatar"><Sparkles size={20} /></span><span><strong>Tyson AI</strong><small>На основе Gemini</small></span></button>
       {conversations.map((conversation) => <button key={conversation.id} className={conversation.id === activeId ? 'conversation active' : 'conversation'} onClick={() => { setActiveId(conversation.id); setSearchParams(sharedPostId ? { conversation: conversation.id, sharePost: sharedPostId } : { conversation: conversation.id }); }}><span className={`avatar avatar-small${conversation.isSaved ? ' saved-avatar' : ''}`}>{conversation.isSaved ? <Bookmark size={20} /> : conversation.kind === 'group' ? <UsersRound size={18} /> : conversation.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(conversation.otherAvatarKey) ?? ''} alt="" /> : conversation.otherDisplayName.slice(0, 1).toUpperCase()}</span><span><strong>{conversation.otherDisplayName}</strong><small>{conversation.isSaved ? 'Личный защищённый архив' : conversation.kind === 'group' ? `${conversation.memberCount} участника` : `@${conversation.otherUsername}`}</small></span></button>)}
     </aside>
     <div className="chat-panel">{activeId === TYSON_AI_CHAT_ID ? <MessengerAiChat onBack={closeMobileChat} /> : active ? <>
-      <header><button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={closeMobileChat}><ChevronLeft /></button>{active.isSaved || active.kind === 'group' ? <div className="chat-profile-link"><span className="avatar avatar-small saved-avatar">{active.isSaved ? <Bookmark size={19} /> : <UsersRound size={18} />}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>{active.isSaved ? 'Ваш личный архив' : `${active.memberCount} участника`}</small></span></div> : <Link className="chat-profile-link" to={`/profile/${encodeURIComponent(active.otherUsername)}`} aria-label={`Открыть профиль ${active.otherDisplayName}`}><span className="avatar avatar-small">{active.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(active.otherAvatarKey) ?? ''} alt="" /> : active.otherDisplayName.slice(0, 1).toUpperCase()}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small className={remoteActivity ? 'messenger-activity' : ''}>{remoteActivity === 'typing' ? 'печатает…' : remoteActivity === 'recording_audio' ? 'записывает голосовое…' : remoteActivity === 'recording_video' ? 'записывает видеосообщение…' : `@${active.otherUsername}`}</small></span></Link>}<span className="chat-security"><LockKeyhole size={14} />{active.securityMode === 'secret' ? 'E2EE' : 'Защищено'}</span></header>
+      <header><button className="mobile-chat-back" type="button" aria-label="Вернуться к диалогам" onClick={closeMobileChat}><ChevronLeft /></button>{active.isSaved || active.kind === 'group' ? <div className="chat-profile-link"><span className="avatar avatar-small saved-avatar">{active.isSaved ? <Bookmark size={19} /> : <UsersRound size={18} />}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small>{active.isSaved ? 'Ваш личный архив' : `${active.memberCount} участника · @${active.otherUsername}`}</small></span></div> : <Link className="chat-profile-link" to={`/profile/${encodeURIComponent(active.otherUsername)}`} aria-label={`Открыть профиль ${active.otherDisplayName}`}><span className="avatar avatar-small">{active.otherAvatarKey ? <img className="avatar-image" src={mediaUrl(active.otherAvatarKey) ?? ''} alt="" /> : active.otherDisplayName.slice(0, 1).toUpperCase()}</span><span className="chat-profile-copy"><strong>{active.otherDisplayName}</strong><small className={remoteActivity ? 'messenger-activity' : ''}>{remoteActivity === 'typing' ? 'печатает…' : remoteActivity === 'recording_audio' ? 'записывает голосовое…' : remoteActivity === 'recording_video' ? 'записывает видеосообщение…' : `@${active.otherUsername}`}</small></span></Link>}<span className="chat-security"><LockKeyhole size={14} />{active.securityMode === 'secret' ? 'E2EE' : 'Защищено'}</span></header>
       <div className="message-stream">{messages.map((message, index) => {
         const displayedContent = basicContent(message.content);
         const sticker = displayedContent.type === 'sticker' ? getSticker(displayedContent.stickerId) : null;
@@ -634,6 +649,7 @@ export function MessagesPage() {
         </Fragment>;
       })}{!messages.length && <div className="chat-empty"><LockKeyhole /><p>{active.securityMode === 'secret' ? 'Секретные сообщения шифруются только на устройствах участников.' : 'Сообщения синхронизируются со всеми вашими устройствами и шифруются при хранении.'}</p></div>}<div ref={messageEnd} aria-hidden="true" /></div>
       <div className="composer-area">
+        {active.kind === 'group' && <form className="group-creator group-member-adder" onSubmit={(event) => void addGroupMember(event)}><strong>Управление группой</strong><input required minLength={3} maxLength={30} value={groupMemberUsername} onChange={(event) => setGroupMemberUsername(event.target.value)} placeholder="username участника" /><label><input type="checkbox" checked={groupMemberAdmin} onChange={(event) => setGroupMemberAdmin(event.target.checked)} /> Сделать администратором</label><button type="submit">Добавить</button></form>}
         {editingMessage && <div className="message-edit-bar"><Pencil size={16} /><div><strong>Изменение сообщения</strong><small>Время отправки останется прежним</small></div><button type="button" aria-label="Отменить изменение" onClick={cancelEditing}><X /></button></div>}
         {(sharedPostId || sharedCommentId) && <div className="share-post-bar"><div><strong>{sharedCommentId ? 'Отправить комментарий' : 'Отправить публикацию'}</strong><small>{active.isSaved ? 'Сохранить в Избранное' : `Поделиться с @${active.otherUsername}`}</small></div><button type="button" disabled={sending} onClick={() => void (sharedCommentId ? sendSharedComment() : sendSharedPost())}><Send size={16} />Отправить</button></div>}
         {showStickers && <div className="sticker-picker" aria-label="Стикеры">{STICKERS.map((sticker) => <button key={sticker.id} type="button" disabled={sending} aria-label={sticker.accessibleLabel} onClick={() => void sendSticker(sticker.id)}><img src={sticker.src} alt="" /></button>)}</div>}
