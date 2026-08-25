@@ -99,9 +99,12 @@ contentRoutes.get('/feed', async (c) => {
   if (view === 'following' && !viewerId) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
   const topic = c.req.query('topic')?.trim().slice(0, 40);
   const topicFilter = topic ? ' AND instr(lower(p.body), lower(?)) > 0' : '';
+  const pinnedFilter = view === 'for-you'
+    ? ` AND (p.pinned_at IS NULL OR EXISTS (SELECT 1 FROM post_promotions pp WHERE pp.post_id = p.id AND pp.delivered_views < pp.purchased_views))`
+    : ' AND p.pinned_at IS NULL';
   const followingFilter = view === 'following' ? ` AND EXISTS (SELECT 1 FROM user_follows f
     WHERE f.follower_user_id = ? AND f.followed_user_id = p.author_user_id)` : '';
-  const statement = c.env.DB.prepare(`${POST_SELECT} WHERE p.status = 'published' AND p.pinned_at IS NULL${followingFilter}${topicFilter} ORDER BY p.published_at DESC LIMIT 50`);
+  const statement = c.env.DB.prepare(`${POST_SELECT} WHERE p.status = 'published'${pinnedFilter}${followingFilter}${topicFilter} ORDER BY p.published_at DESC LIMIT 50`);
   const bindings = [viewerId, viewerId, ...(view === 'following' ? [viewerId] : []), ...(topic ? [topic] : [])];
   const rows = await statement.bind(...bindings).all();
   let posts = rows.results as unknown as FeedCandidate[];
