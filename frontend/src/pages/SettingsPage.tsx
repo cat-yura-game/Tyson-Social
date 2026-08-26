@@ -1,5 +1,5 @@
 import { ArrowLeft, BadgeCheck, BatteryMedium, BellRing, Camera, ChevronRight, CircleDashed, Database, Gem, LockKeyhole, Mail, Monitor, MonitorSmartphone, Moon, QrCode, RefreshCw, Save, Send, Settings, ShieldCheck, Sparkles, Sun, Trash2, Unlink, UserPlus, UserRound, Volume2 } from 'lucide-react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest, mediaUrl, setAccessToken } from '../api/client';
 import { useAuth, type AuthUser } from '../auth/AuthProvider';
@@ -16,6 +16,27 @@ import { getMobileLastTab, setMobileLastTab, type MobileLastTab } from '../mobil
 const PROFILE_COLORS = new Set(['forest', 'ocean', 'sunset', 'violet', 'rose', 'graphite']);
 const BIRTHDAY_MONTHS = [['01', 'Январь'], ['02', 'Февраль'], ['03', 'Март'], ['04', 'Апрель'], ['05', 'Май'], ['06', 'Июнь'], ['07', 'Июль'], ['08', 'Август'], ['09', 'Сентябрь'], ['10', 'Октябрь'], ['11', 'Ноябрь'], ['12', 'Декабрь']] as const;
 const BIRTHDAY_DAYS = Array.from({ length: 31 }, (_, index) => String(index + 1).padStart(2, '0'));
+const BIRTHDAY_YEARS = Array.from({ length: new Date().getFullYear() - 1899 }, (_, index) => String(new Date().getFullYear() - index));
+
+type BirthdayWheelOption = { value: string; label: string };
+
+function BirthdayWheelPicker({ label, value, options, onChange }: { label: string; value: string; options: BirthdayWheelOption[]; onChange: (value: string) => void }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const allOptions = [{ value: '', label: '—' }, ...options];
+  const selectedIndex = Math.max(0, allOptions.findIndex((option) => option.value === value));
+
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: selectedIndex * 40, behavior: 'auto' });
+  }, [selectedIndex]);
+
+  const selectAtScrollPosition = (element: HTMLDivElement) => {
+    const index = Math.max(0, Math.min(allOptions.length - 1, Math.round(element.scrollTop / 40)));
+    const nextValue = allOptions[index]?.value ?? '';
+    if (nextValue !== value) onChange(nextValue);
+  };
+
+  return <div className="birthday-wheel-column"><span>{label}</span><div className="birthday-wheel-picker" ref={listRef} role="listbox" aria-label={label} tabIndex={0} onScroll={(event) => selectAtScrollPosition(event.currentTarget)}>{allOptions.map((option) => <button key={option.value || 'empty'} type="button" role="option" aria-selected={option.value === value} className={option.value === value ? 'selected' : ''} onClick={() => onChange(option.value)}>{option.label}</button>)}</div></div>;
+}
 function isValidBirthday(value: string): boolean {
   const match = /^(\d{2})-(\d{2})$/u.exec(value); if (!match) return false;
   const day = Number(match[1]); const month = Number(match[2]);
@@ -345,7 +366,7 @@ export function SettingsPage() {
       <label><span>Отображаемое имя</span><input required maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
       <label><span>Имя пользователя</span><input required minLength={3} maxLength={30} pattern="[A-Za-z0-9_]+" disabled={!user.usernameChangeAvailable} value={username} onChange={(event) => setUsername(event.target.value)} /><small>{user.usernameChangeAvailable ? 'После регистрации username можно изменить только один раз.' : 'Вы уже использовали единственную смену username.'}</small></label>
       <label><span>О себе</span><textarea maxLength={500} value={bio} onChange={(event) => setBio(event.target.value)} /><small>{bio.length} / 500</small></label>
-      <fieldset className="birthday-settings"><legend>День рождения</legend><p>Выберите дату прокруткой. Год необязателен и не будет виден, если его не выбирать.</p><div className="birthday-wheel"><label><span>День</span><select value={birthdayDay} onChange={(event) => setBirthdayDay(event.target.value)}><option value="">—</option>{BIRTHDAY_DAYS.map((day) => <option key={day} value={day}>{Number(day)}</option>)}</select></label><label><span>Месяц</span><select value={birthdayMonth} onChange={(event) => setBirthdayMonth(event.target.value)}><option value="">—</option>{BIRTHDAY_MONTHS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>Год</span><select value={birthdayYear} onChange={(event) => setBirthdayYear(event.target.value)}><option value="">Не указывать</option>{Array.from({ length: new Date().getFullYear() - 1899 }, (_, index) => new Date().getFullYear() - index).map((year) => <option key={year} value={year}>{year}</option>)}</select></label></div></fieldset>
+      <fieldset className="birthday-settings"><legend>День рождения</legend><p>Прокрутите каждую колонку. Год необязателен и не будет виден, если его не выбирать.</p><div className="birthday-wheel"><BirthdayWheelPicker label="День" value={birthdayDay} onChange={setBirthdayDay} options={BIRTHDAY_DAYS.map((day) => ({ value: day, label: String(Number(day)) }))} /><BirthdayWheelPicker label="Месяц" value={birthdayMonth} onChange={setBirthdayMonth} options={BIRTHDAY_MONTHS.map(([value, label]) => ({ value, label }))} /><BirthdayWheelPicker label="Год" value={birthdayYear} onChange={setBirthdayYear} options={BIRTHDAY_YEARS.map((year) => ({ value: year, label: year }))} /></div></fieldset>
       {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success">{message}</p>}
       <button className="primary-button" disabled={pending} type="submit"><Save size={17} />{pending ? 'Сохраняем…' : 'Сохранить'}</button>
     </form>
