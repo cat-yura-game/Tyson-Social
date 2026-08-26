@@ -109,6 +109,8 @@ export async function updateProfile(db: D1Database, userId: string, input: {
   profileColor?: string | undefined;
 }): Promise<AuthUser | null> {
   const now = new Date().toISOString();
+  const hasBirthdayMonthDay = Object.prototype.hasOwnProperty.call(input, 'birthdayMonthDay');
+  const hasBirthdayYear = Object.prototype.hasOwnProperty.call(input, 'birthdayYear');
   const result = await db.prepare(`UPDATE users SET
     display_name = COALESCE(?, display_name),
     bio = COALESCE(?, bio),
@@ -120,8 +122,8 @@ export async function updateProfile(db: D1Database, userId: string, input: {
     updated_at = ?
     WHERE id = ? AND (? IS NULL OR username_changed_at IS NULL)`)
     .bind(input.displayName ?? null, input.bio ?? null, input.username ?? null, input.username ?? null,
-      Object.hasOwn(input, 'birthdayMonthDay') ? 1 : 0, input.birthdayMonthDay ?? null,
-      Object.hasOwn(input, 'birthdayYear') ? 1 : 0, input.birthdayYear ?? null,
+      hasBirthdayMonthDay ? 1 : 0, input.birthdayMonthDay ?? null,
+      hasBirthdayYear ? 1 : 0, input.birthdayYear ?? null,
       input.profileColor ?? null,
       now, userId, input.username ?? null).run();
   if (!result.meta.changes) return null;

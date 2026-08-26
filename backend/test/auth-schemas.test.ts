@@ -22,5 +22,8 @@ describe('auth schemas', () => {
   it('requires an actual profile change', () => {
     expect(() => updateProfileSchema.parse({})).toThrow();
     expect(updateProfileSchema.parse({ bio: 'Hello Tyson' })).toEqual({ bio: 'Hello Tyson' });
+    expect(updateProfileSchema.parse({ profileColor: 'ocean' })).toEqual({ profileColor: 'ocean' });
+    expect(updateProfileSchema.parse({ displayName: 'Tyson', bio: '', birthdayMonthDay: null, birthdayYear: null, profileColor: 'forest' }))
+      .toEqual({ displayName: 'Tyson', bio: '', birthdayMonthDay: null, birthdayYear: null, profileColor: 'forest' });
   });
 });
