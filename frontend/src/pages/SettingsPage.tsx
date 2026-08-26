@@ -14,6 +14,8 @@ import { getUiScale, setUiScale } from '../ui-scale';
 import { getMobileLastTab, setMobileLastTab, type MobileLastTab } from '../mobile-nav';
 
 const PROFILE_COLORS = new Set(['forest', 'ocean', 'sunset', 'violet', 'rose', 'graphite']);
+const BIRTHDAY_MONTHS = [['01', 'Январь'], ['02', 'Февраль'], ['03', 'Март'], ['04', 'Апрель'], ['05', 'Май'], ['06', 'Июнь'], ['07', 'Июль'], ['08', 'Август'], ['09', 'Сентябрь'], ['10', 'Октябрь'], ['11', 'Ноябрь'], ['12', 'Декабрь']] as const;
+const BIRTHDAY_DAYS = Array.from({ length: 31 }, (_, index) => String(index + 1).padStart(2, '0'));
 function isValidBirthday(value: string): boolean {
   const match = /^(\d{2})-(\d{2})$/u.exec(value); if (!match) return false;
   const day = Number(match[1]); const month = Number(match[2]);
@@ -28,7 +30,8 @@ export function SettingsPage() {
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [username, setUsername] = useState(user?.username ?? '');
   const [bio, setBio] = useState(user?.bio ?? '');
-  const [birthdayMonthDay, setBirthdayMonthDay] = useState(user?.birthdayMonthDay ?? '');
+  const [birthdayDay, setBirthdayDay] = useState(() => user?.birthdayMonthDay?.split('-')[0] ?? '');
+  const [birthdayMonth, setBirthdayMonth] = useState(() => user?.birthdayMonthDay?.split('-')[1] ?? '');
   const [birthdayYear, setBirthdayYear] = useState(user?.birthdayYear?.toString() ?? '');
   const [profileColor, setProfileColor] = useState(user?.profileColor ?? 'forest');
   const [profileColorPending, setProfileColorPending] = useState(false);
@@ -111,7 +114,8 @@ export function SettingsPage() {
   const save = async (event: FormEvent) => {
     event.preventDefault(); setPending(true); setError(null); setMessage(null);
     const nextUsername = username.trim().toLowerCase();
-    const normalizedBirthday = birthdayMonthDay.trim(); const normalizedYear = birthdayYear.trim();
+    const normalizedBirthday = birthdayDay && birthdayMonth ? `${birthdayDay}-${birthdayMonth}` : ''; const normalizedYear = birthdayYear.trim();
+    if ((birthdayDay && !birthdayMonth) || (!birthdayDay && birthdayMonth)) { setError('Выберите и день, и месяц рождения.'); setPending(false); return; }
     if (normalizedBirthday && !isValidBirthday(normalizedBirthday)) { setError('Укажите день рождения в формате ДД-ММ, например 14-08.'); setPending(false); return; }
     if (normalizedYear && (!/^\d{4}$/u.test(normalizedYear) || Number(normalizedYear) < 1900 || Number(normalizedYear) > new Date().getFullYear())) { setError('Укажите корректный год рождения.'); setPending(false); return; }
     try {
@@ -341,7 +345,7 @@ export function SettingsPage() {
       <label><span>Отображаемое имя</span><input required maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
       <label><span>Имя пользователя</span><input required minLength={3} maxLength={30} pattern="[A-Za-z0-9_]+" disabled={!user.usernameChangeAvailable} value={username} onChange={(event) => setUsername(event.target.value)} /><small>{user.usernameChangeAvailable ? 'После регистрации username можно изменить только один раз.' : 'Вы уже использовали единственную смену username.'}</small></label>
       <label><span>О себе</span><textarea maxLength={500} value={bio} onChange={(event) => setBio(event.target.value)} /><small>{bio.length} / 500</small></label>
-      <fieldset className="birthday-settings"><legend>День рождения</legend><p>Год необязателен: без него в профиле будет виден только день и месяц.</p><div><label><span>День и месяц</span><input type="text" inputMode="numeric" placeholder="ДД-ММ, например 14-08" pattern="\d{2}-\d{2}" value={birthdayMonthDay} onChange={(event) => setBirthdayMonthDay(event.target.value.replace(/[^\d-]/gu, '').slice(0, 5))} /></label><label><span>Год (необязательно)</span><input type="number" min="1900" max={new Date().getFullYear()} placeholder="Например 2008" value={birthdayYear} onChange={(event) => setBirthdayYear(event.target.value)} /></label></div></fieldset>
+      <fieldset className="birthday-settings"><legend>День рождения</legend><p>Выберите дату прокруткой. Год необязателен и не будет виден, если его не выбирать.</p><div className="birthday-wheel"><label><span>День</span><select value={birthdayDay} onChange={(event) => setBirthdayDay(event.target.value)}><option value="">—</option>{BIRTHDAY_DAYS.map((day) => <option key={day} value={day}>{Number(day)}</option>)}</select></label><label><span>Месяц</span><select value={birthdayMonth} onChange={(event) => setBirthdayMonth(event.target.value)}><option value="">—</option>{BIRTHDAY_MONTHS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>Год</span><select value={birthdayYear} onChange={(event) => setBirthdayYear(event.target.value)}><option value="">Не указывать</option>{Array.from({ length: new Date().getFullYear() - 1899 }, (_, index) => new Date().getFullYear() - index).map((year) => <option key={year} value={year}>{year}</option>)}</select></label></div></fieldset>
       {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success">{message}</p>}
       <button className="primary-button" disabled={pending} type="submit"><Save size={17} />{pending ? 'Сохраняем…' : 'Сохранить'}</button>
     </form>
