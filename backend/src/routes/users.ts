@@ -336,7 +336,7 @@ userRoutes.patch('/me', async (c) => {
     if (error instanceof Error && /unique|constraint/i.test(error.message)) {
       return fail(c, 409, 'USERNAME_TAKEN', 'This username is already taken.');
     }
-    return fail(c, 422, 'VALIDATION_ERROR', 'The submitted profile data is invalid.');
+    return fail(c, 422, 'VALIDATION_ERROR', 'Проверьте имя, username, дату рождения и цвет профиля.');
   }
 });
 

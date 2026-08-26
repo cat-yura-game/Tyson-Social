@@ -13,6 +13,13 @@ import { DiamondIcon } from '../components/DiamondIcon';
 import { getUiScale, setUiScale } from '../ui-scale';
 import { getMobileLastTab, setMobileLastTab, type MobileLastTab } from '../mobile-nav';
 
+const PROFILE_COLORS = new Set(['forest', 'ocean', 'sunset', 'violet', 'rose', 'graphite']);
+function isValidBirthday(value: string): boolean {
+  const match = /^(\d{2})-(\d{2})$/u.exec(value); if (!match) return false;
+  const day = Number(match[1]); const month = Number(match[2]);
+  return month >= 1 && month <= 12 && day >= 1 && day <= new Date(2000, month, 0).getDate();
+}
+
 export function SettingsPage() {
   const { user, refresh, switchAccount } = useAuth();
   const navigate = useNavigate();
@@ -104,9 +111,13 @@ export function SettingsPage() {
   const save = async (event: FormEvent) => {
     event.preventDefault(); setPending(true); setError(null); setMessage(null);
     const nextUsername = username.trim().toLowerCase();
+    const normalizedBirthday = birthdayMonthDay.trim(); const normalizedYear = birthdayYear.trim();
+    if (normalizedBirthday && !isValidBirthday(normalizedBirthday)) { setError('Укажите день рождения в формате ДД-ММ, например 14-08.'); setPending(false); return; }
+    if (normalizedYear && (!/^\d{4}$/u.test(normalizedYear) || Number(normalizedYear) < 1900 || Number(normalizedYear) > new Date().getFullYear())) { setError('Укажите корректный год рождения.'); setPending(false); return; }
     try {
     const input: { displayName: string; bio: string; username?: string; birthdayMonthDay: string | null; birthdayYear: number | null; profileColor: string } = {
-        displayName, bio, birthdayMonthDay: birthdayMonthDay || null, birthdayYear: birthdayYear ? Number(birthdayYear) : null, profileColor,
+        displayName: displayName.trim(), bio: bio.trim(), birthdayMonthDay: normalizedBirthday || null, birthdayYear: normalizedYear ? Number(normalizedYear) : null,
+        profileColor: PROFILE_COLORS.has(profileColor) ? profileColor : 'forest',
       };
       if (nextUsername !== user.username) input.username = nextUsername;
       const result = await apiRequest<{ user: AuthUser }>('/users/me', { method: 'PATCH', body: JSON.stringify(input) });
