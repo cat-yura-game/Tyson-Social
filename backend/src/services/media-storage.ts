@@ -55,6 +55,7 @@ type B2Env = {
   B2_KEY_ID?: string;
   B2_APPLICATION_KEY?: string;
   B2_BUCKET_NAME?: string;
+  B2_ENDPOINT?: string;
 };
 
 interface B2Authorization {
@@ -129,6 +130,33 @@ export function createStoryMediaKey(ownerUserId: string, contentType: AllowedMed
     ? ALLOWED_IMAGE_TYPES[contentType as AllowedImageType]
     : ALLOWED_VIDEO_TYPES[contentType as AllowedVideoType];
   return `media/${ownerUserId}/${crypto.randomUUID()}.${extension}`;
+}
+
+export function createShortVideoKey(ownerUserId: string, contentType: AllowedVideoType): string {
+  if (!/^[0-9a-f-]{36}$/i.test(ownerUserId)) throw new Error('Invalid owner ID.');
+  return `media/${ownerUserId}/shorts/${crypto.randomUUID()}.${ALLOWED_VIDEO_TYPES[contentType]}`;
+}
+
+function awsEncode(value: string): string { return encodeURIComponent(value).replace(/[!'()*]/gu, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`); }
+function awsDate(value: Date): { date: string; timestamp: string } { const iso = value.toISOString().replace(/[-:]/gu, '').replace(/\.\d{3}Z$/u, 'Z'); return { date: iso.slice(0, 8), timestamp: iso }; }
+async function hmac(key: ArrayBuffer | string, value: string): Promise<ArrayBuffer> { return crypto.subtle.sign('HMAC', await crypto.subtle.importKey('raw', typeof key === 'string' ? new TextEncoder().encode(key) : key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']), new TextEncoder().encode(value)); }
+function hex(value: ArrayBuffer): string { return [...new Uint8Array(value)].map((byte) => byte.toString(16).padStart(2, '0')).join(''); }
+
+/** A key-bound S3-compatible URL lets browsers upload large videos without receiving B2 credentials. */
+export async function createB2UploadUrl(env: B2Env, key: string, expiresSeconds = 900): Promise<string | null> {
+  if (!env.B2_KEY_ID || !env.B2_APPLICATION_KEY || !env.B2_BUCKET_NAME || !env.B2_ENDPOINT) return null;
+  const endpoint = new URL(env.B2_ENDPOINT);
+  const region = endpoint.hostname.match(/^s3\.([a-z0-9-]+)\.backblazeb2\.com$/iu)?.[1];
+  if (!region) throw new Error('B2 endpoint must use the S3-compatible regional URL.');
+  const { date, timestamp } = awsDate(new Date()); const credentialScope = `${date}/${region}/s3/aws4_request`;
+  const query = new Map<string, string>([['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'], ['X-Amz-Credential', `${env.B2_KEY_ID}/${credentialScope}`], ['X-Amz-Date', timestamp], ['X-Amz-Expires', String(expiresSeconds)], ['X-Amz-SignedHeaders', 'host']]);
+  const canonicalQuery = [...query.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => `${awsEncode(name)}=${awsEncode(value)}`).join('&');
+  const canonicalUri = `/${awsEncode(env.B2_BUCKET_NAME)}/${key.split('/').map(awsEncode).join('/')}`;
+  const canonicalRequest = `PUT\n${canonicalUri}\n${canonicalQuery}\nhost:${endpoint.host}\n\nhost\nUNSIGNED-PAYLOAD`;
+  const stringToSign = `AWS4-HMAC-SHA256\n${timestamp}\n${credentialScope}\n${hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalRequest)))}`;
+  let signingKey = await hmac(`AWS4${env.B2_APPLICATION_KEY}`, date); signingKey = await hmac(signingKey, region); signingKey = await hmac(signingKey, 's3'); signingKey = await hmac(signingKey, 'aws4_request');
+  endpoint.pathname = canonicalUri; endpoint.search = `${canonicalQuery}&X-Amz-Signature=${hex(await hmac(signingKey, stringToSign))}`;
+  return endpoint.toString();
 }
 
 export function assertValidAiDocument(contentType: string, byteSize: number, maxBytes = MAX_MEDIA_BYTES): asserts contentType is AllowedDocumentType {
