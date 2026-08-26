@@ -71,12 +71,16 @@ export async function ensureShortsUploadCors(env: B2Env): Promise<void> {
   if (!bucket) throw new Error('B2 application key does not allow the configured bucket.');
   const listed = await fetch(`${auth.apiInfo.storageApi.apiUrl}/b2api/v4/b2_list_buckets`, { method: 'POST', headers: { authorization: auth.authorizationToken, 'content-type': 'application/json' }, body: JSON.stringify({ accountId: auth.accountId, bucketId: bucket.id }) });
   if (!listed.ok) throw new Error(`B2 bucket lookup failed (${listed.status}).`);
-  const details = await listed.json() as { buckets: Array<{ bucketType: string; bucketInfo?: Record<string, string>; lifecycleRules?: unknown[]; corsRules?: Array<{ allowedOrigins?: string[]; allowedOperations?: string[] }> }> };
+  const details = await listed.json() as { buckets: Array<{ bucketType: string; bucketInfo?: Record<string, string>; lifecycleRules?: unknown[]; corsRules?: Array<{ corsRuleName?: string; allowedOrigins?: string[]; allowedHeaders?: string[]; allowedOperations?: string[] }> }> };
   const current = details.buckets[0];
   if (!current) throw new Error('B2 bucket details are unavailable.');
-  const exists = current.corsRules?.some((rule) => rule.allowedOrigins?.includes('https://tysonsocial.eu.cc') && rule.allowedOperations?.includes('s3_put'));
+  const desiredRule = { corsRuleName: 'tyson-shorts-s3-upload', allowedOrigins: ['https://tysonsocial.eu.cc'], allowedHeaders: ['content-type'], allowedOperations: ['s3_put'], exposeHeaders: ['etag'], maxAgeSeconds: 3600 };
+  const exists = current.corsRules?.some((rule) => rule.corsRuleName === desiredRule.corsRuleName
+    && rule.allowedOrigins?.includes('https://tysonsocial.eu.cc')
+    && rule.allowedOperations?.includes('s3_put')
+    && rule.allowedHeaders?.includes('content-type'));
   if (exists) { shortsCorsConfigured = true; return; }
-  const corsRules = [...(current.corsRules ?? []), { corsRuleName: 'tyson-shorts-s3-upload', allowedOrigins: ['https://tysonsocial.eu.cc'], allowedHeaders: ['*'], allowedOperations: ['s3_put'], exposeHeaders: ['etag'], maxAgeSeconds: 3600 }];
+  const corsRules = [...(current.corsRules ?? []).filter((rule) => rule.corsRuleName !== desiredRule.corsRuleName), desiredRule];
   const updated = await fetch(`${auth.apiInfo.storageApi.apiUrl}/b2api/v4/b2_update_bucket`, { method: 'POST', headers: { authorization: auth.authorizationToken, 'content-type': 'application/json' }, body: JSON.stringify({ accountId: auth.accountId, bucketId: bucket.id, bucketType: current.bucketType, bucketInfo: current.bucketInfo ?? {}, lifecycleRules: current.lifecycleRules ?? [], corsRules }) });
   if (!updated.ok) throw new Error(`B2 CORS update failed (${updated.status}).`);
   shortsCorsConfigured = true;
