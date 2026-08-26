@@ -121,11 +121,15 @@ export async function updateProfile(db: D1Database, userId: string, input: {
     profile_color = COALESCE(?, profile_color),
     updated_at = ?
     WHERE id = ? AND (? IS NULL OR username_changed_at IS NULL)`)
-    .bind(input.displayName ?? null, input.bio ?? null, input.username ?? null, input.username ?? null,
+    .bind(
+      input.displayName ?? null, input.bio ?? null,
+      input.username ?? null, input.username ?? null,
+      input.username ?? null, now,
       hasBirthdayMonthDay ? 1 : 0, input.birthdayMonthDay ?? null,
       hasBirthdayYear ? 1 : 0, input.birthdayYear ?? null,
       input.profileColor ?? null,
-      now, userId, input.username ?? null).run();
+      now, userId, input.username ?? null,
+    ).run();
   if (!result.meta.changes) return null;
   const row = await db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).bind(userId).first<UserRow>();
   return row ? projectUser(row) : null;
