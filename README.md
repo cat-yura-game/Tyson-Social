@@ -53,7 +53,7 @@ Tyson uses the following public-domain scheme:
 - Legacy redirect: `https://368240.lol` redirects to the official site while preserving the path and query string.
 - Backend/API: `https://tyson-api.clickerscatom.workers.dev` (Cloudflare Workers).
 
-Set the repository variable `VITE_API_URL=https://tyson-api.clickerscatom.workers.dev`. The Worker accepts credentialed browser requests only from `https://tysonsocial.eu.cc`; the short-link host is intentionally not a privileged API origin. New short links use `https://tyso.eu.cc/?to=/profile/<username>` or `https://tyso.eu.cc/?to=/post/<post UUID>`; only these internal destinations are accepted. Previously issued `/u/<username>` and `/p/<post UUID>` links remain compatible.
+Set the repository variable `VITE_API_URL=https://api.tysonsocial.eu.cc`. The Worker accepts credentialed browser requests only from `https://tysonsocial.eu.cc`; the short-link host is intentionally not a privileged API origin. New short links use `https://tyso.eu.cc/?to=/profile/<username>` or `https://tyso.eu.cc/?to=/post/<post UUID>`; only these internal destinations are accepted. Previously issued `/u/<username>` and `/p/<post UUID>` links remain compatible.
 
 ## Project map
 
