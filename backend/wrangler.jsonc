@@ -23,10 +23,7 @@
     "TELEGRAM_OIDC_REDIRECT_URI": "https://api.tysonsocial.eu.cc/api/auth/telegram/callback",
     "FRONTEND_URL": "https://tysonsocial.eu.cc",
     "VAPID_PUBLIC_KEY": "BC6vNepAFt0qWvtYv-7JNjEMMbLx0BRWqS6Z8YdwTNOvBkMdQrnZm5zpJu9nt2z2tcvx489gu4Pj4pXKIugHfao",
-        "VAPID_SUBJECT": "https://tysonsocial.eu.cc",
-        "B2_BUCKET_NAME": "tysonsocial-media-2026",
-        "B2_ENDPOINT": "https://s3.us-east-005.backblazeb2.com",
-        "B2_KEY_ID": "00564c464dde85a000000002",
+    "VAPID_SUBJECT": "https://tysonsocial.eu.cc",
     "B2_BUCKET_NAME": "tysonsocial-media-2026",
     "B2_ENDPOINT": "https://s3.us-east-005.backblazeb2.com",
     "B2_KEY_ID": "00564c464dde85a000000002"
@@ -63,7 +60,10 @@
         "TELEGRAM_OIDC_REDIRECT_URI": "https://api.tysonsocial.eu.cc/api/auth/telegram/callback",
         "FRONTEND_URL": "https://tysonsocial.eu.cc",
         "VAPID_PUBLIC_KEY": "BC6vNepAFt0qWvtYv-7JNjEMMbLx0BRWqS6Z8YdwTNOvBkMdQrnZm5zpJu9nt2z2tcvx489gu4Pj4pXKIugHfao",
-        "VAPID_SUBJECT": "https://tysonsocial.eu.cc"
+        "VAPID_SUBJECT": "https://tysonsocial.eu.cc",
+        "B2_BUCKET_NAME": "tysonsocial-media-2026",
+        "B2_ENDPOINT": "https://s3.us-east-005.backblazeb2.com",
+        "B2_KEY_ID": "00564c464dde85a000000002"
       },
       "d1_databases": [
         {
