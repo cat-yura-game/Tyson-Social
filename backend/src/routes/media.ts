@@ -7,7 +7,7 @@ export const mediaRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>(
 
 mediaRoutes.get('/*', async (c) => {
   const key = decodeURIComponent(c.req.path.slice('/api/media/'.length));
-  if (!/^media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|webp|avif|mp4|webm|mov|pdf|txt|md|csv|json|rtf|doc|docx|xlsx|pptx)$/iu.test(key)) {
+  if (!/^media\/[0-9a-f-]{36}\/(?:shorts\/)?[0-9a-f-]{36}\.(jpg|png|webp|avif|mp4|webm|mov|pdf|txt|md|csv|json|rtf|doc|docx|xlsx|pptx)$/iu.test(key)) {
     return fail(c, 404, 'MEDIA_NOT_FOUND', 'Media not found.');
   }
   const media = await mediaStorage(c.env).get(key);

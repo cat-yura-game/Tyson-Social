@@ -17,7 +17,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [showSearch, setShowSearch] = useState(false);
   const [diamonds, setDiamonds] = useState<number | null>(null);
   const [mobileLastTab, setMobileLastTab] = useState(getMobileLastTab);
-  const mobileImmersive = location.pathname === '/ai' || location.pathname === '/messages';
+  const mobileImmersive = location.pathname === '/ai' || location.pathname === '/messages' || location.pathname === '/shorts';
   const profilePath = user ? `/profile/${user.username}` : '/login';
   const mobileLastItem = user && mobileLastTab === 'profile'
     ? { to: profilePath, label: 'Профиль', icon: UserRound, end: false }
