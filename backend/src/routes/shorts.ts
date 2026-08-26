@@ -75,7 +75,7 @@ shortRoutes.put('/upload-intents/:id/content', async (c) => {
   if (Number.isFinite(contentLength) && contentLength !== upload.byteSize) return fail(c, 422, 'INVALID_SHORT_VIDEO', 'The selected file size changed.');
   const uploadUrl = await createB2UploadUrl(c.env, upload.storageKey);
   if (!uploadUrl) return fail(c, 502, 'SHORTS_UPLOAD_UNAVAILABLE', 'Shorts storage is being configured. Try again shortly.');
-  const stored = await fetch(uploadUrl, { method: 'PUT', headers: { 'content-type': upload.contentType }, body: c.req.raw.body });
+  const stored = await fetch(uploadUrl, { method: 'PUT', headers: { 'content-type': upload.contentType, 'content-length': String(upload.byteSize) }, body: c.req.raw.body });
   if (!stored.ok) return fail(c, 502, 'SHORT_STORAGE_FAILED', 'Storage could not accept the video. Try again shortly.');
   return ok(c, { uploaded: true });
 });
