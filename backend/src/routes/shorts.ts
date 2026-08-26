@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { fail, ok } from '../lib/responses';
 import type { AppVariables, Env } from '../types';
 import { z } from 'zod';
-import { createB2UploadUrl, createShortVideoKey, ensureShortsUploadCors, mediaStorage } from '../services/media-storage';
+import { createB2UploadUrl, createShortVideoKey, mediaStorage } from '../services/media-storage';
 import type { ALLOWED_VIDEO_TYPES } from '../services/media-storage';
 import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
 
@@ -51,14 +51,33 @@ shortRoutes.post('/upload-intents', async (c) => {
   const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
   const input = z.object({ contentType: z.enum(['video/mp4', 'video/webm', 'video/quicktime']), byteSize: z.number().int().positive().max(120 * 1024 * 1024) }).strict().safeParse(await c.req.json().catch(() => null));
   if (!input.success) return fail(c, 422, 'INVALID_SHORT_VIDEO', 'Choose an MP4, WebM, or MOV video up to 120 MiB.');
-  await ensureShortsUploadCors(c.env);
   const storageKey = createShortVideoKey(user.id, input.data.contentType);
-  const uploadUrl = await createB2UploadUrl(c.env, storageKey);
-  if (!uploadUrl) return fail(c, 502, 'SHORTS_UPLOAD_UNAVAILABLE', 'Shorts storage is being configured. Try again shortly.');
   const id = crypto.randomUUID(); const now = new Date(); const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
   await c.env.DB.prepare(`INSERT INTO short_video_uploads (id, uploader_user_id, storage_key, content_type, byte_size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
     .bind(id, user.id, storageKey, input.data.contentType, input.data.byteSize, now.toISOString(), expiresAt.toISOString()).run();
-  return ok(c, { uploadId: id, uploadUrl, expiresAt: expiresAt.toISOString() }, 201);
+  return ok(c, { uploadId: id, expiresAt: expiresAt.toISOString() }, 201);
+});
+
+/**
+ * Keeps the browser on the official API origin. This avoids brittle third-party
+ * CORS preflights while still streaming the actual bytes directly into B2.
+ */
+shortRoutes.put('/upload-intents/:id/content', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const uploadId = c.req.param('id');
+  if (!/^[0-9a-f-]{36}$/iu.test(uploadId) || !c.req.raw.body) return fail(c, 422, 'INVALID_SHORT_VIDEO', 'Invalid video upload.');
+  const upload = await c.env.DB.prepare(`SELECT storage_key AS storageKey, content_type AS contentType, byte_size AS byteSize FROM short_video_uploads
+    WHERE id = ? AND uploader_user_id = ? AND consumed_at IS NULL AND expires_at > ?`).bind(uploadId, user.id, new Date().toISOString())
+    .first<{ storageKey: string; contentType: keyof typeof ALLOWED_VIDEO_TYPES; byteSize: number }>();
+  if (!upload) return fail(c, 404, 'SHORT_UPLOAD_NOT_FOUND', 'The upload has expired. Select the video again.');
+  if (c.req.header('content-type')?.split(';', 1)[0] !== upload.contentType) return fail(c, 422, 'INVALID_SHORT_VIDEO', 'The selected file type changed.');
+  const contentLength = Number(c.req.header('content-length'));
+  if (Number.isFinite(contentLength) && contentLength !== upload.byteSize) return fail(c, 422, 'INVALID_SHORT_VIDEO', 'The selected file size changed.');
+  const uploadUrl = await createB2UploadUrl(c.env, upload.storageKey);
+  if (!uploadUrl) return fail(c, 502, 'SHORTS_UPLOAD_UNAVAILABLE', 'Shorts storage is being configured. Try again shortly.');
+  const stored = await fetch(uploadUrl, { method: 'PUT', headers: { 'content-type': upload.contentType }, body: c.req.raw.body });
+  if (!stored.ok) return fail(c, 502, 'SHORT_STORAGE_FAILED', 'Storage could not accept the video. Try again shortly.');
+  return ok(c, { uploaded: true });
 });
 
 shortRoutes.post('/', async (c) => {
