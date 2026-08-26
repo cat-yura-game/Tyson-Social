@@ -32,7 +32,9 @@ jobs:
       - run: pnpm test
       - run: pnpm --filter @tyson/frontend build
         env:
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          # api.tysonsocial.eu.cc currently points to the development Worker.
+          # Use the actual production Worker until the custom route is moved.
+          VITE_API_URL: https://tyson-api-production.clickerscatom.workers.dev
       - name: Add SPA fallback
         run: cp frontend/dist/index.html frontend/dist/404.html
       - uses: actions/configure-pages@v5
