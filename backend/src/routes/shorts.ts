@@ -127,3 +127,22 @@ shortRoutes.put('/:id/reaction', async (c) => {
   await c.env.DB.prepare('UPDATE short_videos SET like_count = ?, updated_at = ? WHERE id = ?').bind(likes?.count ?? 0, now, id).run();
   return ok(c, { reaction: next, likeCount: likes?.count ?? 0 });
 });
+
+shortRoutes.patch('/:id', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const input = z.object({ caption: z.string().trim().max(500) }).strict().safeParse(await c.req.json().catch(() => null));
+  if (!input.success) return fail(c, 422, 'INVALID_SHORT_VIDEO', 'Caption must be at most 500 characters.');
+  const result = await c.env.DB.prepare('UPDATE short_videos SET caption = ?, updated_at = ? WHERE id = ? AND author_user_id = ? AND status = \'published\'')
+    .bind(input.data.caption, new Date().toISOString(), c.req.param('id'), user.id).run();
+  if ((result.meta.changes ?? 0) !== 1) return fail(c, 404, 'SHORT_NOT_FOUND', 'Short video not found.');
+  return ok(c, { caption: input.data.caption });
+});
+
+shortRoutes.delete('/:id', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const video = await c.env.DB.prepare('SELECT storage_key AS storageKey FROM short_videos WHERE id = ? AND author_user_id = ?').bind(c.req.param('id'), user.id).first<{ storageKey: string }>();
+  if (!video) return fail(c, 404, 'SHORT_NOT_FOUND', 'Short video not found.');
+  await mediaStorage(c.env).delete(video.storageKey);
+  await c.env.DB.prepare('DELETE FROM short_videos WHERE id = ? AND author_user_id = ?').bind(c.req.param('id'), user.id).run();
+  return ok(c, { deleted: true });
+});
