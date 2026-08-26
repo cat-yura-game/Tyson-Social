@@ -58,6 +58,30 @@ type B2Env = {
   B2_ENDPOINT?: string;
 };
 
+let shortsCorsConfigured = false;
+
+/** Ensures browser uploads are allowed only from the official Tyson frontend. */
+export async function ensureShortsUploadCors(env: B2Env): Promise<void> {
+  if (shortsCorsConfigured || !env.B2_KEY_ID || !env.B2_APPLICATION_KEY || !env.B2_BUCKET_NAME) return;
+  const credentials = btoa(`${env.B2_KEY_ID}:${env.B2_APPLICATION_KEY}`);
+  const authorized = await fetch('https://api.backblazeb2.com/b2api/v4/b2_authorize_account', { headers: { authorization: `Basic ${credentials}` } });
+  if (!authorized.ok) throw new Error(`B2 authorization failed (${authorized.status}).`);
+  const auth = await authorized.json() as { accountId: string; authorizationToken: string; apiInfo: { storageApi: { apiUrl: string; allowed: { buckets: Array<{ id: string; name: string | null }> } } } };
+  const bucket = auth.apiInfo.storageApi.allowed.buckets.find((item) => item.name === env.B2_BUCKET_NAME);
+  if (!bucket) throw new Error('B2 application key does not allow the configured bucket.');
+  const listed = await fetch(`${auth.apiInfo.storageApi.apiUrl}/b2api/v4/b2_list_buckets`, { method: 'POST', headers: { authorization: auth.authorizationToken, 'content-type': 'application/json' }, body: JSON.stringify({ accountId: auth.accountId, bucketId: bucket.id }) });
+  if (!listed.ok) throw new Error(`B2 bucket lookup failed (${listed.status}).`);
+  const details = await listed.json() as { buckets: Array<{ bucketType: string; bucketInfo?: Record<string, string>; lifecycleRules?: unknown[]; corsRules?: Array<{ allowedOrigins?: string[]; allowedOperations?: string[] }> }> };
+  const current = details.buckets[0];
+  if (!current) throw new Error('B2 bucket details are unavailable.');
+  const exists = current.corsRules?.some((rule) => rule.allowedOrigins?.includes('https://tysonsocial.eu.cc') && rule.allowedOperations?.includes('s3_put'));
+  if (exists) { shortsCorsConfigured = true; return; }
+  const corsRules = [...(current.corsRules ?? []), { corsRuleName: 'tyson-shorts-s3-upload', allowedOrigins: ['https://tysonsocial.eu.cc'], allowedHeaders: ['*'], allowedOperations: ['s3_put'], exposeHeaders: ['etag'], maxAgeSeconds: 3600 }];
+  const updated = await fetch(`${auth.apiInfo.storageApi.apiUrl}/b2api/v4/b2_update_bucket`, { method: 'POST', headers: { authorization: auth.authorizationToken, 'content-type': 'application/json' }, body: JSON.stringify({ accountId: auth.accountId, bucketId: bucket.id, bucketType: current.bucketType, bucketInfo: current.bucketInfo ?? {}, lifecycleRules: current.lifecycleRules ?? [], corsRules }) });
+  if (!updated.ok) throw new Error(`B2 CORS update failed (${updated.status}).`);
+  shortsCorsConfigured = true;
+}
+
 interface B2Authorization {
   authorizationToken: string;
   apiUrl: string;

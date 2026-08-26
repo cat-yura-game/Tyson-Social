@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { fail, ok } from '../lib/responses';
 import type { AppVariables, Env } from '../types';
 import { z } from 'zod';
-import { createB2UploadUrl, createShortVideoKey, mediaStorage } from '../services/media-storage';
+import { createB2UploadUrl, createShortVideoKey, ensureShortsUploadCors, mediaStorage } from '../services/media-storage';
 import type { ALLOWED_VIDEO_TYPES } from '../services/media-storage';
 import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
 
@@ -52,6 +52,7 @@ shortRoutes.post('/upload-intents', async (c) => {
   const input = z.object({ contentType: z.enum(['video/mp4', 'video/webm', 'video/quicktime']), byteSize: z.number().int().positive().max(120 * 1024 * 1024) }).strict().safeParse(await c.req.json().catch(() => null));
   if (!input.success) return fail(c, 422, 'INVALID_SHORT_VIDEO', 'Choose an MP4, WebM, or MOV video up to 120 MiB.');
   const storageKey = createShortVideoKey(user.id, input.data.contentType);
+  try { await ensureShortsUploadCors(c.env); } catch (error) { return fail(c, 502, 'SHORTS_UPLOAD_UNAVAILABLE', error instanceof Error ? error.message : 'Shorts storage is being configured.'); }
   const uploadUrl = await createB2UploadUrl(c.env, storageKey);
   if (!uploadUrl) return fail(c, 502, 'SHORTS_UPLOAD_UNAVAILABLE', 'Shorts storage is being configured. Try again shortly.');
   const id = crypto.randomUUID(); const now = new Date(); const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
