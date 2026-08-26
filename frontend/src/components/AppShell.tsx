@@ -1,4 +1,4 @@
-import { Gift, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import { Clapperboard, Gift, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { DiamondIcon } from './DiamondIcon';
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
@@ -24,6 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     : { to: user ? '/settings' : '/login', label: user ? 'Настройки' : 'Войти', icon: user ? Settings : LogIn, end: false };
   const navItems = [
     { to: '/', label: 'Главная', icon: Home, end: true },
+    { to: '/shorts', label: 'Shorts', icon: Clapperboard },
     { to: '/messages', label: 'Сообщения', icon: MessageCircle },
     { to: '/ai', label: 'AI', icon: Sparkles },
     ...(user ? [{ to: '/gifts', label: 'Подарки', icon: Gift }] : []),
@@ -66,6 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <nav className="bottom-nav" aria-label="Мобильная навигация">
         {[
           { to: '/', label: 'Главная', icon: Home, end: true },
+          { to: '/shorts', label: 'Shorts', icon: Clapperboard },
           { to: '/messages', label: 'Сообщения', icon: MessageCircle },
           { to: user ? '/create' : '/login', label: 'Создать', icon: Plus },
           { to: '/ai', label: 'AI', icon: Sparkles },
