@@ -5,6 +5,7 @@
   "compatibility_date": "2026-08-08",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "routes": [{ "pattern": "api.tysonsocial.eu.cc/*", "zone_name": "tysonsocial.eu.cc" }],
   "triggers": {
     "crons": ["*/15 * * * *"]
   },
