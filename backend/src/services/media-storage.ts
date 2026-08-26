@@ -42,11 +42,14 @@ export interface MediaMetadata {
 export interface StoredMedia {
   body: ReadableStream;
   metadata: MediaMetadata;
+  partial?: boolean;
+  contentRange?: string | null;
+  contentLength?: string | null;
 }
 
 export interface MediaStorage {
   put(key: string, body: ReadableStream | ArrayBuffer, metadata: MediaMetadata, expiration?: number): Promise<void>;
-  get(key: string): Promise<StoredMedia | null>;
+  get(key: string, range?: string): Promise<StoredMedia | null>;
   delete(key: string): Promise<void>;
 }
 
@@ -269,14 +272,14 @@ export class BackblazeB2MediaStorage implements MediaStorage {
     if (!response.ok) throw new Error(`B2 upload failed (${response.status}).`);
   }
 
-  async get(key: string): Promise<StoredMedia | null> {
+  async get(key: string, range?: string): Promise<StoredMedia | null> {
     const auth = await this.authorize();
-    const response = await fetch(`${auth.downloadUrl}/file/${encodeURIComponent(this.config.B2_BUCKET_NAME)}/${b2FileName(key)}`, { headers: { authorization: auth.authorizationToken } });
+    const response = await fetch(`${auth.downloadUrl}/file/${encodeURIComponent(this.config.B2_BUCKET_NAME)}/${b2FileName(key)}`, { headers: { authorization: auth.authorizationToken, ...(range ? { range } : {}) } });
     if (response.status === 404) return null;
     if (!response.ok || !response.body) throw new Error(`B2 download failed (${response.status}).`);
     const contentType = (fromB2Header(response.headers.get('x-bz-info-contenttype')) ?? response.headers.get('content-type') ?? 'application/octet-stream') as AllowedStorageType;
     const expiresAt = fromB2Header(response.headers.get('x-bz-info-expiresat'));
-    return { body: response.body, metadata: {
+    return { body: response.body, partial: response.status === 206, contentRange: response.headers.get('content-range'), contentLength: response.headers.get('content-length'), metadata: {
       contentType,
       byteSize: Number(response.headers.get('x-bz-info-bytesize') ?? response.headers.get('content-length') ?? 0),
       ownerUserId: fromB2Header(response.headers.get('x-bz-info-owneruserid')) ?? '',
@@ -305,8 +308,8 @@ class HybridMediaStorage implements MediaStorage {
   async put(key: string, body: ReadableStream | ArrayBuffer, metadata: MediaMetadata, expiration?: number): Promise<void> {
     try { await this.primary.put(key, body, metadata, expiration); } catch (error) { console.error(JSON.stringify({ event: 'b2_upload_failed', message: error instanceof Error ? error.message : 'unknown' })); await this.fallback.put(key, body, metadata, expiration); }
   }
-  async get(key: string): Promise<StoredMedia | null> {
-    try { return await this.primary.get(key) ?? await this.fallback.get(key); } catch { return this.fallback.get(key); }
+  async get(key: string, range?: string): Promise<StoredMedia | null> {
+    try { return await this.primary.get(key, range) ?? await this.fallback.get(key, range); } catch { return this.fallback.get(key, range); }
   }
   async delete(key: string): Promise<void> { await Promise.allSettled([this.primary.delete(key), this.fallback.delete(key)]); }
 }
