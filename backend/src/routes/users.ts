@@ -32,6 +32,29 @@ const notificationSettingsSchema = z.object({ messageSoundsEnabled: z.boolean() 
 const powerSavingSettingsSchema = z.object({ powerSavingEnabled: z.boolean(), blockImagesEnabled: z.boolean() }).strict();
 const aliasSchema = z.object({ username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/u).transform((value) => value.toLowerCase()) }).strict();
 
+/** Accepts older cached clients without letting an obsolete optional field block an entire profile save. */
+export function normalizeProfileUpdate(raw: unknown): z.infer<typeof updateProfileSchema> {
+  const parsed = updateProfileSchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid profile payload.');
+  const value = raw as Record<string, unknown>; const normalized: Record<string, unknown> = {};
+  if (typeof value.displayName === 'string' && value.displayName.trim().length >= 1 && value.displayName.trim().length <= 80) normalized.displayName = value.displayName.trim();
+  if (typeof value.bio === 'string' && value.bio.trim().length <= 500) normalized.bio = value.bio.trim();
+  if (typeof value.username === 'string' && /^[A-Za-z0-9_]{3,30}$/u.test(value.username.trim())) normalized.username = value.username.trim().toLowerCase();
+  const birthday = typeof value.birthdayMonthDay === 'string' ? value.birthdayMonthDay.trim() : value.birthdayMonthDay;
+  const birthdayValid = birthday === null || (typeof birthday === 'string' && /^\d{2}-\d{2}$/u.test(birthday) && (() => { const parts = birthday.split('-'); const day = Number(parts[0]); const month = Number(parts[1]); return month >= 1 && month <= 12 && day >= 1 && day <= new Date(2000, month, 0).getDate(); })());
+  if (Object.hasOwn(value, 'birthdayMonthDay') && birthdayValid) {
+    normalized.birthdayMonthDay = birthday;
+    const year = value.birthdayYear;
+    if (year === null || (typeof year === 'number' && Number.isInteger(year) && year >= 1900 && year <= new Date().getFullYear())) normalized.birthdayYear = year;
+  } else if (Object.hasOwn(value, 'birthdayMonthDay')) { normalized.birthdayMonthDay = null; normalized.birthdayYear = null; }
+  if (typeof value.profileColor === 'string') normalized.profileColor = ['forest', 'ocean', 'sunset', 'violet', 'rose', 'graphite'].includes(value.profileColor) ? value.profileColor : 'forest';
+  const repaired = updateProfileSchema.safeParse(normalized);
+  if (!repaired.success) throw new Error('Invalid profile payload.');
+  console.warn(JSON.stringify({ event: 'profile_payload_normalized', droppedFields: parsed.error.issues.map((issue) => issue.path.join('.')) }));
+  return repaired.data;
+}
+
 function publicProfile(user: AuthUser) {
   return {
     id: user.id,
@@ -319,7 +342,7 @@ userRoutes.patch('/me', async (c) => {
   if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
 
   try {
-    const input = updateProfileSchema.parse(await parseJsonBody(c.req.raw));
+    const input = normalizeProfileUpdate(await parseJsonBody(c.req.raw));
     if (input.username && !user.usernameChangeAvailable) {
       return fail(c, 409, 'USERNAME_CHANGE_USED', 'Username can only be changed once after registration.');
     }
