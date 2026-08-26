@@ -168,12 +168,23 @@ userRoutes.get('/me/verified-accounts', async (c) => {
     .first<{ parentUserId: string }>();
   if (parentLink) {
     const parent = await findUserById(c.env.DB, parentLink.parentUserId);
-    return ok(c, { canCreate: false, accounts: parent ? [{ id: parent.id, username: parent.username, displayName: parent.displayName, avatarKey: parent.avatarKey, createdAt: parent.createdAt }] : [] });
+    return ok(c, { canCreate: false, isLinkedAccount: true, accounts: parent ? [{ id: parent.id, username: parent.username, displayName: parent.displayName, avatarKey: parent.avatarKey, createdAt: parent.createdAt }] : [] });
   }
   const rows = await c.env.DB.prepare(`SELECT u.id, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.created_at AS createdAt
     FROM verified_account_links l JOIN users u ON u.id = l.child_user_id WHERE l.parent_user_id = ? ORDER BY l.created_at DESC`)
     .bind(user.id).all();
-  return ok(c, { canCreate: user.verified, accounts: rows.results });
+  return ok(c, { canCreate: user.verified, isLinkedAccount: false, accounts: rows.results });
+});
+
+/** A linked account may hide or restore its inherited verification badge without losing account switching. */
+userRoutes.put('/me/verified-badge', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const input = z.object({ visible: z.boolean() }).strict().safeParse(await c.req.json().catch(() => null));
+  if (!input.success) return fail(c, 422, 'INVALID_VERIFICATION_BADGE', 'Choose whether to show the verification badge.');
+  const linked = await c.env.DB.prepare('SELECT 1 FROM verified_account_links WHERE child_user_id = ?').bind(user.id).first();
+  if (!linked) return fail(c, 403, 'VERIFICATION_BADGE_FORBIDDEN', 'Only linked accounts can change this badge.');
+  await c.env.DB.prepare('UPDATE users SET is_verified = ?, updated_at = ? WHERE id = ?').bind(input.data.visible ? 1 : 0, new Date().toISOString(), user.id).run();
+  return ok(c, { verified: input.data.visible });
 });
 
 userRoutes.post('/me/verified-accounts/:id/switch', async (c) => {

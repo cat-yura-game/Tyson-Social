@@ -65,7 +65,7 @@ export function SettingsPage() {
   const [mobileLastTab, setMobileLastTabValue] = useState<MobileLastTab>(() => getMobileLastTab());
   const [telegramError, setTelegramError] = useState<string | null>(null);
   const [telegramStatus, setTelegramStatus] = useState<{ linked: boolean; identity: { displayName: string | null; username: string | null; linkedAt: string } | null } | null>(null);
-  const [verifiedAccounts, setVerifiedAccounts] = useState<{ canCreate: boolean; accounts: { id: string; username: string; displayName: string }[] } | null>(null);
+  const [verifiedAccounts, setVerifiedAccounts] = useState<{ canCreate: boolean; isLinkedAccount: boolean; accounts: { id: string; username: string; displayName: string }[] } | null>(null);
   const [linkedAccount, setLinkedAccount] = useState({ email: '', username: '', displayName: '', password: '' });
   const [linkedAccountPending, setLinkedAccountPending] = useState(false);
   const [linkedAccountError, setLinkedAccountError] = useState<string | null>(null);
@@ -113,11 +113,11 @@ export function SettingsPage() {
   }, [refresh, telegramCallbackError, telegramResult]);
 
   const loadVerifiedAccounts = async () => {
-    const result = await apiRequest<{ canCreate: boolean; accounts: { id: string; username: string; displayName: string }[] }>('/users/me/verified-accounts');
+    const result = await apiRequest<{ canCreate: boolean; isLinkedAccount: boolean; accounts: { id: string; username: string; displayName: string }[] }>('/users/me/verified-accounts');
     setVerifiedAccounts(result);
   };
 
-  useEffect(() => { if (user?.verified) void loadVerifiedAccounts().catch(() => setVerifiedAccounts(null)); }, [user?.id, user?.verified]);
+  useEffect(() => { if (user) void loadVerifiedAccounts().catch(() => setVerifiedAccounts(null)); }, [user?.id]);
   useEffect(() => { if (user) void apiRequest<{ secretChatEnabled: boolean }>('/users/me/messaging-settings').then((value) => setSecretChatEnabled(value.secretChatEnabled)).catch(() => undefined); }, [user]);
   useEffect(() => { if (user) void Promise.all([
     apiRequest<typeof privacy>('/users/me/privacy-settings'), apiRequest<{ messageSoundsEnabled: boolean }>('/users/me/notification-settings'),
@@ -238,6 +238,12 @@ export function SettingsPage() {
     setLinkedAccountPending(true); setLinkedAccountError(null);
     try { await switchAccount(accountId); navigate('/settings', { replace: true }); }
     catch (caught) { setLinkedAccountError(caught instanceof ApiError ? caught.message : 'Не удалось переключить аккаунт.'); }
+    finally { setLinkedAccountPending(false); }
+  };
+  const changeBadgeVisibility = async (visible: boolean) => {
+    setLinkedAccountPending(true); setLinkedAccountError(null);
+    try { await apiRequest('/users/me/verified-badge', { method: 'PUT', body: JSON.stringify({ visible }) }); await refresh(); await loadVerifiedAccounts(); setMessage(visible ? 'Галочка снова отображается.' : 'Галочка скрыта у этого аккаунта.'); }
+    catch (caught) { setLinkedAccountError(caught instanceof ApiError ? caught.message : 'Не удалось изменить отображение галочки.'); }
     finally { setLinkedAccountPending(false); }
   };
 
@@ -388,6 +394,7 @@ export function SettingsPage() {
         <button className="secondary-button" type="submit" disabled={linkedAccountPending}><UserPlus size={16} />{linkedAccountPending ? 'Создаём…' : 'Создать аккаунт с галочкой'}</button>
       </form>}
       {!!verifiedAccounts.accounts.length && <div className="linked-account-list">{verifiedAccounts.accounts.map((account) => <button key={account.id} type="button" disabled={linkedAccountPending} onClick={() => void changeAccount(account.id)}><BadgeCheck size={15} /><span>{account.displayName} <small>@{account.username}</small></span><span className="linked-account-switch">Перейти</span></button>)}</div>}
+      {verifiedAccounts.isLinkedAccount && <button className="secondary-button" type="button" disabled={linkedAccountPending} onClick={() => void changeBadgeVisibility(!user.verified)}><BadgeCheck size={16} />{user.verified ? 'Скрыть галочку у этого аккаунта' : 'Показать галочку у этого аккаунта'}</button>}
     </section>}
     <section className="delete-account-settings" aria-labelledby="delete-account-title">
       <div><p className="eyebrow">Опасная зона</p><h2 id="delete-account-title"><Trash2 size={18} />Удалить аккаунт</h2><p>Профиль, публикации, комментарии, истории, AI-диалоги, сообщения и загруженные файлы будут удалены без возможности восстановления.</p></div>
