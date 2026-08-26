@@ -9,7 +9,7 @@ import {
   assertValidMedia,
   createAiAttachmentKey,
   createMediaKey,
-  KvMediaStorage,
+  mediaStorage,
 } from '../services/media-storage';
 import { uploadLimitForUser } from '../services/upload-limits';
 import type { AppVariables, Env } from '../types';
@@ -254,7 +254,7 @@ aiChatRoutes.delete('/conversations/:id', async (c) => {
   const deleted = await c.env.DB.prepare('DELETE FROM ai_conversations WHERE id = ? AND user_id = ?')
     .bind(c.req.param('id'), auth.user.id).run();
   if (!deleted.meta.changes) return fail(c, 404, 'AI_CONVERSATION_NOT_FOUND', 'AI conversation not found.');
-  const storage = new KvMediaStorage(c.env.MEDIA);
+  const storage = mediaStorage(c.env);
   await Promise.all(images.results.map((image) => storage.delete(image.storageKey)));
   return ok(c, { deleted: true });
 });
@@ -277,7 +277,7 @@ aiChatRoutes.delete('/conversations/:id/messages/:messageId', async (c) => {
     WHERE m.id = ? AND m.conversation_id = ? AND conversation.user_id = ?`).bind(c.req.param('messageId'), c.req.param('id'), auth.user.id).first<{ storageKey: string | null }>();
   if (!message) return fail(c, 404, 'AI_MESSAGE_NOT_FOUND', 'AI message not found.');
   await c.env.DB.prepare('DELETE FROM ai_chat_messages WHERE id = ? AND conversation_id = ?').bind(c.req.param('messageId'), c.req.param('id')).run();
-  if (message.storageKey) await new KvMediaStorage(c.env.MEDIA).delete(message.storageKey);
+  if (message.storageKey) await mediaStorage(c.env).delete(message.storageKey);
   return ok(c, { deleted: true });
 });
 
@@ -333,7 +333,7 @@ aiChatRoutes.post('/conversations/:id/messages', async (c) => {
     const expiry = new Date(Date.now() + IMAGE_LIFETIME_MS);
     imageExpiresAt = expiry.toISOString();
     imageStorageKey = createMediaKey(auth.user.id, image.type);
-    await new KvMediaStorage(c.env.MEDIA).put(imageStorageKey, bytes.buffer, {
+    await mediaStorage(c.env).put(imageStorageKey, bytes.buffer, {
       contentType: image.type,
       byteSize: bytes.byteLength,
       ownerUserId: auth.user.id,
@@ -351,7 +351,7 @@ aiChatRoutes.post('/conversations/:id/messages', async (c) => {
     imageStorageKey = createAiAttachmentKey(auth.user.id, document.type);
     attachmentName = document.name.replaceAll(/[\\/]/gu, '_').split('').map((char) => char.charCodeAt(0) < 32 ? '_' : char).join('').slice(0, 180) || 'document';
     attachmentContentType = document.type;
-    await new KvMediaStorage(c.env.MEDIA).put(imageStorageKey, bytes.buffer, { contentType: document.type, byteSize: bytes.byteLength, ownerUserId: auth.user.id, expiresAt: imageExpiresAt }, Math.floor(expiry.getTime() / 1000));
+    await mediaStorage(c.env).put(imageStorageKey, bytes.buffer, { contentType: document.type, byteSize: bytes.byteLength, ownerUserId: auth.user.id, expiresAt: imageExpiresAt }, Math.floor(expiry.getTime() / 1000));
     imagePart = { inlineData: { mimeType: document.type, data: base64Encode(bytes) } };
   }
 
@@ -361,7 +361,7 @@ aiChatRoutes.post('/conversations/:id/messages', async (c) => {
     WHERE request_count < ? RETURNING request_count AS used`)
     .bind(auth.user.id, quota.date, new Date().toISOString(), quota.limit).first<{ used: number }>();
   if (!consumed) {
-    if (imageStorageKey) await new KvMediaStorage(c.env.MEDIA).delete(imageStorageKey);
+    if (imageStorageKey) await mediaStorage(c.env).delete(imageStorageKey);
     return fail(c, 429, 'AI_DAILY_LIMIT_REACHED', `Daily AI limit of ${quota.limit} requests has been reached.`);
   }
 
@@ -427,7 +427,7 @@ export async function deleteExpiredAiChatImages(env: Env): Promise<number> {
     WHERE image_storage_key IS NOT NULL AND image_expires_at <= ? LIMIT 500`).bind(now)
     .all<{ id: string; storageKey: string }>();
   if (!rows.results.length) return 0;
-  const storage = new KvMediaStorage(env.MEDIA);
+  const storage = mediaStorage(env);
   await Promise.all(rows.results.map((image) => storage.delete(image.storageKey)));
   const placeholders = rows.results.map(() => '?').join(',');
   await env.DB.prepare(`UPDATE ai_chat_messages SET image_storage_key = NULL, image_expires_at = NULL, attachment_name = NULL, attachment_content_type = NULL

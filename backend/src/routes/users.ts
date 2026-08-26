@@ -4,7 +4,7 @@ import { fail, ok } from '../lib/responses';
 import { createSession, findUserById, findUserByUsername, updateProfile } from '../repositories/auth-repository';
 import { parseJsonBody, registerSchema, updateProfileSchema } from '../schemas/auth';
 import type { AppVariables, AuthUser, Env } from '../types';
-import { assertImageSignature, assertValidMedia, createMediaKey, KvMediaStorage } from '../services/media-storage';
+import { assertImageSignature, assertValidMedia, createMediaKey, mediaStorage } from '../services/media-storage';
 import { feedPreferencesSchema } from '../schemas/preferences';
 import { FEED_TOPICS, type FeedTopicId } from '../recommendations/topics';
 import { base64Encode } from '../security/encoding';
@@ -360,7 +360,7 @@ userRoutes.post('/me/avatar', async (c) => {
   if (moderation.decision !== 'allow') {
     return fail(c, 422, 'AVATAR_REJECTED', 'This avatar could not be approved by safety checks.');
   }
-  const storage = new KvMediaStorage(c.env.MEDIA);
+  const storage = mediaStorage(c.env);
   const key = createMediaKey(user.id, contentType);
   await storage.put(key, body, { contentType, byteSize: body.byteLength, ownerUserId: user.id });
   await c.env.DB.prepare('UPDATE users SET avatar_key = ?, updated_at = ? WHERE id = ?')
@@ -374,7 +374,7 @@ userRoutes.delete('/me/avatar', async (c) => {
   if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
   await c.env.DB.prepare('UPDATE users SET avatar_key = NULL, updated_at = ? WHERE id = ?')
     .bind(new Date().toISOString(), user.id).run();
-  if (user.avatarKey) await new KvMediaStorage(c.env.MEDIA).delete(user.avatarKey);
+  if (user.avatarKey) await mediaStorage(c.env).delete(user.avatarKey);
   return ok(c, { avatarKey: null });
 });
 

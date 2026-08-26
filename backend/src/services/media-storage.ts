@@ -50,6 +50,38 @@ export interface MediaStorage {
   delete(key: string): Promise<void>;
 }
 
+type B2Env = {
+  MEDIA: KVNamespace;
+  B2_KEY_ID?: string;
+  B2_APPLICATION_KEY?: string;
+  B2_BUCKET_NAME?: string;
+};
+
+interface B2Authorization {
+  authorizationToken: string;
+  apiUrl: string;
+  downloadUrl: string;
+  bucketId: string;
+}
+
+function b2FileName(key: string): string {
+  return key.split('/').map((part) => encodeURIComponent(part)).join('/');
+}
+
+function b2HeaderValue(value: string): string {
+  return encodeURIComponent(value);
+}
+
+function fromB2Header(value: string | null): string | undefined {
+  if (!value) return undefined;
+  try { return decodeURIComponent(value); } catch { return value; }
+}
+
+async function sha1Hex(body: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-1', body);
+  return [...new Uint8Array(digest)].map((part) => part.toString(16).padStart(2, '0')).join('');
+}
+
 export function assertValidMedia(contentType: string, byteSize: number, maxBytes = MAX_MEDIA_BYTES): asserts contentType is AllowedImageType {
   if (!(contentType in ALLOWED_IMAGE_TYPES)) throw new Error('Unsupported image type.');
   if (!Number.isSafeInteger(byteSize) || byteSize <= 0 || byteSize > maxBytes) {
@@ -140,4 +172,91 @@ export class KvMediaStorage implements MediaStorage {
   async delete(key: string): Promise<void> {
     await this.namespace.delete(key);
   }
+}
+
+/** Backblaze B2 is used for new media. KV remains as a fallback for files uploaded before migration. */
+export class BackblazeB2MediaStorage implements MediaStorage {
+  constructor(private readonly config: Required<Pick<B2Env, 'B2_KEY_ID' | 'B2_APPLICATION_KEY' | 'B2_BUCKET_NAME'>>) {}
+
+  private async authorize(): Promise<B2Authorization> {
+    const credentials = btoa(`${this.config.B2_KEY_ID}:${this.config.B2_APPLICATION_KEY}`);
+    const response = await fetch('https://api.backblazeb2.com/b2api/v4/b2_authorize_account', { headers: { authorization: `Basic ${credentials}` } });
+    if (!response.ok) throw new Error(`B2 authorization failed (${response.status}).`);
+    const data = await response.json() as { authorizationToken: string; apiInfo: { storageApi: { apiUrl: string; downloadUrl: string; allowed: { buckets: Array<{ id: string; name: string | null }> } } } };
+    const bucket = data.apiInfo.storageApi.allowed.buckets.find((item) => item.name === this.config.B2_BUCKET_NAME);
+    if (!bucket) throw new Error('B2 application key does not allow the configured bucket.');
+    return { authorizationToken: data.authorizationToken, apiUrl: data.apiInfo.storageApi.apiUrl, downloadUrl: data.apiInfo.storageApi.downloadUrl, bucketId: bucket.id };
+  }
+
+  async put(key: string, body: ReadableStream | ArrayBuffer, metadata: MediaMetadata): Promise<void> {
+    const bytes = body instanceof ArrayBuffer ? body : await new Response(body).arrayBuffer();
+    const auth = await this.authorize();
+    const uploadUrl = await fetch(`${auth.apiUrl}/b2api/v4/b2_get_upload_url`, {
+      method: 'POST', headers: { authorization: auth.authorizationToken, 'content-type': 'application/json' }, body: JSON.stringify({ bucketId: auth.bucketId }),
+    });
+    if (!uploadUrl.ok) throw new Error(`B2 upload URL failed (${uploadUrl.status}).`);
+    const upload = await uploadUrl.json() as { uploadUrl: string; authorizationToken: string };
+    const response = await fetch(upload.uploadUrl, {
+      method: 'POST',
+      headers: {
+        authorization: upload.authorizationToken,
+        'content-type': metadata.contentType,
+        'content-length': String(bytes.byteLength),
+        'x-bz-file-name': b2FileName(key),
+        'x-bz-content-sha1': await sha1Hex(bytes),
+        'x-bz-info-contenttype': b2HeaderValue(metadata.contentType),
+        'x-bz-info-bytesize': String(metadata.byteSize),
+        'x-bz-info-owneruserid': b2HeaderValue(metadata.ownerUserId),
+        ...(metadata.expiresAt ? { 'x-bz-info-expiresat': b2HeaderValue(metadata.expiresAt) } : {}),
+      }, body: bytes,
+    });
+    if (!response.ok) throw new Error(`B2 upload failed (${response.status}).`);
+  }
+
+  async get(key: string): Promise<StoredMedia | null> {
+    const auth = await this.authorize();
+    const response = await fetch(`${auth.downloadUrl}/file/${encodeURIComponent(this.config.B2_BUCKET_NAME)}/${b2FileName(key)}`, { headers: { authorization: auth.authorizationToken } });
+    if (response.status === 404) return null;
+    if (!response.ok || !response.body) throw new Error(`B2 download failed (${response.status}).`);
+    const contentType = (fromB2Header(response.headers.get('x-bz-info-contenttype')) ?? response.headers.get('content-type') ?? 'application/octet-stream') as AllowedStorageType;
+    const expiresAt = fromB2Header(response.headers.get('x-bz-info-expiresat'));
+    return { body: response.body, metadata: {
+      contentType,
+      byteSize: Number(response.headers.get('x-bz-info-bytesize') ?? response.headers.get('content-length') ?? 0),
+      ownerUserId: fromB2Header(response.headers.get('x-bz-info-owneruserid')) ?? '',
+      ...(expiresAt ? { expiresAt } : {}),
+    } };
+  }
+
+  async delete(key: string): Promise<void> {
+    const auth = await this.authorize();
+    const listed = await fetch(`${auth.apiUrl}/b2api/v4/b2_list_file_names`, {
+      method: 'POST', headers: { authorization: auth.authorizationToken, 'content-type': 'application/json' }, body: JSON.stringify({ bucketId: auth.bucketId, startFileName: key, maxFileCount: 1 }),
+    });
+    if (!listed.ok) throw new Error(`B2 list failed (${listed.status}).`);
+    const data = await listed.json() as { files: Array<{ fileName: string; fileId: string }> };
+    const file = data.files.find((item) => item.fileName === key);
+    if (!file) return;
+    const removed = await fetch(`${auth.apiUrl}/b2api/v4/b2_delete_file_version`, {
+      method: 'POST', headers: { authorization: auth.authorizationToken, 'content-type': 'application/json' }, body: JSON.stringify({ fileName: file.fileName, fileId: file.fileId }),
+    });
+    if (!removed.ok) throw new Error(`B2 delete failed (${removed.status}).`);
+  }
+}
+
+class HybridMediaStorage implements MediaStorage {
+  constructor(private readonly primary: MediaStorage, private readonly fallback: MediaStorage) {}
+  async put(key: string, body: ReadableStream | ArrayBuffer, metadata: MediaMetadata, expiration?: number): Promise<void> {
+    try { await this.primary.put(key, body, metadata, expiration); } catch (error) { console.error(JSON.stringify({ event: 'b2_upload_failed', message: error instanceof Error ? error.message : 'unknown' })); await this.fallback.put(key, body, metadata, expiration); }
+  }
+  async get(key: string): Promise<StoredMedia | null> {
+    try { return await this.primary.get(key) ?? await this.fallback.get(key); } catch { return this.fallback.get(key); }
+  }
+  async delete(key: string): Promise<void> { await Promise.allSettled([this.primary.delete(key), this.fallback.delete(key)]); }
+}
+
+export function mediaStorage(env: B2Env): MediaStorage {
+  const fallback = new KvMediaStorage(env.MEDIA);
+  if (!env.B2_KEY_ID || !env.B2_APPLICATION_KEY || !env.B2_BUCKET_NAME) return fallback;
+  return new HybridMediaStorage(new BackblazeB2MediaStorage({ B2_KEY_ID: env.B2_KEY_ID, B2_APPLICATION_KEY: env.B2_APPLICATION_KEY, B2_BUCKET_NAME: env.B2_BUCKET_NAME }), fallback);
 }

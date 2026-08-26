@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { fail } from '../lib/responses';
-import { KvMediaStorage } from '../services/media-storage';
+import { mediaStorage } from '../services/media-storage';
 import type { AppVariables, Env } from '../types';
 
 export const mediaRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
@@ -10,7 +10,7 @@ mediaRoutes.get('/*', async (c) => {
   if (!/^media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|webp|avif|mp4|webm|mov|pdf|txt|md|csv|json|rtf|doc|docx|xlsx|pptx)$/iu.test(key)) {
     return fail(c, 404, 'MEDIA_NOT_FOUND', 'Media not found.');
   }
-  const media = await new KvMediaStorage(c.env.MEDIA).get(key);
+  const media = await mediaStorage(c.env).get(key);
   if (!media) return fail(c, 404, 'MEDIA_NOT_FOUND', 'Media not found.');
   const secondsUntilExpiry = media.metadata.expiresAt
     ? Math.max(0, Math.floor((Date.parse(media.metadata.expiresAt) - Date.now()) / 1000))

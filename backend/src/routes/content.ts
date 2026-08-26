@@ -7,7 +7,7 @@ import { sha256 } from '../security/tokens';
 import type { AppVariables, Env } from '../types';
 import { interleaveAuthors, rankFeed, type FeedCandidate } from '../recommendations/feed-ranking';
 import { extractTrends, type TrendSourcePost } from '../trends/extract-trends';
-import { assertImageSignature, assertValidMedia, createMediaKey, KvMediaStorage, type AllowedImageType } from '../services/media-storage';
+import { assertImageSignature, assertValidMedia, createMediaKey, mediaStorage, type AllowedImageType } from '../services/media-storage';
 import { base64Encode } from '../security/encoding';
 import { moderatePublicContent } from '../services/moderation-service';
 import { uploadLimitForUser } from '../services/upload-limits';
@@ -193,7 +193,7 @@ contentRoutes.post('/posts', async (c) => {
   const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null;
   if (scheduledAt && (!Number.isFinite(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now())) return fail(c, 422, 'INVALID_SCHEDULE', 'Choose a future publication time.');
   const status = result.decision === 'allow' ? (scheduledAt ? 'draft' : 'published') : result.decision === 'block' ? 'blocked' : 'review';
-  const storage = new KvMediaStorage(c.env.MEDIA);
+  const storage = mediaStorage(c.env);
   const mediaKey = input.image && result.decision !== 'block' ? createMediaKey(auth.user.id, input.image.contentType) : null;
   const statements = [
     c.env.DB.prepare(`INSERT INTO posts (id, author_user_id, title, body, status, scheduled_at, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(postId, auth.user.id, input.title, input.body, status, scheduledAt?.toISOString() ?? null, status === 'published' ? now : null, now, now),
@@ -373,7 +373,7 @@ contentRoutes.delete('/posts/:id', async (c) => {
     .bind(c.req.param('id')).all<{ storageKey: string }>();
   await c.env.DB.prepare('DELETE FROM posts WHERE id = ? AND author_user_id = ?')
     .bind(c.req.param('id'), auth.user.id).run();
-  const storage = new KvMediaStorage(c.env.MEDIA);
+  const storage = mediaStorage(c.env);
   await Promise.all(media.results.map((item) => storage.delete(item.storageKey)));
   return ok(c, { deleted: true });
 });

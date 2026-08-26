@@ -1,4 +1,4 @@
-import { KvMediaStorage } from './media-storage';
+import { mediaStorage } from './media-storage';
 
 interface MediaKeyRow { storageKey: string | null }
 
@@ -19,7 +19,7 @@ async function collectMediaKeys(db: D1Database, userId: string): Promise<string[
   return [...new Set(rows.results.map((row) => row.storageKey).filter((key): key is string => Boolean(key)))];
 }
 
-export async function deleteUserAccount(env: { DB: D1Database; MEDIA: KVNamespace }, userId: string): Promise<void> {
+export async function deleteUserAccount(env: { DB: D1Database; MEDIA: KVNamespace; B2_KEY_ID?: string; B2_APPLICATION_KEY?: string; B2_BUCKET_NAME?: string }, userId: string): Promise<void> {
   const mediaKeys = await collectMediaKeys(env.DB, userId);
 
   await env.DB.batch([
@@ -40,7 +40,7 @@ export async function deleteUserAccount(env: { DB: D1Database; MEDIA: KVNamespac
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(userId),
   ]);
 
-  const storage = new KvMediaStorage(env.MEDIA);
+  const storage = mediaStorage(env);
   const cleanup = await Promise.allSettled(mediaKeys.map((key) => storage.delete(key)));
   const failed = cleanup.filter((result) => result.status === 'rejected').length;
   if (failed > 0) console.error(JSON.stringify({ event: 'account_media_cleanup_incomplete', userId, failed }));

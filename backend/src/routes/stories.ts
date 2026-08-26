@@ -5,7 +5,7 @@ import {
   assertStoryMediaSignature,
   assertValidStoryMedia,
   createStoryMediaKey,
-  KvMediaStorage,
+  mediaStorage,
 } from '../services/media-storage';
 import type { AppVariables, Env } from '../types';
 import { base64Encode } from '../security/encoding';
@@ -102,7 +102,7 @@ storyRoutes.post('/', async (c) => {
   const expiresAt = new Date(createdAt.getTime() + STORY_LIFETIME_MS);
   const storageKey = createStoryMediaKey(user.id, contentType);
   const mediaType = contentType in ALLOWED_IMAGE_TYPES ? 'image' : 'video';
-  const storage = new KvMediaStorage(c.env.MEDIA);
+  const storage = mediaStorage(c.env);
   await storage.put(storageKey, body, {
     contentType,
     byteSize: body.byteLength,
@@ -131,7 +131,7 @@ storyRoutes.delete('/:id', async (c) => {
   if (!story) return fail(c, 404, 'STORY_NOT_FOUND', 'Story not found.');
   if (story.authorId !== user.id) return fail(c, 403, 'FORBIDDEN', 'You can only delete your own story.');
   await c.env.DB.prepare('DELETE FROM stories WHERE id = ? AND author_user_id = ?').bind(id, user.id).run();
-  await new KvMediaStorage(c.env.MEDIA).delete(story.storageKey);
+  await mediaStorage(c.env).delete(story.storageKey);
   return ok(c, { deleted: true });
 });
 
@@ -140,7 +140,7 @@ export async function deleteExpiredStories(env: Env): Promise<number> {
   const rows = await env.DB.prepare('SELECT id, storage_key AS storageKey FROM stories WHERE expires_at <= ? LIMIT 500')
     .bind(now).all<{ id: string; storageKey: string }>();
   if (!rows.results.length) return 0;
-  const storage = new KvMediaStorage(env.MEDIA);
+  const storage = mediaStorage(env);
   await Promise.all(rows.results.map((story) => storage.delete(story.storageKey)));
   const placeholders = rows.results.map(() => '?').join(',');
   await env.DB.prepare(`DELETE FROM stories WHERE id IN (${placeholders})`).bind(...rows.results.map((story) => story.id)).run();

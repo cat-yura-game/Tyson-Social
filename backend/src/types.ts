@@ -1,6 +1,10 @@
 export interface Env {
   DB: D1Database;
   MEDIA: KVNamespace;
+  B2_KEY_ID?: string;
+  B2_APPLICATION_KEY?: string;
+  B2_BUCKET_NAME?: string;
+  B2_ENDPOINT?: string;
   APP_ENV: 'development' | 'production' | 'test';
   ALLOWED_ORIGINS: string;
   SESSION_SECRET?: string;
