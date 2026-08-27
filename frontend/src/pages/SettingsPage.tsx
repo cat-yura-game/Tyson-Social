@@ -1,6 +1,6 @@
 import { ArrowLeft, BadgeCheck, BatteryMedium, BellRing, Camera, ChevronRight, CircleDashed, Database, Gem, LockKeyhole, Mail, Monitor, MonitorSmartphone, Moon, QrCode, RefreshCw, Save, Send, Settings, ShieldCheck, Sparkles, Sun, Trash2, Unlink, UserPlus, UserRound, Volume2 } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest, mediaUrl, setAccessToken } from '../api/client';
 import { useAuth, type AuthUser } from '../auth/AuthProvider';
 import { cropAvatarToSquare } from '../images/crop-square';
@@ -341,6 +341,7 @@ export function SettingsPage() {
       <button className="settings-my-profile" type="button" onClick={() => navigate(`/profile/${user.username}`)}><b>Мой профиль</b><ChevronRight /></button>
     </section>
     <nav className="settings-categories" aria-label="Разделы настроек">{categories.map(([target, icon, Icon, label, state]) => <button key={`${target}-${label}`} type="button" onClick={() => navigate(target === 'diamonds' ? '/gifts' : `/settings/${target}`)}><i className={`settings-category-icon ${icon}`}>{target === 'diamonds' ? <DiamondIcon size={24} /> : <Icon size={21} />}</i><span>{label}</span>{state && <small>{state}</small>}<ChevronRight /></button>)}</nav>
+    <Link className="settings-support-link" to="/support"><Send size={18} />Поддержка Tyson<ChevronRight /></Link>
     {showQr && <ProfileQrModal username={user.username} onClose={() => setShowQr(false)} />}
   </section>;
 

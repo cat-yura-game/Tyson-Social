@@ -42,7 +42,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={mobileImmersive ? 'app-shell mobile-immersive' : 'app-shell'}>
-      <header className="mobile-header"><Brand /><span className="mobile-header-actions">{user && <NavLink className="mobile-diamonds" to="/gifts" aria-label="Подарки и алмазы"><DiamondIcon size={17} />{diamonds ?? 0}</NavLink>}<NotificationBell enabled={Boolean(user)} /></span></header>
+      <header className="mobile-header"><Brand /><span className="mobile-header-actions">{user && <NavLink className="mobile-diamonds" to="/gifts" aria-label="Подарки и алмазы"><DiamondIcon size={17} />{diamonds ?? 0}</NavLink>}{user && <NavLink className="mobile-support" to="/support" aria-label="Поддержка Tyson"><LifeBuoy size={18} /></NavLink>}<NotificationBell enabled={Boolean(user)} /></span></header>
       <aside className="sidebar">
         <Brand />
         <nav className="primary-nav" aria-label="Основная навигация">
