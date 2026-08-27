@@ -940,6 +940,17 @@ html[data-theme='dark'] .moderation-note { background: #202822; color: var(--mut
 html[data-theme='dark'] .post-promotion-option, html[data-theme='dark'] .rich-post-text blockquote { border-color: #285269; background: #142b38; color: #d7eefa; }
 html[data-theme='dark'] .push-settings { border-color: #285269; background: linear-gradient(145deg, #142b38, #11232e); }html[data-theme='dark'] .push-settings p { color: #b4ccd9; }
 html[data-theme='dark'] .privacy-settings, html[data-theme='dark'] .notification-sound-settings, html[data-theme='dark'] .settings-categories { background: #15212a; }html[data-theme='dark'] .privacy-settings select { background: #101a21; color: var(--ink); }
+html[data-theme='dark'] .email-settings { border-color: #29485a; background: linear-gradient(145deg, #162b36, #12232d); box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%); color: var(--ink); }
+html[data-theme='dark'] .email-settings-head > span { background: #1c4b60; color: #9bdcff; }
+html[data-theme='dark'] .email-settings-head p:last-child, html[data-theme='dark'] .change-email-form > p { color: #a9bfca; }
+html[data-theme='dark'] .email-settings-address { border-color: #365766; background: #101c24; }
+html[data-theme='dark'] .email-settings-address strong { color: var(--ink); }
+html[data-theme='dark'] .change-email-form { border-color: #365766; background: rgb(16 28 36 / 80%); }
+html[data-theme='dark'] .change-email-form label > span, html[data-theme='dark'] .change-email-form input { color: var(--ink); }
+html[data-theme='dark'] .change-email-form input { border-color: #365766; background: #101c24; }
+html[data-theme='dark'] .login-approval-settings { border-color: #29485a; background: linear-gradient(145deg, #172b36, #12232d); color: var(--ink); }
+html[data-theme='dark'] .login-approval-settings p { color: #a9bfca; }
+.login-approval-settings { margin-bottom: 22px; padding: 20px; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); }
 html[data-theme='dark'] .settings-categories button { border-color: rgb(255 255 255 / 9%); color: var(--ink); }html[data-theme='dark'] .power-saving-settings { border-color: #64471c; background: linear-gradient(145deg, #2c2416, #201b12); }html[data-theme='dark'] .power-saving-settings p, html[data-theme='dark'] .power-saving-row small { color: #d4bd91; }
 html[data-theme='dark'] .settings-my-profile { border-color: rgb(255 255 255 / 9%); background: #15212a; color: var(--ink); }
 html[data-theme='dark'] .settings-profile-header { border-color: rgb(137 215 255 / 16%); background: radial-gradient(circle at 50% 16%, rgb(52 164 224 / 26%), transparent 36%), linear-gradient(145deg, #123b54, #102b40 55%, #173950); box-shadow: inset 0 1px 0 rgb(155 224 255 / 12%); }
