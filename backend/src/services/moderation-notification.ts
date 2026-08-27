@@ -29,7 +29,8 @@ export async function sendModerationMessage(
     const safety = await env.DB.prepare(`SELECT id, display_name AS displayName FROM users
       WHERE status NOT IN ('suspended', 'deleted') AND (
         lower(display_name) IN ('безопасность тайсон', 'безопасность tyson') OR
-        lower(username) IN ('tyson_safety', 'tyson_security', 'safety_tyson')
+        lower(display_name) LIKE '%безопасность tyson%' OR
+        lower(username) IN ('tyson_safety', 'tyson_security', 'safety_tyson', 'securetyson')
       ) ORDER BY is_verified DESC, created_at ASC LIMIT 1`)
       .first<{ id: string; displayName: string }>();
     if (!safety || safety.id === recipientUserId) {
