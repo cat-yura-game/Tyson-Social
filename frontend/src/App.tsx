@@ -16,7 +16,6 @@ import { DiamondsPage } from './pages/DiamondsPage';
 import { CollectibleGiftPage } from './pages/CollectibleGiftPage';
 import { EmailVerificationPage } from './pages/EmailVerificationPage';
 import { IosPwaInstallPrompt } from './components/IosPwaInstallPrompt';
-import { DevelopmentPausedOverlay } from './components/DevelopmentPausedOverlay';
 import { ShortsPage } from './pages/ShortsPage';
 
 const MessagesPage = lazy(() => import('./pages/MessagesPage').then((module) => ({ default: module.MessagesPage })));
@@ -55,5 +54,5 @@ function ProductRoutes() {
 export function App() {
   const { pathname } = useLocation();
   const page = pathname === '/login' ? <AuthPage mode="login" /> : pathname === '/register' ? <AuthPage mode="register" /> : pathname === '/forgot-password' ? <AuthPage mode="login" /> : pathname === '/verify-email' ? <RequireAuth><EmailVerificationPage /></RequireAuth> : pathname === '/auth/telegram/callback' ? <TelegramCallbackPage /> : <ProductRoutes />;
-  return <>{page}<IosPwaInstallPrompt /><DevelopmentPausedOverlay /></>;
+  return <>{page}<IosPwaInstallPrompt /></>;
 }
