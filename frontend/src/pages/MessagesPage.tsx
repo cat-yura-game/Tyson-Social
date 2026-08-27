@@ -59,6 +59,7 @@ function MessageBody({ content }: { content: MessageContent }) {
   return <>
     {content.type === 'forwarded' && <span className="forwarded-message-label"><ForwardIcon size={13} />Переслано от {content.fromDisplayName}</span>}
     {value.type === 'text' ? <p>{value.text}</p>
+      : value.type === 'support_notice' ? <div className="support-notice-message"><p>{value.text}</p><Link className="support-notice-button" to="/support">Написать в поддержку</Link></div>
       : sticker ? <img className="message-sticker" src={sticker.src} alt={sticker.accessibleLabel} />
           : value.type === 'post' ? <Link className="shared-post-message" to={`/post/${value.postId}`}><strong>Публикация Tyson</strong><span>Открыть публикацию</span></Link>
             : value.type === 'comment' ? <Link className="shared-post-message" to={`/post/${value.postId}`}><strong>Комментарий Tyson</strong><span>Открыть обсуждение</span></Link>

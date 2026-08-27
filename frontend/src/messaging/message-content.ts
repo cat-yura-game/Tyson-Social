@@ -2,6 +2,7 @@ import { getSticker, type StickerId } from './stickers';
 
 export type BasicMessageContent =
   | { type: 'text'; text: string }
+  | { type: 'support_notice'; text: string }
   | { type: 'sticker'; stickerId: StickerId }
   | { type: 'post'; postId: string }
   | { type: 'comment'; commentId: string; postId: string }
@@ -19,6 +20,9 @@ function parseBasicMessageContent(payload: Record<string, unknown>): BasicMessag
   // Backwards compatibility for messages written before typed payloads existed.
   if (typeof payload.text === 'string' && (payload.type === undefined || payload.type === 'text')) {
     return { type: 'text', text: payload.text };
+  }
+  if (payload.type === 'support_notice' && typeof payload.text === 'string' && payload.text.length <= 4000) {
+    return { type: 'support_notice', text: payload.text };
   }
   if (payload.type === 'sticker' && typeof payload.stickerId === 'string' && getSticker(payload.stickerId)) {
     return { type: 'sticker', stickerId: payload.stickerId as StickerId };

@@ -4,7 +4,10 @@ import { sendPushToUser } from './web-push';
 
 type ModeratedContentKind = 'пост' | 'комментарий';
 
-function notificationText(kind: ModeratedContentKind, reason: string): string {
+function notificationText(kind: ModeratedContentKind, reason: string, content?: { title?: string; body?: string }): string {
+  const title = content?.title?.trim();
+  const firstLine = content?.body?.split(/\r?\n/u).map((line) => line.trim()).find(Boolean);
+  const subject = (title || firstLine || '').slice(0, 180);
   return [
     '🛡️ Публикация не прошла проверку',
     '',
@@ -12,6 +15,9 @@ function notificationText(kind: ModeratedContentKind, reason: string): string {
     '',
     'Причина:',
     reason.trim() || 'Материал требует дополнительной проверки службой безопасности.',
+    ...(subject ? ['', 'Публикация:', `«${subject}${subject.length === 180 ? '…' : ''}»`] : []),
+    '',
+    'Если нужна повторная проверка, нажмите «Написать в поддержку» ниже.',
     '',
     'Если вы считаете, что это ошибка, вы сможете отправить публикацию на повторную проверку.',
     '',
@@ -24,6 +30,7 @@ export async function sendModerationMessage(
   recipientUserId: string,
   kind: ModeratedContentKind,
   reason: string,
+  content?: { title?: string; body?: string },
 ): Promise<void> {
   try {
     const safety = await env.DB.prepare(`SELECT id, display_name AS displayName FROM users
@@ -48,7 +55,7 @@ export async function sendModerationMessage(
 
     const conversationId = existing?.id ?? crypto.randomUUID();
     const now = new Date().toISOString();
-    const encrypted = await encryptCloudMessage(env, { type: 'text', text: notificationText(kind, reason) });
+    const encrypted = await encryptCloudMessage(env, { type: 'support_notice', text: notificationText(kind, reason, content) });
     const statements = [];
     if (!existing) {
       statements.push(

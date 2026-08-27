@@ -1,5 +1,6 @@
 .diamonds-hero-actions { position: relative; z-index: 1; display: flex; justify-content: center; gap: 8px; }
 .diamonds-hero-actions .diamonds-earn-button { margin-top: 13px; }
+.diamonds-hero-actions .diamonds-support-button { margin-top: 13px; border-color: rgb(255 255 255 / 42%); background: rgb(255 255 255 / 18%); color: inherit; font-size: 13px; font-weight: 800; }
 .diamonds-topup-button { margin-top: 13px; padding: 10px 15px; border: 1px solid rgb(255 255 255 / 42%); border-radius: 999px; background: rgb(255 255 255 / 94%); color: #087dc7; font: inherit; font-size: 13px; font-weight: 850; cursor: pointer; box-shadow: 0 9px 18px rgb(4 125 194 / 12%); }
 .stars-sheet { max-width: 470px; }
 .stars-sheet-intro { margin: 2px 0 18px; color: var(--muted); text-align: center; }
@@ -19,4 +20,4 @@
 .diamond-history small { color: var(--muted); font-size: 11px; }
 .diamond-history b { display: inline-flex; align-items: center; gap: 4px; flex: none; font-size: 14px; }
 .diamond-history b.credit { color: #159b65; }.diamond-history b.debit { color: #d65c61; }
-@media (max-width: 390px) { .diamonds-hero-actions { gap: 5px; } .diamonds-topup-button, .diamonds-earn-button { padding-inline: 11px !important; } }
+@media (max-width: 390px) { .diamonds-hero-actions { gap: 5px; } .diamonds-topup-button, .diamonds-earn-button, .diamonds-support-button { padding-inline: 9px !important; font-size: 12px; } }

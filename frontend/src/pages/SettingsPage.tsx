@@ -1,6 +1,6 @@
-import { ArrowLeft, BadgeCheck, BatteryMedium, BellRing, Camera, ChevronRight, CircleDashed, Database, Gem, LockKeyhole, Mail, Monitor, MonitorSmartphone, Moon, QrCode, RefreshCw, Save, Send, Settings, ShieldCheck, Sparkles, Sun, Trash2, Unlink, UserPlus, UserRound, Volume2 } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, BatteryMedium, BellRing, Camera, ChevronRight, CircleDashed, Database, Gem, LifeBuoy, LockKeyhole, Mail, Monitor, MonitorSmartphone, Moon, QrCode, RefreshCw, Save, Send, Settings, ShieldCheck, Sparkles, Sun, Trash2, Unlink, UserPlus, UserRound, Volume2 } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest, mediaUrl, setAccessToken } from '../api/client';
 import { useAuth, type AuthUser } from '../auth/AuthProvider';
 import { cropAvatarToSquare } from '../images/crop-square';
@@ -332,6 +332,7 @@ export function SettingsPage() {
     ['ai', 'ai', Sparkles, 'Tyson AI', aiQuota ? `${aiQuota.remaining} из ${aiQuota.limit}` : null],
     ['appearance', 'appearance', CircleDashed, 'Оформление', null],
     ['profile', 'profile', Camera, 'Профиль', null],
+    ['support', 'support', LifeBuoy, 'Поддержка Tyson', 'Помощь и обращения'],
   ] as const;
   if (!settingsCategory) return <section className="surface-page narrow-page settings-page settings-directory">
     <header className="page-heading"><div><p className="eyebrow">Tyson</p><h1>Настройки</h1></div></header>
@@ -340,8 +341,7 @@ export function SettingsPage() {
       <button className="settings-profile-summary" type="button" onClick={() => navigate(`/profile/${user.username}`)}><span className="avatar">{avatar ? <img className="avatar-image" src={avatar} alt="" /> : user.displayName.slice(0, 1).toUpperCase()}</span><span><strong>{user.displayName}</strong><small>@{user.username}</small></span></button>
       <button className="settings-my-profile" type="button" onClick={() => navigate(`/profile/${user.username}`)}><b>Мой профиль</b><ChevronRight /></button>
     </section>
-    <nav className="settings-categories" aria-label="Разделы настроек">{categories.map(([target, icon, Icon, label, state]) => <button key={`${target}-${label}`} type="button" onClick={() => navigate(target === 'diamonds' ? '/gifts' : `/settings/${target}`)}><i className={`settings-category-icon ${icon}`}>{target === 'diamonds' ? <DiamondIcon size={24} /> : <Icon size={21} />}</i><span>{label}</span>{state && <small>{state}</small>}<ChevronRight /></button>)}</nav>
-    <Link className="settings-support-link" to="/support"><Send size={18} />Поддержка Tyson<ChevronRight /></Link>
+    <nav className="settings-categories" aria-label="Разделы настроек">{categories.map(([target, icon, Icon, label, state]) => <button key={`${target}-${label}`} type="button" onClick={() => navigate(target === 'diamonds' ? '/gifts' : target === 'support' ? '/support' : `/settings/${target}`)}><i className={`settings-category-icon ${icon}`}>{target === 'diamonds' ? <DiamondIcon size={24} /> : <Icon size={21} />}</i><span>{label}</span>{state && <small>{state}</small>}<ChevronRight /></button>)}</nav>
     {showQr && <ProfileQrModal username={user.username} onClose={() => setShowQr(false)} />}
   </section>;
 
