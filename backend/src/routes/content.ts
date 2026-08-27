@@ -10,6 +10,7 @@ import { extractTrends, type TrendSourcePost } from '../trends/extract-trends';
 import { assertImageSignature, assertValidMedia, createMediaKey, mediaStorage, type AllowedImageType } from '../services/media-storage';
 import { base64Encode } from '../security/encoding';
 import { moderatePublicContent } from '../services/moderation-service';
+import { sendModerationMessage } from '../services/moderation-notification';
 import { uploadLimitForUser } from '../services/upload-limits';
 import { completeDailyTask } from '../services/daily-tasks';
 import { sendPushToUser } from '../services/web-push';
@@ -222,7 +223,8 @@ contentRoutes.post('/posts', async (c) => {
     if (mediaKey) await storage.delete(mediaKey);
     throw error;
   }
-  if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Publication was blocked by safety checks.');
+  if (result.decision !== 'allow') await sendModerationMessage(c.env, auth.user.id, 'пост', result.reason);
+  if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', `Публикация не прошла проверку. Причина: ${result.reason}`);
   if (status === 'published') {
     await completeDailyTask(c.env, auth.user.id, 'post');
     c.executionCtx.waitUntil((async () => {
@@ -254,8 +256,9 @@ contentRoutes.put('/posts/:id', async (c) => {
   if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
   const moderationText = input.title ? `${input.title}\n\n${input.body}` : input.body;
   const moderation = await moderatePublicContent(c.env, moderationText, [], extractLinks(moderationText));
-  if (moderation.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Publication was blocked by safety checks.');
-  if (moderation.decision === 'review') return fail(c, 422, 'CONTENT_REVIEW', 'Publication needs safety review.');
+  if (moderation.decision !== 'allow') await sendModerationMessage(c.env, auth.user.id, 'пост', moderation.reason);
+  if (moderation.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', `Публикация не прошла проверку. Причина: ${moderation.reason}`);
+  if (moderation.decision === 'review') return fail(c, 422, 'CONTENT_REVIEW', `Публикация отправлена на повторную проверку. Причина: ${moderation.reason}`);
   const now = new Date().toISOString();
   await c.env.DB.prepare('UPDATE posts SET title = ?, body = ?, edited_at = ?, updated_at = ? WHERE id = ? AND author_user_id = ?').bind(input.title, input.body, now, now, c.req.param('id'), auth.user.id).run();
   return ok(c, { editedAt: now });
@@ -267,7 +270,10 @@ contentRoutes.post('/posts/:id/repost', async (c) => {
   const source = await c.env.DB.prepare("SELECT id FROM posts WHERE id = ? AND status = 'published'").bind(c.req.param('id')).first();
   if (!source) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
   const moderation = await moderatePublicContent(c.env, input.body, [], extractLinks(input.body));
-  if (moderation.decision !== 'allow') return fail(c, 422, 'CONTENT_BLOCKED', 'Repost was blocked by safety checks.');
+  if (moderation.decision !== 'allow') {
+    await sendModerationMessage(c.env, auth.user.id, 'пост', moderation.reason);
+    return fail(c, 422, 'CONTENT_BLOCKED', `Публикация не прошла проверку. Причина: ${moderation.reason}`);
+  }
   const id = crypto.randomUUID(); const now = new Date().toISOString();
   await c.env.DB.prepare(`INSERT INTO posts (id, author_user_id, title, body, status, repost_of_post_id, published_at, created_at, updated_at)
     VALUES (?, ?, '', ?, 'published', ?, ?, ?, ?)`).bind(id, auth.user.id, input.body, source.id, now, now, now).run();
@@ -355,7 +361,8 @@ contentRoutes.patch('/posts/:id', async (c) => {
   if (!owned) return fail(c, 404, 'POST_NOT_FOUND', 'Post not found.');
   const moderationText = input.title ? `${input.title}\n\n${input.body}` : input.body;
   const result = await moderatePublicContent(c.env, moderationText, [], extractLinks(moderationText));
-  if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Publication was blocked by safety checks.');
+  if (result.decision !== 'allow') await sendModerationMessage(c.env, auth.user.id, 'пост', result.reason);
+  if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', `Публикация не прошла проверку. Причина: ${result.reason}`);
   const now = new Date().toISOString();
   await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE posts SET title = ?, body = ?, status = ?, published_at = CASE WHEN ? = 'published' THEN COALESCE(published_at, ?) ELSE published_at END, updated_at = ? WHERE id = ?`).bind(input.title, input.body, result.decision === 'allow' ? 'published' : 'review', result.decision === 'allow' ? 'published' : 'review', now, now, c.req.param('id')),
@@ -515,7 +522,10 @@ contentRoutes.post('/posts/:id/comments', async (c) => {
     parentAuthorId = parent.authorId;
   }
   const result = await moderatePublicContent(c.env, input.body, [], extractLinks(input.body));
-  if (result.decision === 'block') return fail(c, 422, 'CONTENT_BLOCKED', 'Comment was blocked by safety checks.');
+  if (result.decision === 'block') {
+    await sendModerationMessage(c.env, auth.user.id, 'комментарий', result.reason);
+    return fail(c, 422, 'CONTENT_BLOCKED', `Комментарий не прошёл проверку. Причина: ${result.reason}`);
+  }
   const id = crypto.randomUUID(); const now = new Date().toISOString(); const status = result.decision === 'allow' ? 'published' : 'review';
   await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO comments (id, post_id, author_user_id, parent_comment_id, body, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, c.req.param('id'), auth.user.id, input.parentCommentId ?? null, input.body, status, now, now),
@@ -525,6 +535,7 @@ contentRoutes.post('/posts/:id/comments', async (c) => {
       SELECT ?, ?, ?, 'comment', ?, ?, ?, ? WHERE ? = 'published' AND ? != ?`)
       .bind(crypto.randomUUID(), parentAuthorId, auth.user.id, c.req.param('id'), input.parentCommentId ? 'ответил на ваш комментарий' : 'прокомментировал вашу публикацию', `comment:${id}`, now, status, parentAuthorId, auth.user.id),
   ]);
+  if (status === 'review') await sendModerationMessage(c.env, auth.user.id, 'комментарий', result.reason);
   if (status === 'published' && parentAuthorId !== auth.user.id) c.executionCtx.waitUntil(sendPushToUser(c.env, parentAuthorId, { title: input.parentCommentId ? 'Ответ на комментарий' : 'Новый комментарий', body: `${auth.user.displayName} ${input.parentCommentId ? 'ответил на ваш комментарий' : 'прокомментировал вашу публикацию'}`, url: `/post/${c.req.param('id')}`, tag: `comment-${id}` }));
   if (status === 'published') await completeDailyTask(c.env, auth.user.id, 'comment');
   return ok(c, { id, status }, 201);
