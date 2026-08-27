@@ -16,6 +16,7 @@ import { DiamondsPage } from './pages/DiamondsPage';
 import { CollectibleGiftPage } from './pages/CollectibleGiftPage';
 import { EmailVerificationPage } from './pages/EmailVerificationPage';
 import { IosPwaInstallPrompt } from './components/IosPwaInstallPrompt';
+import { SupportPage } from './pages/SupportPage';
 
 const MessagesPage = lazy(() => import('./pages/MessagesPage').then((module) => ({ default: module.MessagesPage })));
 const AiPage = lazy(() => import('./pages/AiPage').then((module) => ({ default: module.AiPage })));
@@ -43,6 +44,7 @@ function ProductRoutes() {
         <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
         <Route path="/gifts" element={<RequireAuth><DiamondsPage /></RequireAuth>} />
         <Route path="/earn" element={<RequireAuth><EarnDiamondsPage /></RequireAuth>} />
+        <Route path="/support" element={<RequireAuth><SupportPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>

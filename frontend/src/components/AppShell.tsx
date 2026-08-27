@@ -1,4 +1,4 @@
-import { Gift, Home, LogIn, LogOut, MessageCircle, Plus, Search, Settings, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import { Gift, Home, LifeBuoy, LogIn, LogOut, MessageCircle, Plus, Search, Settings, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { DiamondIcon } from './DiamondIcon';
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
@@ -30,6 +30,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: profilePath, label: user ? 'Профиль' : 'Войти', icon: user ? UserRound : LogIn },
     { to: '/settings', label: 'Настройки', icon: Settings },
     ...(user?.role === 'admin' ? [{ to: '/admin', label: 'Админ-панель', icon: ShieldCheck }] : []),
+    ...(user ? [{ to: '/support', label: 'Поддержка', icon: LifeBuoy }] : []),
   ];
   useEffect(() => { if (!user) { setDiamonds(null); return; } const refresh = () => { void apiRequest<{ balance: number }>('/diamonds/balance').then(({ balance }) => setDiamonds(balance)).catch(() => setDiamonds(null)); }; refresh(); window.addEventListener('diamonds-changed', refresh); return () => window.removeEventListener('diamonds-changed', refresh); }, [user, location.pathname]);
   useEffect(() => onMobileLastTabChange(() => setMobileLastTab(getMobileLastTab())), []);
