@@ -15,7 +15,7 @@ function notificationText(kind: ModeratedContentKind, reason: string): string {
     '',
     'Если вы считаете, что это ошибка, вы сможете отправить публикацию на повторную проверку.',
     '',
-    '— Безопасность Tyson',
+    '— Защитник Tyson',
   ].join('\n');
 }
 
@@ -28,7 +28,8 @@ export async function sendModerationMessage(
   try {
     const safety = await env.DB.prepare(`SELECT id, display_name AS displayName FROM users
       WHERE status NOT IN ('suspended', 'deleted') AND (
-        lower(display_name) IN ('безопасность тайсон', 'безопасность tyson') OR
+        lower(display_name) IN ('безопасность тайсон', 'безопасность tyson', 'защитник тайсон', 'защитник tyson') OR
+        lower(display_name) LIKE '%защитник tyson%' OR
         lower(display_name) LIKE '%безопасность tyson%' OR
         lower(username) IN ('tyson_safety', 'tyson_security', 'safety_tyson', 'securetyson')
       ) ORDER BY is_verified DESC, created_at ASC LIMIT 1`)
