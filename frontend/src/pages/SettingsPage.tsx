@@ -85,7 +85,6 @@ export function SettingsPage() {
   const [aiPro, setAiPro] = useState<{ active: boolean; expiresAt: string | null } | null>(null);
   const [aiSettingsPending, setAiSettingsPending] = useState(false);
   const [deleteUsername, setDeleteUsername] = useState('');
-  const [deletePassword, setDeletePassword] = useState('');
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [aliases, setAliases] = useState<Array<{ id: string; username: string }>>([]);
@@ -304,7 +303,7 @@ export function SettingsPage() {
     if (!window.confirm('Аккаунт, публикации, сообщения и файлы будут удалены без возможности восстановления. Продолжить?')) return;
     setDeletePending(true); setDeleteError(null);
     try {
-      await apiRequest('/users/me', { method: 'DELETE', body: JSON.stringify({ username: deleteUsername.trim(), password: deletePassword || undefined, confirmation: 'DELETE' }) });
+      await apiRequest('/users/me', { method: 'DELETE', body: JSON.stringify({ username: deleteUsername.trim(), confirmation: 'DELETE' }) });
       setAccessToken(null);
       window.location.replace('/login');
     } catch (caught) {
@@ -398,7 +397,7 @@ export function SettingsPage() {
     </section>}
     <section className="delete-account-settings" aria-labelledby="delete-account-title">
       <div><p className="eyebrow">Опасная зона</p><h2 id="delete-account-title"><Trash2 size={18} />Удалить аккаунт</h2><p>Профиль, публикации, комментарии, истории, AI-диалоги, сообщения и загруженные файлы будут удалены без возможности восстановления.</p></div>
-      <form onSubmit={(event) => void deleteAccount(event)}><label><span>Введите @{user.username}</span><input required autoComplete="off" value={deleteUsername} onChange={(event) => setDeleteUsername(event.target.value)} placeholder={user.username} /></label>{!telegramStatus?.linked && <label><span>Текущий пароль</span><input required type="password" autoComplete="current-password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} /></label>}{deleteError && <p className="form-error" role="alert">{deleteError}</p>}<button type="submit" disabled={deletePending || deleteUsername.trim().toLowerCase() !== user.username.toLowerCase()}><Trash2 size={16} />{deletePending ? 'Удаляем…' : 'Удалить аккаунт навсегда'}</button></form>
+      <form onSubmit={(event) => void deleteAccount(event)}><label><span>Введите @{user.username}</span><input required autoComplete="off" value={deleteUsername} onChange={(event) => setDeleteUsername(event.target.value)} placeholder={user.username} /></label><p className="form-hint">Пароль не требуется. Для подтверждения введите username аккаунта.</p>{deleteError && <p className="form-error" role="alert">{deleteError}</p>}<button type="submit" disabled={deletePending || deleteUsername.trim().toLowerCase() !== user.username.toLowerCase()}><Trash2 size={16} />{deletePending ? 'Удаляем…' : 'Удалить аккаунт навсегда'}</button></form>
     </section>
     </>}
   </section>;

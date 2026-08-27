@@ -15,7 +15,6 @@ import { keyedHash, randomToken, sha256 } from '../security/tokens';
 import { SESSION_COOKIE } from '../middleware/auth';
 import { deleteCookie } from 'hono/cookie';
 import { z } from 'zod';
-import { verifyPassword } from '../security/passwords';
 import { deleteUserAccount } from '../services/account-deletion';
 import { sendPushToUser } from '../services/web-push';
 
@@ -414,7 +413,6 @@ userRoutes.delete('/me/avatar', async (c) => {
 
 const deleteAccountSchema = z.object({
   username: z.string().min(3).max(30),
-  password: z.string().max(128).optional(),
   confirmation: z.literal('DELETE'),
 }).strict();
 
@@ -426,17 +424,6 @@ userRoutes.delete('/me', async (c) => {
   catch { return fail(c, 422, 'VALIDATION_ERROR', 'Type your username and the deletion confirmation exactly.'); }
   if (input.username.toLowerCase() !== user.username.toLowerCase()) {
     return fail(c, 422, 'USERNAME_CONFIRMATION_MISMATCH', 'The username confirmation does not match this account.');
-  }
-  const credentials = await c.env.DB.prepare(`SELECT u.password_hash AS passwordHash,
-    EXISTS(SELECT 1 FROM telegram_identities ti WHERE ti.user_id = u.id) AS telegramLinked
-    FROM users u WHERE u.id = ?`).bind(user.id).first<{ passwordHash: string; telegramLinked: number }>();
-  if (!credentials) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
-  if (credentials.telegramLinked !== 1) {
-    if (!input.password || !(await verifyPassword(input.password, credentials.passwordHash))) {
-      return fail(c, 403, 'PASSWORD_REQUIRED', 'The current password is required to delete this account.');
-    }
-  } else if (input.password && !(await verifyPassword(input.password, credentials.passwordHash))) {
-    return fail(c, 403, 'INVALID_PASSWORD', 'The current password is incorrect.');
   }
   await deleteUserAccount(c.env, user.id);
   const secure = new URL(c.req.url).protocol === 'https:';
