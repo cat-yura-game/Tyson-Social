@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
-import { ZodError } from 'zod';
+import { ZodError, z } from 'zod';
 import { fail, ok } from '../lib/responses';
 import { SESSION_COOKIE } from '../middleware/auth';
 import {
@@ -16,11 +16,12 @@ import { keyedHash, randomToken, sha256 } from '../security/tokens';
 import type { AppVariables, AuthUser, Env } from '../types';
 import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
 import { sendPushToUser } from '../services/web-push';
-import { createEmailVerificationCode, sendVerificationEmail } from '../services/email';
+import { createEmailVerificationCode, sendLoginApprovalEmail, sendVerificationEmail } from '../services/email';
 
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
 const VERIFICATION_SECONDS = 10 * 60;
 const MAX_AUTH_BODY_BYTES = 16 * 1024;
+const LOGIN_CHALLENGE_SECONDS = 10 * 60;
 
 export const authRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -75,6 +76,29 @@ function validationFailure(c: Parameters<typeof fail>[0], error: unknown): Respo
 
 function sessionPayload(user: AuthUser, accessToken: string) {
   return { user, accessToken };
+}
+
+async function createApprovedSession(c: Parameters<typeof ok>[0], user: AuthUser, ipHash: string): Promise<{ user: AuthUser; accessToken: string }> {
+  const token = randomToken(); const now = new Date();
+  await createSession(c.env.DB, { id: crypto.randomUUID(), userId: user.id, tokenHash: await sha256(token), userAgent: c.req.header('user-agent')?.slice(0, 512) ?? null, ipHash, expiresAt: new Date(now.getTime() + SESSION_SECONDS * 1000).toISOString(), now: now.toISOString() });
+  await c.env.DB.prepare(`INSERT INTO security_events (id, user_id, event_type, severity, action, risk_score, ip_hash, metadata_json, created_at) VALUES (?, ?, 'account_login', 'info', 'observe', 0, ?, ?, ?)`).bind(crypto.randomUUID(), user.id, ipHash, JSON.stringify({ userAgent: c.req.header('user-agent')?.slice(0, 200) ?? null, approved: true }), now.toISOString()).run();
+  c.executionCtx.waitUntil(sendPushToUser(c.env, user.id, { title: 'Безопасность Tyson', body: `Выполнен новый вход в @${user.username}`, url: '/settings', tag: `login-${now.toISOString()}` }));
+  setSessionCookie(c, token); return sessionPayload(user, token);
+}
+
+async function maybeCreateLoginChallenge(c: Parameters<typeof ok>[0], user: AuthUser, ipHash: string): Promise<Response | null> {
+  const settings = await c.env.DB.prepare('SELECT login_approval_enabled AS enabled, login_approval_method AS method FROM user_settings WHERE user_id = ?').bind(user.id).first<{ enabled: number; method: 'telegram' | 'email' | 'both' }>();
+  if (!settings?.enabled) return null;
+  const method = settings.method;
+  const telegram = await c.env.DB.prepare(`SELECT ti.telegram_user_id AS telegramUserId, ns.chat_id AS chatId FROM telegram_identities ti LEFT JOIN telegram_notification_settings ns ON ns.user_id = ti.user_id WHERE ti.user_id = ? LIMIT 1`).bind(user.id).first<{ telegramUserId: string; chatId: string | null }>();
+  if ((method === 'telegram' || method === 'both') && (!c.env.TELEGRAM_BOT_TOKEN || !telegram?.chatId)) return fail(c, 409, 'LOGIN_APPROVAL_UNAVAILABLE', 'Подтверждение через Telegram пока не подключено.');
+  if ((method === 'email' || method === 'both') && c.env.EMAIL_DELIVERY_MODE !== 'provider') return fail(c, 409, 'LOGIN_APPROVAL_UNAVAILABLE', 'Подтверждение по email пока недоступно.');
+  const challengeId = crypto.randomUUID(); const approvalToken = randomToken(); const now = new Date(); const expiresAt = new Date(now.getTime() + LOGIN_CHALLENGE_SECONDS * 1000).toISOString();
+  const code = method === 'telegram' ? null : createEmailVerificationCode();
+  await c.env.DB.prepare(`INSERT INTO login_challenges (id,user_id,email,method,code_hash,telegram_token_hash,user_agent,ip_hash,expires_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(challengeId, user.id, user.email, method, code ? await sha256(code) : null, await sha256(approvalToken), c.req.header('user-agent')?.slice(0,512) ?? null, ipHash, expiresAt, now.toISOString()).run();
+  if (code) c.executionCtx.waitUntil(sendLoginApprovalEmail(c.env, { to: user.email, code }).catch((error) => console.error('Login approval email failed', error)));
+  if (method === 'telegram' || method === 'both') c.executionCtx.waitUntil(fetch(`https://api.telegram.org/bot${c.env.TELEGRAM_BOT_TOKEN}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: telegram?.chatId, text: `🔐 Вход в Tyson\n\nАккаунт: @${user.username}\nУстройство: ${c.req.header('user-agent')?.slice(0,80) ?? 'неизвестно'}\n\nРазрешить вход?`, reply_markup: { inline_keyboard: [[{ text: '✅ Разрешить', callback_data: `login:approve:${challengeId}` }, { text: '⛔ Отклонить', callback_data: `login:deny:${challengeId}` }]] } }) }).catch((error) => console.error('Login approval Telegram failed', error)));
+  return ok(c, { requiresApproval: true, challengeId, approvalToken, method, expiresAt });
 }
 
 authRoutes.post('/register', async (c) => {
@@ -278,24 +302,39 @@ authRoutes.post('/login', async (c) => {
     profileColor: user.profileColor,
     createdAt: user.createdAt,
   };
-  const now = new Date();
-  const sessionToken = randomToken();
-  await createSession(c.env.DB, {
-    id: crypto.randomUUID(),
-    userId: user.id,
-    tokenHash: await sha256(sessionToken),
-    userAgent: c.req.header('user-agent')?.slice(0, 512) ?? null,
-    ipHash,
-    expiresAt: new Date(now.getTime() + SESSION_SECONDS * 1000).toISOString(),
-    now: now.toISOString(),
-  });
-  await c.env.DB.prepare(`INSERT INTO security_events
-    (id, user_id, event_type, severity, action, risk_score, ip_hash, metadata_json, created_at)
-    VALUES (?, ?, 'account_login', 'info', 'observe', 0, ?, ?, ?)`)
-    .bind(crypto.randomUUID(), user.id, ipHash, JSON.stringify({ userAgent: c.req.header('user-agent')?.slice(0, 200) ?? null }), now.toISOString()).run();
-  c.executionCtx.waitUntil(sendPushToUser(c.env, user.id, { title: 'Безопасность Tyson', body: `Выполнен новый вход в @${user.username}`, url: '/settings', tag: `login-${now.toISOString()}` }));
-  setSessionCookie(c, sessionToken);
-  return ok(c, sessionPayload(safeUser, sessionToken));
+  const challenge = await maybeCreateLoginChallenge(c, safeUser, ipHash);
+  if (challenge) return challenge;
+  return ok(c, await createApprovedSession(c, safeUser, ipHash));
+});
+
+const loginApprovalInput = z.object({ challengeId: z.string().uuid(), approvalToken: z.string().min(32).max(256), code: z.string().regex(/^\d{6}$/u).optional() }).strict();
+
+authRoutes.post('/login/approve', async (c) => {
+  let input; try { input = loginApprovalInput.parse(await parseJsonBody(c.req.raw)); } catch (error) { return validationFailure(c, error); }
+  const row = await c.env.DB.prepare(`SELECT id, method, code_hash AS codeHash, telegram_token_hash AS approvalTokenHash, expires_at AS expiresAt, email_approved AS emailApproved, telegram_approved AS telegramApproved FROM login_challenges WHERE id = ? AND consumed_at IS NULL`).bind(input.challengeId).first<{ id:string; method:'email'|'telegram'|'both'; codeHash:string|null; approvalTokenHash:string|null; expiresAt:string; emailApproved:number; telegramApproved:number }>();
+  if (!row || Date.parse(row.expiresAt) <= Date.now() || row.approvalTokenHash !== await sha256(input.approvalToken)) return fail(c, 422, 'LOGIN_CHALLENGE_EXPIRED', 'Запрос на вход истёк.');
+  const attemptRate = await consumeRateLimit(c.env.DB, { scope: 'login_approval_code', subjectHash: await sha256(input.challengeId), limit: 8, windowSeconds: LOGIN_CHALLENGE_SECONDS, now: new Date() });
+  if (!attemptRate.allowed) return fail(c, 429, 'RATE_LIMITED', 'Слишком много попыток. Начните вход заново.');
+  if (row.method === 'telegram') return fail(c, 422, 'TELEGRAM_APPROVAL_REQUIRED', 'Подтвердите вход в Telegram.');
+  if (!input.code || !row.codeHash || row.codeHash !== await sha256(input.code)) return fail(c, 422, 'INVALID_LOGIN_CODE', 'Код неверный или уже истёк.');
+  const now = new Date().toISOString();
+  await c.env.DB.prepare('UPDATE login_challenges SET email_approved = 1, approved_at = CASE WHEN method = \'email\' OR telegram_approved = 1 THEN ? ELSE approved_at END WHERE id = ? AND consumed_at IS NULL').bind(now, row.id).run();
+  return ok(c, { approved: row.method === 'email' || row.telegramApproved === 1 });
+});
+
+authRoutes.get('/login/challenges/:id', async (c) => {
+  const id = c.req.param('id');
+  if (!z.string().uuid().safeParse(id).success) return fail(c, 404, 'NOT_FOUND', 'Запрос не найден.');
+  const approvalToken = c.req.header('x-login-approval-token');
+  const row = await c.env.DB.prepare(`SELECT lc.*, u.email, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.bio, u.role, u.status, u.email_verified_at AS emailVerifiedAt, u.verified_at AS verifiedAt, u.username_change_available AS usernameChangeAvailable, u.last_seen_at AS lastSeenAt, u.birthday_month_day AS birthdayMonthDay, u.birthday_year AS birthdayYear, u.profile_color AS profileColor, u.created_at AS createdAt FROM login_challenges lc JOIN users u ON u.id = lc.user_id WHERE lc.id = ?`).bind(id).first<any>();
+  if (!row || !approvalToken || row.telegram_token_hash !== await sha256(approvalToken) || row.consumed_at || Date.parse(row.expires_at) <= Date.now()) return fail(c, 422, 'LOGIN_CHALLENGE_EXPIRED', 'Запрос на вход истёк.');
+  if (row.denied_at) return ok(c, { status: 'denied' });
+  const approved = Boolean(row.approved_at) && (row.method !== 'both' || (row.email_approved && row.telegram_approved));
+  if (!approved) return ok(c, { status: 'pending', method: row.method, expiresAt: row.expires_at });
+  const user: AuthUser = { id: row.user_id, email: row.email, username: row.username, displayName: row.displayName, avatarKey: row.avatarKey, bio: row.bio, role: row.role, status: row.status, emailVerified: Boolean(row.emailVerifiedAt), verified: Boolean(row.verifiedAt), usernameChangeAvailable: Boolean(row.usernameChangeAvailable), lastSeenAt: row.lastSeenAt, birthdayMonthDay: row.birthdayMonthDay, birthdayYear: row.birthdayYear, profileColor: row.profileColor, createdAt: row.createdAt };
+  const ipHash = await keyedHash(secret(c.env), clientIp(c));
+  await c.env.DB.prepare('UPDATE login_challenges SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL').bind(new Date().toISOString(), id).run();
+  return ok(c, { status: 'approved', ...await createApprovedSession(c, user, ipHash) });
 });
 
 authRoutes.post('/logout', async (c) => {

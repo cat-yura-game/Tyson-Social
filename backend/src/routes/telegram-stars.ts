@@ -168,6 +168,17 @@ telegramStarRoutes.post('/telegram/bot/webhook', async (c) => {
     const callbackChatId = callback.message?.chat.id;
     if (!callbackChatId) return c.json({ ok: true });
     await telegramCall<boolean>(c.env, 'answerCallbackQuery', { callback_query_id: callback.id });
+    const loginAction = callback.data?.match(/^login:(approve|deny):([0-9a-f-]{36})$/u);
+    if (loginAction) {
+      const challenge = await c.env.DB.prepare(`SELECT lc.id, lc.user_id AS userId, lc.method, ti.telegram_user_id AS telegramUserId FROM login_challenges lc JOIN telegram_identities ti ON ti.user_id = lc.user_id WHERE lc.id = ? AND ti.telegram_user_id = ? AND lc.consumed_at IS NULL AND lc.expires_at > ?`).bind(loginAction[2], String(callback.from.id), new Date().toISOString()).first<{ id:string; userId:string; method:'telegram'|'email'|'both'; telegramUserId:string }>();
+      if (challenge) {
+        const now = new Date().toISOString();
+        if (loginAction[1] === 'deny') await c.env.DB.prepare('UPDATE login_challenges SET denied_at = ? WHERE id = ? AND consumed_at IS NULL').bind(now, challenge.id).run();
+        else await c.env.DB.prepare(`UPDATE login_challenges SET telegram_approved = 1, approved_at = CASE WHEN method = 'telegram' OR email_approved = 1 THEN ? ELSE approved_at END WHERE id = ? AND consumed_at IS NULL`).bind(now, challenge.id).run();
+        await telegramCall<number>(c.env, 'sendMessage', { chat_id: callbackChatId, text: loginAction[1] === 'approve' ? '✅ Вход разрешён. Вернитесь в Tyson.' : '⛔ Вход отклонён.' });
+      }
+      return c.json({ ok: true });
+    }
     if (callback.data === 'account') await sendAccountCard(c.env, c.env.DB, callbackChatId, String(callback.from.id));
     if (callback.data === 'buy_diamonds') await sendDiamondMenu(c.env, callbackChatId);
     if (callback.data?.startsWith('buy:')) await createBotInvoice(c.env, c.env.DB, callbackChatId, String(callback.from.id), callback.data.slice(4));

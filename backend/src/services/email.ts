@@ -31,3 +31,17 @@ export async function sendVerificationEmail(env: Env, input: VerificationEmail):
 
   if (!response.ok) throw new Error(`Resend delivery failed: ${response.status} ${await response.text()}`);
 }
+
+export async function sendLoginApprovalEmail(env: Env, input: VerificationEmail): Promise<void> {
+  if (env.EMAIL_DELIVERY_MODE !== 'provider') throw new Error('EMAIL_DELIVERY_MODE is not configured.');
+  if (!env.EMAIL_PROVIDER_API_KEY) throw new Error('EMAIL_PROVIDER_API_KEY is not configured.');
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST', headers: { authorization: `Bearer ${env.EMAIL_PROVIDER_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      from: 'Tyson Social <noreply@tysonsocial.eu.cc>', to: [input.to], subject: 'Подтвердите вход в Tyson',
+      text: `Код подтверждения входа в Tyson: ${input.code}\n\nКод действует 10 минут. Если это были не вы, проигнорируйте письмо.`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:28px"><h2>Подтверждение входа в Tyson</h2><p>Введите код в приложении:</p><div style="font-size:32px;font-weight:700;letter-spacing:8px;padding:18px;background:#eef7ff;border-radius:14px;text-align:center">${input.code}</div><p>Код действует 10 минут. Никому его не сообщайте.</p></div>`,
+    }),
+  });
+  if (!response.ok) throw new Error(`Resend delivery failed: ${response.status}`);
+}

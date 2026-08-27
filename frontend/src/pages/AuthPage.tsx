@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowRight, LockKeyhole, Mail, Send, UserRound } from 'lucide-react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../api/client';
-import { useAuth } from '../auth/AuthProvider';
+import { useAuth, type AuthUser } from '../auth/AuthProvider';
 import { Brand } from '../components/Brand';
 
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
@@ -12,6 +12,10 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [telegramPending, setTelegramPending] = useState(false);
+  const [challenge, setChallenge] = useState<{ id: string; token: string; method: 'telegram'|'email'|'both' } | null>(null);
+  const [challengeCode, setChallengeCode] = useState('');
+  const [challengeError, setChallengeError] = useState<string | null>(null);
+  useEffect(() => { if (!challenge) return; const timer = window.setInterval(() => { void apiRequest<{ status: string; user?: AuthUser; accessToken?: string }>(`/auth/login/challenges/${challenge.id}`, { headers: { 'x-login-approval-token': challenge.token } }).then((result) => { if (result.status === 'approved' && result.user && result.accessToken) { window.localStorage.setItem('tyson_access_token', result.accessToken); window.location.assign('/'); } if (result.status === 'denied') { setChallengeError('Вход отклонён в Telegram.'); setChallenge(null); } }).catch(() => undefined); }, 2500); return () => window.clearInterval(timer); }, [challenge]);
   if (user) return <Navigate to="/" replace />;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -25,7 +29,8 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       if (registerMode) {
         await register({ email, password, username: String(form.get('username') ?? ''), displayName: String(form.get('displayName') ?? '') });
       } else {
-        await login({ email, password });
+        const result = await login({ email, password });
+        if (result.requiresApproval && result.challengeId && result.approvalToken && result.method) { setChallenge({ id: result.challengeId, token: result.approvalToken, method: result.method }); return; }
       }
       navigate(registerMode ? '/verify-email' : '/', { replace: true });
     } catch (caught) {
@@ -34,6 +39,8 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       setPending(false);
     }
   };
+
+  const approveByEmail = async () => { if (!challenge) return; setChallengeError(null); try { await apiRequest(`/auth/login/approve`, { method: 'POST', body: JSON.stringify({ challengeId: challenge.id, approvalToken: challenge.token, code: challengeCode }) }); } catch (caught) { setChallengeError(caught instanceof ApiError ? caught.message : 'Не удалось подтвердить вход.'); } };
 
   const loginWithTelegram = async () => {
     setTelegramPending(true); setError(null);
@@ -56,7 +63,8 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         <small>© 2026 Tyson</small>
       </section>
       <section className="auth-panel">
-        <form className="auth-form" onSubmit={(event) => void handleSubmit(event)}>
+        {challenge && <div className="auth-approval-card"><h2>Подтвердите вход</h2><p>{challenge.method === 'telegram' ? 'Откройте Telegram и нажмите «Разрешить» в сообщении от Tyson.' : challenge.method === 'both' ? 'Подтвердите вход в Telegram и введите код из письма.' : 'Введите код из письма, чтобы продолжить.'}</p>{challenge.method !== 'telegram' && <><input className="auth-approval-code" value={challengeCode} onChange={(event) => setChallengeCode(event.target.value.replace(/\D/gu, '').slice(0, 6))} inputMode="numeric" placeholder="000000" /><button className="primary-button" type="button" onClick={() => void approveByEmail()}>Подтвердить</button></>}{challengeError && <p className="form-error">{challengeError}</p>}<button className="text-button" type="button" onClick={() => setChallenge(null)}>Отмена</button></div>}
+        <form className={`auth-form${challenge ? ' auth-form-hidden' : ''}`} onSubmit={(event) => void handleSubmit(event)}>
           <p className="eyebrow">Добро пожаловать</p>
           <h2>{registerMode ? 'Создать аккаунт' : 'С возвращением'}</h2>
           <p>{registerMode ? 'Присоединяйтесь к Tyson — это займёт меньше минуты.' : 'Войдите, чтобы продолжить свою ленту.'}</p>

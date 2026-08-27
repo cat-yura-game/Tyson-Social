@@ -346,6 +346,13 @@ button { color: inherit; }
 .auth-story small { color: #9eb3a5; }
 .auth-panel { display: grid; place-items: center; padding: 40px; }
 .auth-form { width: min(410px, 100%); }
+.auth-form-hidden { display: none; }
+.auth-approval-card { width: min(410px, 100%); padding: 26px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); box-shadow: 0 18px 60px rgb(24 62 44 / 12%); }
+.auth-approval-card h2 { margin: 0 0 10px; font-size: 28px; }
+.auth-approval-card > p { color: var(--muted); line-height: 1.5; }
+.auth-approval-code { width: 100%; margin: 18px 0 4px; padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); font-size: 27px; font-weight: 750; letter-spacing: 8px; text-align: center; }
+.auth-approval-card .primary-button { width: 100%; margin-top: 14px; }
+.auth-approval-card .text-button { width: 100%; margin-top: 10px; padding: 10px; border: 0; background: transparent; color: var(--muted); }
 .auth-form h2 { margin: 8px 0; font-size: 34px; letter-spacing: -1.3px; }
 .auth-form > p:not(.eyebrow) { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .auth-form label { display: block; margin-top: 18px; }

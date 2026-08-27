@@ -25,6 +25,7 @@ interface Credentials {
   email: string;
   password: string;
 }
+export interface LoginResult { requiresApproval?: boolean; challengeId?: string; approvalToken?: string; method?: 'telegram' | 'email' | 'both'; expiresAt?: string }
 
 interface Registration extends Credentials {
   username: string;
@@ -34,7 +35,7 @@ interface Registration extends Credentials {
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login(input: Credentials): Promise<void>;
+  login(input: Credentials): Promise<LoginResult>;
   register(input: Registration): Promise<void>;
   logout(): Promise<void>;
   refresh(): Promise<void>;
@@ -65,10 +66,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const login = useCallback(async (input: Credentials) => {
-    const session = await apiRequest<{ user: AuthUser; accessToken: string }>('/auth/login', { method: 'POST', body: JSON.stringify(input) });
+  const login = useCallback(async (input: Credentials): Promise<LoginResult> => {
+    const session = await apiRequest<{ user?: AuthUser; accessToken?: string; requiresApproval?: boolean; challengeId?: string; approvalToken?: string; method?: 'telegram'|'email'|'both'; expiresAt?: string }>('/auth/login', { method: 'POST', body: JSON.stringify(input) });
+    if (session.requiresApproval) return session;
+    if (!session.user || !session.accessToken) throw new Error('Сервер вернул неполный ответ входа.');
     setAccessToken(session.accessToken);
     setUser(session.user);
+    return session;
   }, []);
 
   const register = useCallback(async (input: Registration) => {
