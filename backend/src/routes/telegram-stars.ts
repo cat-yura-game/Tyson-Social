@@ -218,6 +218,15 @@ telegramStarRoutes.post('/telegram/bot/webhook', async (c) => {
   const message = update.message;
   const command = message?.text?.trim().split(/\s+/u)[0]?.split('@')[0];
   const startParameter = message?.text?.trim().split(/\s+/u)[1];
+  if (message?.from && message.text?.startsWith('/support_reply ')) {
+    const [, ticketId, ...replyParts] = message.text.trim().split(/\s+/u); const reply = replyParts.join(' ').trim();
+    const owner = await c.env.DB.prepare("SELECT u.id FROM users u WHERE lower(u.username) = 'cat_tyson' AND u.status NOT IN ('suspended','deleted') AND u.id IN (SELECT user_id FROM telegram_identities WHERE telegram_user_id = ?) LIMIT 1").bind(String(message.from.id)).first<{ id: string }>();
+    if (owner && /^[0-9a-f-]{36}$/iu.test(ticketId ?? '') && reply.length > 0) {
+      const changed = await c.env.DB.prepare("UPDATE support_tickets SET status = 'open', updated_at = ? WHERE id = ? AND status != 'closed'").bind(new Date().toISOString(), ticketId).run();
+      if (changed.meta.changes) { await c.env.DB.prepare("INSERT INTO support_messages (id,ticket_id,sender_type,body,created_at) VALUES (?,?,?,?,?)").bind(crypto.randomUUID(), ticketId, 'owner', reply, new Date().toISOString()).run(); await telegramCall<number>(c.env, 'sendMessage', { chat_id: message.chat.id, text: '✅ Ответ отправлен пользователю Tyson.' }); }
+    }
+    return c.json({ ok: true });
+  }
   if (message?.from && command === '/start') {
     const referralCode = startParameter?.startsWith('ref_') ? startParameter.slice(4) : undefined;
     await recordTelegramBotStart(c.env.DB, String(message.from.id), String(message.chat.id), referralCode);
