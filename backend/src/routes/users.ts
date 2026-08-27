@@ -293,6 +293,27 @@ userRoutes.get('/me/notification-settings', async (c) => {
   return ok(c, { messageSoundsEnabled: row?.messageSoundsEnabled !== 0 });
 });
 
+userRoutes.get('/me/login-approval-settings', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const row = await c.env.DB.prepare(`SELECT login_approval_enabled AS enabled, login_approval_method AS method FROM user_settings WHERE user_id = ?`).bind(user.id).first<{ enabled: number; method: 'telegram' | 'email' | 'both' }>();
+  return ok(c, { enabled: row?.enabled === 1, method: row?.method ?? 'email' });
+});
+
+userRoutes.put('/me/login-approval-settings', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  try {
+    const value = await parseJsonBody(c.req.raw) as { enabled?: unknown; method?: unknown };
+    if (typeof value.enabled !== 'boolean' || !['telegram', 'email', 'both'].includes(String(value.method))) throw new Error('Invalid setting.');
+    const method = value.method as 'telegram' | 'email' | 'both';
+    if (value.enabled && (method === 'telegram' || method === 'both')) {
+      const linked = await c.env.DB.prepare('SELECT 1 FROM telegram_identities WHERE user_id = ? AND telegram_user_id IS NOT NULL').bind(user.id).first();
+      if (!linked) return fail(c, 422, 'TELEGRAM_REQUIRED', 'Сначала подключите Telegram к аккаунту.');
+    }
+    await c.env.DB.prepare(`UPDATE user_settings SET login_approval_enabled = ?, login_approval_method = ?, updated_at = ? WHERE user_id = ?`).bind(value.enabled ? 1 : 0, method, new Date().toISOString(), user.id).run();
+    return ok(c, { enabled: value.enabled, method });
+  } catch { return fail(c, 422, 'VALIDATION_ERROR', 'Invalid login approval settings.'); }
+});
+
 userRoutes.put('/me/notification-settings', async (c) => {
   const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
   try {
