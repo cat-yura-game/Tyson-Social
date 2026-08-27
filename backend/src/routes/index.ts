@@ -14,7 +14,6 @@ import { giftRoutes } from './gifts';
 import { notificationRoutes } from './notifications';
 import { pushRoutes } from './push';
 import { telegramStarRoutes } from './telegram-stars';
-import { shortRoutes } from './shorts';
 
 export const api = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -28,7 +27,6 @@ api.route('/', contentRoutes);
 api.route('/media', mediaRoutes);
 api.route('/messages', messageRoutes);
 api.route('/stories', storyRoutes);
-api.route('/shorts', shortRoutes);
 api.route('/ai', aiChatRoutes);
 api.route('/admin', adminRoutes);
 api.route('/notifications', notificationRoutes);

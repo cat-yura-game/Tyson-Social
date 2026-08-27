@@ -16,7 +16,6 @@ import { DiamondsPage } from './pages/DiamondsPage';
 import { CollectibleGiftPage } from './pages/CollectibleGiftPage';
 import { EmailVerificationPage } from './pages/EmailVerificationPage';
 import { IosPwaInstallPrompt } from './components/IosPwaInstallPrompt';
-import { ShortsPage } from './pages/ShortsPage';
 
 const MessagesPage = lazy(() => import('./pages/MessagesPage').then((module) => ({ default: module.MessagesPage })));
 const AiPage = lazy(() => import('./pages/AiPage').then((module) => ({ default: module.AiPage })));
@@ -34,7 +33,6 @@ function ProductRoutes() {
         <Route path="/" element={<FeedPage />} />
         <Route path="/profile/:username" element={<ProfilePage />} />
         <Route path="/post/:id" element={<PostPage />} />
-        <Route path="/shorts" element={<ShortsPage />} />
         <Route path="/gift/:id" element={<CollectibleGiftPage />} />
         <Route path="/create" element={<RequireAuth><CreatePage /></RequireAuth>} />
         <Route path="/messages" element={<RequireAuth><Suspense fallback={<div className="app-loading">Подготовка защищённого мессенджера…</div>}><MessagesPage /></Suspense></RequireAuth>} />

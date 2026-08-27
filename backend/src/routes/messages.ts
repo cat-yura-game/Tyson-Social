@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { mediaStorage } from '../services/media-storage';
 import { ZodError } from 'zod';
 import { fail, ok } from '../lib/responses';
 import { cloneAttachmentSchema, cloudMessageSchema, conversationSchema, deleteMessageSchema, deviceSchema, editCloudMessageSchema, groupConversationSchema, groupMemberRoleSchema, groupMembersSchema, messageBatchSchema } from '../schemas/messages';
@@ -286,13 +287,13 @@ messageRoutes.post('/conversations/:id/attachments', async (c) => {
   const id = crypto.randomUUID();
   const storageKey = `encrypted-attachments/${user.id}/${id}.bin`;
   const now = new Date().toISOString();
-  await c.env.MEDIA.put(storageKey, bytes, { metadata: { ownerUserId: user.id, byteSize: bytes.byteLength } });
+  await mediaStorage(c.env).put(storageKey, bytes, { contentType: 'application/octet-stream', ownerUserId: user.id, byteSize: bytes.byteLength });
   try {
     await c.env.DB.prepare(`INSERT INTO encrypted_message_attachments
       (id, conversation_id, uploader_user_id, storage_key, byte_size, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .bind(id, conversationId, user.id, storageKey, bytes.byteLength, now).run();
   } catch (error) {
-    await c.env.MEDIA.delete(storageKey);
+    await mediaStorage(c.env).delete(storageKey);
     throw error;
   }
   return ok(c, { attachmentId: id }, 201);
@@ -305,12 +306,14 @@ messageRoutes.get('/attachments/:id', async (c) => {
     WHERE a.id = ? AND m.user_id = ? AND m.left_at IS NULL`).bind(c.req.param('id'), user.id)
     .first<{ storageKey: string; conversationId: string }>();
   if (!attachment) return fail(c, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found.');
-  const stored = await c.env.MEDIA.get(attachment.storageKey, 'arrayBuffer');
+  const stored = await mediaStorage(c.env).get(attachment.storageKey);
   if (!stored) return fail(c, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found.');
-  return c.body(stored, 200, {
-    'content-type': 'application/octet-stream',
-    'cache-control': 'private, no-store',
-    'x-content-type-options': 'nosniff',
+  return new Response(stored.body, {
+    headers: {
+      'content-type': 'application/octet-stream',
+      'cache-control': 'private, no-store',
+      'x-content-type-options': 'nosniff',
+    },
   });
 });
 
@@ -331,18 +334,20 @@ messageRoutes.post('/attachments/:id/clone', async (c) => {
   const recent = await c.env.DB.prepare(`SELECT COUNT(*) AS count FROM encrypted_message_attachments
     WHERE uploader_user_id = ? AND created_at > datetime('now', '-1 hour')`).bind(user.id).first<{ count: number }>();
   if ((recent?.count ?? 0) >= 30) return fail(c, 429, 'ATTACHMENT_RATE_LIMITED', 'Too many attachments. Try again later.');
-  const bytes = await c.env.MEDIA.get(source.storageKey, 'arrayBuffer');
+  const sourceMedia = await mediaStorage(c.env).get(source.storageKey);
+  if (sourceMedia) { /* stream is consumed below */ }
+  const bytes = sourceMedia ? await new Response(sourceMedia.body).arrayBuffer() : null;
   if (!bytes) return fail(c, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found.');
   const id = crypto.randomUUID();
   const storageKey = `encrypted-attachments/${user.id}/${id}.bin`;
   const now = new Date().toISOString();
-  await c.env.MEDIA.put(storageKey, bytes, { metadata: { ownerUserId: user.id, byteSize: source.byteSize } });
+  await mediaStorage(c.env).put(storageKey, bytes, { contentType: 'application/octet-stream', ownerUserId: user.id, byteSize: source.byteSize });
   try {
     await c.env.DB.prepare(`INSERT INTO encrypted_message_attachments
       (id, conversation_id, uploader_user_id, storage_key, byte_size, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .bind(id, input.targetConversationId, user.id, storageKey, source.byteSize, now).run();
   } catch (error) {
-    await c.env.MEDIA.delete(storageKey);
+    await mediaStorage(c.env).delete(storageKey);
     throw error;
   }
   return ok(c, { attachmentId: id }, 201);
@@ -514,6 +519,6 @@ messageRoutes.delete('/conversations/:id/messages/:messageId', async (c) => {
       WHERE id = ? AND conversation_id = ? AND uploader_user_id = ?`).bind(attachmentId, conversationId, user.id));
   }
   await c.env.DB.batch(statements);
-  if (attachment) await c.env.MEDIA.delete(attachment.storageKey);
+  if (attachment) await mediaStorage(c.env).delete(attachment.storageKey);
   return ok(c, { deleted: true });
 });

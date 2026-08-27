@@ -30,7 +30,7 @@ export type AllowedImageType = keyof typeof ALLOWED_IMAGE_TYPES;
 export type AllowedVideoType = keyof typeof ALLOWED_VIDEO_TYPES;
 export type AllowedMediaType = AllowedImageType | AllowedVideoType;
 export type AllowedDocumentType = keyof typeof ALLOWED_DOCUMENT_TYPES;
-export type AllowedStorageType = AllowedMediaType | AllowedDocumentType;
+export type AllowedStorageType = AllowedMediaType | AllowedDocumentType | 'application/octet-stream';
 
 export interface MediaMetadata {
   contentType: AllowedStorageType;
@@ -217,7 +217,9 @@ export class KvMediaStorage implements MediaStorage {
   constructor(private readonly namespace: KVNamespace) {}
 
   async put(key: string, body: ReadableStream | ArrayBuffer, metadata: MediaMetadata, expiration?: number): Promise<void> {
-    if (metadata.contentType in ALLOWED_DOCUMENT_TYPES) assertValidAiDocument(metadata.contentType, metadata.byteSize);
+    if (metadata.contentType === 'application/octet-stream') {
+      if (!Number.isSafeInteger(metadata.byteSize) || metadata.byteSize <= 0 || metadata.byteSize > MAX_MEDIA_BYTES) throw new Error('Attachment is too large.');
+    } else if (metadata.contentType in ALLOWED_DOCUMENT_TYPES) assertValidAiDocument(metadata.contentType, metadata.byteSize);
     else assertValidStoryMedia(metadata.contentType as AllowedMediaType, metadata.byteSize);
     await this.namespace.put(key, body, { metadata, ...(expiration ? { expiration } : {}) });
   }
