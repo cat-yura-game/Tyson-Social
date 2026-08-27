@@ -27,6 +27,10 @@ button { color: inherit; }
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 27px 0 24px; display: flex; flex-direction: column; }
 .brand { display: inline-flex; align-items: center; gap: 10px; width: fit-content; font-size: 24px; font-weight: 800; letter-spacing: -.8px; }
 .brand img { width: 40px; height: 40px; object-fit: cover; border-radius: 50%; }
+.brand .brand-wordmark { width: 78px; height: auto; object-fit: contain; border-radius: 0; }
+.brand .brand-wordmark-dark { display: none; }
+html[data-theme='dark'] .brand .brand-wordmark-light { display: none; }
+html[data-theme='dark'] .brand .brand-wordmark-dark { display: block; }
 .primary-nav { display: grid; gap: 7px; margin-top: 52px; }
 .nav-link { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 13px; color: #68706a; font-size: 14px; font-weight: 600; transition: .2s ease; }
 .nav-link:hover { color: var(--ink); background: #eceee8; transform: translateX(2px); }
