@@ -326,6 +326,8 @@ authRoutes.get('/login/challenges/:id', async (c) => {
   const id = c.req.param('id');
   if (!z.string().uuid().safeParse(id).success) return fail(c, 404, 'NOT_FOUND', 'Запрос не найден.');
   const approvalToken = c.req.header('x-login-approval-token');
+  // The challenge row combines login_challenges and users columns with dynamic D1 aliases.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const row = await c.env.DB.prepare(`SELECT lc.*, u.email, u.username, u.display_name AS displayName, u.avatar_key AS avatarKey, u.bio, u.role, u.status, u.email_verified_at AS emailVerifiedAt, u.verified_at AS verifiedAt, u.username_change_available AS usernameChangeAvailable, u.last_seen_at AS lastSeenAt, u.birthday_month_day AS birthdayMonthDay, u.birthday_year AS birthdayYear, u.profile_color AS profileColor, u.created_at AS createdAt FROM login_challenges lc JOIN users u ON u.id = lc.user_id WHERE lc.id = ?`).bind(id).first<any>();
   if (!row || !approvalToken || row.telegram_token_hash !== await sha256(approvalToken) || row.consumed_at || Date.parse(row.expires_at) <= Date.now()) return fail(c, 422, 'LOGIN_CHALLENGE_EXPIRED', 'Запрос на вход истёк.');
   if (row.denied_at) return ok(c, { status: 'denied' });
