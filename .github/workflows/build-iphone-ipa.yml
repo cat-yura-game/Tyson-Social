@@ -1,0 +1,48 @@
+name: Build iPhone IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ipa:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.16.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @tyson/frontend build
+        env:
+          VITE_API_URL: https://api.tysonsocial.eu.cc
+      - run: pnpm exec cap add ios
+      - run: pnpm exec cap sync ios
+      - name: Build unsigned iPhone app
+        run: |
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p build/Payload
+          cp -R build/ios/Build/Products/Release-iphoneos/App.app build/Payload/TysonSocial.app
+          cd build
+          zip -qry TysonSocial-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TysonSocial-iPhone-unsigned
+          path: build/TysonSocial-unsigned.ipa
+          retention-days: 14

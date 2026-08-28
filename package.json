@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.16.0",
-  "workspaces": ["frontend", "backend"],
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "scripts": {
     "dev:frontend": "pnpm --filter @tyson/frontend dev",
     "dev:backend": "pnpm --filter @tyson/backend dev",
@@ -14,10 +17,17 @@
     "test": "pnpm -r --if-present run test",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
-  "engines": { "node": ">=22.0.0" },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
     "eslint": "^9.33.0",
     "typescript-eslint": "^8.39.1"
+  },
+  "dependencies": {
+    "@capacitor/cli": "^7.6.8",
+    "@capacitor/core": "^7.6.8",
+    "@capacitor/ios": "^7.6.8"
   }
 }
