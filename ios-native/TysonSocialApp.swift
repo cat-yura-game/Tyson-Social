@@ -6,9 +6,13 @@ struct TysonSocialApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabView()
-                .environmentObject(session)
-                .tint(TysonColor.accent)
+            ZStack {
+                TysonColor.background.ignoresSafeArea()
+                RootTabView()
+            }
+            .environmentObject(session)
+            .tint(TysonColor.accent)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
