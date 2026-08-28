@@ -3,14 +3,14 @@ import SwiftUI
 struct FeedView: View {
     @State private var posts: [TysonPost] = []
     @State private var loading = true
-    @State private var error: String?
+    @State private var loadError: String?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 14) {
                     HStack { Text("Tyson").font(.largeTitle.bold()); Spacer(); Image(systemName: "bell") }.padding(.horizontal)
-                    if let message = error { Text(message).foregroundStyle(.secondary).padding() }
+                    if let message = loadError { Text(message).foregroundStyle(.secondary).padding() }
                     if loading { ProgressView().padding(40) }
                     ForEach(posts) { post in PostCard(post: post) }
                 }.padding(.vertical)
@@ -22,9 +22,9 @@ struct FeedView: View {
     }
 
     private func load() async {
-        loading = true; error = nil
+        loading = true; loadError = nil
         do { posts = try await TysonAPI.shared.feed() }
-        catch { error = "Не удалось загрузить ленту Tyson." }
+        catch { loadError = "Не удалось загрузить ленту Tyson." }
         loading = false
     }
 }
