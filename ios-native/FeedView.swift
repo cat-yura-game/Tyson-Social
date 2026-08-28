@@ -10,7 +10,7 @@ struct FeedView: View {
             ScrollView {
                 LazyVStack(spacing: 14) {
                     HStack { Text("Tyson").font(.largeTitle.bold()); Spacer(); Image(systemName: "bell") }.padding(.horizontal)
-                    if let error { Text(error).foregroundStyle(.secondary).padding() }
+                    if let message = error { Text(message).foregroundStyle(.secondary).padding() }
                     if loading { ProgressView().padding(40) }
                     ForEach(posts) { post in PostCard(post: post) }
                 }.padding(.vertical)
