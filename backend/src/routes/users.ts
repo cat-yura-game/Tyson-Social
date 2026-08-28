@@ -528,6 +528,28 @@ userRoutes.delete('/:username/follow', async (c) => {
   return ok(c, { following: false, followerCount: count?.followerCount ?? 0 });
 });
 
+userRoutes.get('/:username/followers', async (c) => {
+  const target = await findUserByUsername(c.env.DB, c.req.param('username'));
+  if (!target) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
+  const rows = await c.env.DB.prepare(`SELECT u.id, u.username, u.display_name AS displayName,
+    u.avatar_key AS avatarKey, u.is_verified AS verified
+    FROM user_follows f JOIN users u ON u.id = f.follower_user_id
+    WHERE f.followed_user_id = ? ORDER BY f.created_at DESC LIMIT 200`)
+    .bind(target.id).all();
+  return ok(c, { people: rows.results });
+});
+
+userRoutes.get('/:username/following', async (c) => {
+  const target = await findUserByUsername(c.env.DB, c.req.param('username'));
+  if (!target) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
+  const rows = await c.env.DB.prepare(`SELECT u.id, u.username, u.display_name AS displayName,
+    u.avatar_key AS avatarKey, u.is_verified AS verified
+    FROM user_follows f JOIN users u ON u.id = f.followed_user_id
+    WHERE f.follower_user_id = ? ORDER BY f.created_at DESC LIMIT 200`)
+    .bind(target.id).all();
+  return ok(c, { people: rows.results });
+});
+
 userRoutes.get('/:username', async (c) => {
   const username = c.req.param('username').trim().toLowerCase();
   if (!/^[a-z0-9_]{3,30}$/u.test(username)) return fail(c, 404, 'USER_NOT_FOUND', 'User not found.');
