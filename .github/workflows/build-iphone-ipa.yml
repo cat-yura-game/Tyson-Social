@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build-ipa:
-    runs-on: macos-14
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -24,6 +24,16 @@ jobs:
           VITE_API_URL: https://api.tysonsocial.eu.cc
       - run: pnpm exec cap add ios
       - run: pnpm exec cap sync ios
+      - name: Apply Tyson app icon and full-screen settings
+        run: |
+          mkdir -p ios/App/App/Assets.xcassets/AppIcon.appiconset
+          cat > ios/App/App/Assets.xcassets/AppIcon.appiconset/Contents.json <<'JSON'
+          {"images":[{"filename":"icon-60@2x.png","idiom":"iphone","scale":"2x","size":"60x60"},{"filename":"icon-60@3x.png","idiom":"iphone","scale":"3x","size":"60x60"},{"filename":"icon-1024.png","idiom":"ios-marketing","scale":"1x","size":"1024x1024"}],"info":{"author":"Tyson","version":1}}
+          JSON
+          sips -z 120 120 logo.png --out ios/App/App/Assets.xcassets/AppIcon.appiconset/icon-60@2x.png
+          sips -z 180 180 logo.png --out ios/App/App/Assets.xcassets/AppIcon.appiconset/icon-60@3x.png
+          sips -z 1024 1024 logo.png --out ios/App/App/Assets.xcassets/AppIcon.appiconset/icon-1024.png
+          /usr/libexec/PlistBuddy -c "Add :UIRequiresFullScreen bool true" ios/App/App/Info.plist || true
       - name: Build unsigned iPhone app
         run: |
           xcodebuild \
@@ -34,6 +44,7 @@ jobs:
             -derivedDataPath build/ios \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
+            ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon \
             build
       - name: Package unsigned IPA
         run: |
