@@ -9,7 +9,6 @@ struct FeedView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 14) {
-                    HStack { Text("Tyson").font(.largeTitle.bold()); Spacer(); Image(systemName: "bell") }.padding(.horizontal)
                     if let message = loadError { Text(message).foregroundStyle(.secondary).padding() }
                     if loading { ProgressView().padding(40) }
                     ForEach(posts) { post in PostCard(post: post) }
@@ -18,6 +17,11 @@ struct FeedView: View {
             .background(TysonColor.background)
             .refreshable { await load() }
             .task { await load() }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) { HStack(spacing: 8) { Image(systemName: "pawprint.fill").foregroundStyle(TysonColor.green); Text("Tyson").font(.title2.bold()) } }
+                ToolbarItem(placement: .topBarTrailing) { NavigationLink { NotificationsView() } label: { Image(systemName: "bell") } }
+            }
         }
     }
 
@@ -27,6 +31,10 @@ struct FeedView: View {
         catch { loadError = "Не удалось загрузить ленту Tyson." }
         loading = false
     }
+}
+
+struct NotificationsView: View {
+    var body: some View { List { ContentUnavailableView("Уведомлений пока нет", systemImage: "bell", description: Text("Лайки, комментарии, подписки и важные события появятся здесь.")) }.navigationTitle("Уведомления") }
 }
 
 private struct PostCard: View {

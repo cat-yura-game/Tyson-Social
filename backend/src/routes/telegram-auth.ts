@@ -14,7 +14,7 @@ import { completeTelegramReferral } from '../services/telegram-referrals';
 const STATE_TTL_MS = 10 * 60_000;
 const TICKET_TTL_MS = 2 * 60_000;
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
-const startSchema = z.object({ action: z.enum(['login', 'link']) }).strict();
+const startSchema = z.object({ action: z.enum(['login', 'link']), native: z.boolean().optional() }).strict();
 const exchangeSchema = z.object({ ticket: z.string().min(20).max(500) }).strict();
 
 interface OAuthStateRow {
@@ -23,6 +23,7 @@ interface OAuthStateRow {
   sessionId: string | null;
   codeVerifier: string;
   nonce: string;
+  nativeReturn: number;
 }
 
 export const telegramAuthRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
@@ -82,10 +83,10 @@ telegramAuthRoutes.post('/start', async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(`DELETE FROM telegram_oauth_states WHERE expires_at <= ?`).bind(now.toISOString()),
     c.env.DB.prepare(`INSERT INTO telegram_oauth_states
-      (state_hash, action, user_id, session_id, code_verifier, nonce, expires_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+      (state_hash, action, user_id, session_id, code_verifier, nonce, native_return, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
       await sha256(state), input.action, user?.id ?? null, sessionId,
-      codeVerifier, nonce, new Date(now.getTime() + STATE_TTL_MS).toISOString(), now.toISOString(),
+      codeVerifier, nonce, input.native ? 1 : 0, new Date(now.getTime() + STATE_TTL_MS).toISOString(), now.toISOString(),
     ),
   ]);
   const codeChallenge = base64UrlEncode(new Uint8Array(await crypto.subtle.digest('SHA-256', utf8(codeVerifier))));
@@ -104,7 +105,7 @@ telegramAuthRoutes.get('/callback', async (c) => {
     const now = new Date().toISOString();
     claimedState = await c.env.DB.prepare(`UPDATE telegram_oauth_states SET consumed_at = ?
       WHERE state_hash = ? AND consumed_at IS NULL AND expires_at > ?
-      RETURNING action, user_id AS userId, session_id AS sessionId, code_verifier AS codeVerifier, nonce`)
+      RETURNING action, user_id AS userId, session_id AS sessionId, code_verifier AS codeVerifier, nonce, native_return AS nativeReturn`)
       .bind(now, await sha256(state), now).first<OAuthStateRow>();
     if (!claimedState) return c.redirect(frontendUrl(c.env, '/auth/telegram/callback', { error: 'expired_state' }));
 
@@ -179,6 +180,9 @@ telegramAuthRoutes.get('/callback', async (c) => {
     const ticket = randomToken();
     await c.env.DB.prepare(`INSERT INTO telegram_login_tickets (token_hash, user_id, expires_at, created_at)
       VALUES (?, ?, ?, ?)`).bind(await sha256(ticket), userId, new Date(Date.now() + TICKET_TTL_MS).toISOString(), now).run();
+    if (claimedState.nativeReturn) {
+      return c.redirect(`tysonsocial://auth?ticket=${encodeURIComponent(ticket)}`);
+    }
     return c.redirect(frontendUrl(c.env, '/auth/telegram/callback', { ticket }));
   } catch (error) {
     console.error(JSON.stringify({ event: 'telegram_oidc_callback_failed', error: error instanceof Error ? error.message : 'unknown' }));

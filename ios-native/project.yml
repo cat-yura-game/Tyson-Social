@@ -15,6 +15,7 @@ targets:
           - Info.plist
     resources:
       - Assets.xcassets
+      - LaunchScreen.storyboard
     info:
       path: Info.plist
     settings:
