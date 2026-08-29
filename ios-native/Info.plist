@@ -5,8 +5,8 @@
     <key>CFBundleDisplayName</key><string>Tyson</string>
     <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleName</key><string>Tyson Social</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>0.2.0</string>
+    <key>CFBundleVersion</key><string>2</string>
     <key>UILaunchStoryboardName</key><string>LaunchScreen</string>
     <key>UIRequiresFullScreen</key><true/>
     <key>CFBundleURLTypes</key>
