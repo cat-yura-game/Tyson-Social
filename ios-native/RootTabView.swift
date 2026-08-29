@@ -80,7 +80,7 @@ private struct AIChatsSheet: View {
 
 private struct AIMessageBubble: View {
     let message: AIMessage
-    var body: some View { HStack { if message.role == "user" { Spacer(minLength: 46) }; VStack(alignment: .leading, spacing: 6) { Text(message.role == "assistant" ? "Tyson AI" : "Вы").font(.caption.bold()).foregroundStyle(.secondary); AIFormattedText(message.content); if let name = message.attachmentName { Label(name, systemImage: "doc.fill").font(.caption) } }.padding(13).modifier(AIMessageSurface(own: message.role == "user")); if message.role != "user" { Spacer(minLength: 28) } } }
+    var body: some View { HStack { if message.role == "user" { Spacer(minLength: 46) }; VStack(alignment: .leading, spacing: 6) { Text(message.role == "assistant" ? "Tyson AI" : "Вы").font(.caption.bold()).foregroundStyle(.secondary); AIFormattedText(content: message.content); if let name = message.attachmentName { Label(name, systemImage: "doc.fill").font(.caption) } }.padding(13).modifier(AIMessageSurface(own: message.role == "user")); if message.role != "user" { Spacer(minLength: 28) } } }
 }
 
 private struct AIMessageSurface: ViewModifier { let own: Bool; @ViewBuilder func body(content: Content) -> some View { if own { content.tysonGlassSurface(RoundedRectangle(cornerRadius: 20)) } else { content } } }
