@@ -106,7 +106,26 @@ struct ConversationView: View {
 }
 
 private extension View { func glassCircle() -> some View { self.buttonStyle(.plain).background(.ultraThinMaterial, in: Circle()).overlay(Circle().stroke(.white.opacity(0.55), lineWidth: 1)).shadow(color: .black.opacity(0.08), radius: 8, y: 4) } }
-private struct DaySeparator: View { let value: String?; var body: some View { Text(label).font(.caption2.bold()).foregroundStyle(.secondary).padding(.horizontal, 11).padding(.vertical, 5).background(.thinMaterial, in: Capsule()).padding(.vertical, 4) } private var label: String { guard let value, let date = ISO8601DateFormatter().date(from: value) else { return "Сегодня" }; if Calendar.current.isDateInToday(date) { return "Сегодня" }; if Calendar.current.isDateInYesterday(date) { return "Вчера" }; return date.formatted(date: .abbreviated, time: .omitted) } }
+private struct DaySeparator: View {
+    let value: String?
+
+    var body: some View {
+        Text(label)
+            .font(.caption2.bold())
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .background(.thinMaterial, in: Capsule())
+            .padding(.vertical, 4)
+    }
+
+    private var label: String {
+        guard let value, let date = ISO8601DateFormatter().date(from: value) else { return "Сегодня" }
+        if Calendar.current.isDateInToday(date) { return "Сегодня" }
+        if Calendar.current.isDateInYesterday(date) { return "Вчера" }
+        return date.formatted(date: .abbreviated, time: .omitted)
+    }
+}
 
 private struct MessageBubble: View {
     let message: TysonMessage; let currentUserId: String?
