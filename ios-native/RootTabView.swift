@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct RootTabView: View {
     @EnvironmentObject private var session: AppSession
@@ -38,13 +39,13 @@ struct CreateView: View {
         }.padding(18) }.padding(.horizontal)
         Button { Task { await publish() } } label: { Label("Опубликовать", systemImage: "paperplane.fill").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).controlSize(.large).padding(.horizontal).disabled(bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         if let status { Text(status).foregroundStyle(.secondary) }
-    }.padding(.vertical) }.navigationTitle("Создать").navigationBarTitleDisplayMode(.inline).onAppear { if bodyText.isEmpty { bodyText = savedDraft } }.onChange(of: photo) { _, item in Task { photoData = try? await item?.loadTransferable(type: Data.self) } } } }
+    }.padding(.vertical) }.navigationTitle("Создать").navigationBarTitleDisplayMode(.inline).onAppear { if bodyText.isEmpty { bodyText = savedDraft } }.onChange(of: photo) { _, item in Task { if let raw = try? await item?.loadTransferable(type: Data.self), let image = UIImage(data: raw), let jpeg = image.jpegData(compressionQuality: 0.9) { photoData = jpeg } else if item != nil { status = "Не удалось подготовить фотографию" } } } } }
     private func format(_ title: String, _ icon: String, _ insertion: String) -> some View { Button { bodyText += insertion } label: { Label(title, systemImage: icon) }.buttonStyle(.bordered) }
     private func publish() async {
         let poll = pollEnabled ? PollInput(question: pollQuestion.trimmingCharacters(in: .whitespacesAndNewlines), options: pollOptions.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }) : nil
         if let poll, poll.question.isEmpty || poll.options.count < 2 { status = "Для опроса нужен вопрос и минимум два варианта"; return }
         let input = CreatePostInput(title: title, body: bodyText, poll: poll, scheduledAt: scheduleEnabled ? ISO8601DateFormatter().string(from: scheduledAt) : nil, coauthorUsernames: coauthors.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "@", with: "") }.filter { !$0.isEmpty })
-        do { if let photoData { try await TysonAPI.shared.createPostWithImage(input, imageData: photoData) } else { try await TysonAPI.shared.createPost(input) }; title = ""; bodyText = ""; self.photoData = nil; savedDraft = ""; status = scheduleEnabled ? "Публикация запланирована" : "Пост опубликован" } catch { status = "Не удалось опубликовать пост" }
+        do { let result = if let photoData { try await TysonAPI.shared.createPostWithImage(input, imageData: photoData) } else { try await TysonAPI.shared.createPost(input) }; title = ""; bodyText = ""; self.photoData = nil; savedDraft = ""; status = scheduleEnabled || result == "scheduled" ? "Публикация запланирована" : result == "review" ? "Пост отправлен на проверку" : "Пост опубликован" } catch { status = "Не удалось опубликовать пост" }
     }
 }
 

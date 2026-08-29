@@ -110,9 +110,9 @@ struct ConversationView: View {
             }
         }
         .task { await load() }
-        .onChange(of: photo) { _, item in Task { if let data = try? await item?.loadTransferable(type: Data.self) { await sendAttachment(data, type: "image", mime: "image/jpeg") } } }
+        .onChange(of: photo) { _, item in Task { if let raw = try? await item?.loadTransferable(type: Data.self), let image = UIImage(data: raw), let data = image.jpegData(compressionQuality: 0.9) { await sendAttachment(data, type: "image", mime: "image/jpeg") } else if item != nil { error = "Не удалось подготовить фотографию" } } }
         .onChange(of: video) { _, item in Task { if let data = try? await item?.loadTransferable(type: Data.self) { await sendAttachment(data, type: "video", mime: "video/mp4", duration: 1) } } }
-        .fileImporter(isPresented: $showFiles, allowedContentTypes: [.data, .pdf, .text]) { result in Task { do { let url = try result.get(); let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }; let data = try Data(contentsOf: url); await sendAttachment(data, type: "file", mime: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream", name: url.lastPathComponent) } catch { self.error = "Не удалось отправить файл" } } }
+        .fileImporter(isPresented: $showFiles, allowedContentTypes: [.item]) { result in Task { do { let url = try result.get(); let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }; let data = try Data(contentsOf: url); await sendAttachment(data, type: "file", mime: supportedFileMime(url.pathExtension), name: url.lastPathComponent) } catch { self.error = "Не удалось отправить файл" } } }
     }
     private var recordingBar: some View { HStack { Circle().fill(.red).frame(width: 9, height: 9); Text("Запись голосового…"); Spacer(); Button("Отправить") { Task { await finishVoice() } }; Button("Отмена") { recorder.cancel() } }.font(.subheadline).padding(10).tysonGlassSurface(Capsule()) }
     private var actionBar: some View { HStack { Image(systemName: editingMessage != nil ? "pencil" : "arrowshape.turn.up.left"); VStack(alignment: .leading) { Text(editingMessage != nil ? "Редактирование" : "Ответ").font(.caption.bold()); Text((editingMessage ?? replyingTo)?.text ?? "").font(.caption).lineLimit(1) }; Spacer(); Button { editingMessage = nil; replyingTo = nil } label: { Image(systemName: "xmark.circle.fill") } }.padding(.horizontal, 14).padding(.vertical, 7).tysonGlassSurface(Capsule()) }
@@ -128,6 +128,21 @@ struct ConversationView: View {
     private func sendSticker(_ id: String) async { sendingSticker = true; defer { sendingSticker = false }; do { try await TysonAPI.shared.sendSticker(conversationId: conversation.id, stickerId: id); showStickers = false; await load() } catch { self.error = "Не удалось отправить стикер" } }
     private func sendAttachment(_ data: Data, type: String, mime: String, duration: Int? = nil, name: String? = nil) async { do { try await TysonAPI.shared.sendAttachment(conversationId: conversation.id, data: data, type: type, mimeType: mime, durationMs: duration, name: name); await load() } catch { self.error = "Не удалось отправить вложение" } }
     private func finishVoice() async { guard let result = recorder.stop() else { return }; await sendAttachment(result.data, type: "audio", mime: "audio/mp4", duration: result.duration) }
+    private func supportedFileMime(_ ext: String) -> String {
+        switch ext.lowercased() {
+        case "pdf": return "application/pdf"
+        case "txt": return "text/plain"
+        case "md", "markdown": return "text/markdown"
+        case "csv": return "text/csv"
+        case "json": return "application/json"
+        case "rtf": return "application/rtf"
+        case "doc": return "application/msword"
+        case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        case "xlsx": return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        default: return "application/octet-stream"
+        }
+    }
     private func dayKey(_ value: String?) -> String { guard let value, let date = ISO8601DateFormatter().date(from: value) else { return "" }; return Calendar.current.startOfDay(for: date).description }
 }
 

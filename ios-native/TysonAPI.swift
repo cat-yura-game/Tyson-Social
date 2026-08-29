@@ -205,11 +205,12 @@ actor TysonAPI {
         try await requestVoid(path: "/posts", method: "POST", body: ["title": title, "body": body])
     }
 
-    func createPost(_ input: CreatePostInput) async throws {
-        let _: Envelope<CreatePostResult> = try await requestEncodable(path: "/posts", body: input)
+    func createPost(_ input: CreatePostInput) async throws -> String {
+        let response: Envelope<CreatePostResult> = try await requestEncodable(path: "/posts", body: input)
+        return response.data.status
     }
 
-    func createPostWithImage(_ input: CreatePostInput, imageData: Data) async throws {
+    func createPostWithImage(_ input: CreatePostInput, imageData: Data) async throws -> String {
         let boundary = "Tyson-\(UUID().uuidString)"
         var request = URLRequest(url: baseURL.appending(path: "/posts")); request.httpMethod = "POST"; authorize(&request)
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -223,7 +224,7 @@ actor TysonAPI {
         request.httpBody = data
         let (responseData, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
-        _ = try decoder.decode(Envelope<CreatePostResult>.self, from: responseData)
+        return try decoder.decode(Envelope<CreatePostResult>.self, from: responseData).data.status
     }
 
     func profile(username: String) async throws -> TysonUser {
