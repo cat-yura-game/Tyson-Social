@@ -48,6 +48,12 @@ extension View {
                 .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
         }
     }
+
+    /// Standard Apple material for controls that float over scrolling content.
+    /// Unlike a filled card, this stays light and lets the content behind it blur through.
+    func tysonSystemMaterial<S: Shape>(_ shape: S) -> some View {
+        self.background(.ultraThinMaterial, in: shape)
+    }
 }
 
 struct TysonAvatar: View {
