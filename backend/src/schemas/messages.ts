@@ -32,6 +32,11 @@ const videoContent = z.object({
   type: z.literal('video'), attachmentId: z.string().uuid(), key: z.string().min(32).max(256), nonce: z.string().min(16).max(256),
   digest: z.string().min(32).max(256).optional(), mimeType: z.enum(['video/webm', 'video/mp4']), durationMs: z.number().int().positive().max(60_000),
 }).strict();
+const fileContent = z.object({
+  type: z.literal('file'), attachmentId: z.string().uuid(), key: z.string().min(32).max(256), nonce: z.string().min(16).max(256),
+  digest: z.string().min(32).max(256).optional(), mimeType: z.enum(['application/pdf', 'text/plain', 'text/markdown', 'text/csv', 'application/json', 'application/rtf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/octet-stream']),
+  name: z.string().trim().min(1).max(160).optional(),
+}).strict();
 const textContent = z.object({ type: z.literal('text'), text: z.string().trim().min(1).max(4000) }).strict();
 const giftContent = z.object({
   type: z.literal('gift'), giftId: z.string().uuid(), title: z.string().trim().min(1).max(100), image: z.string().startsWith('/gift/'),
@@ -44,6 +49,7 @@ const basicCloudContentSchema = z.discriminatedUnion('type', [
   imageContent,
   audioContent,
   videoContent,
+  fileContent,
   giftContent,
 ]);
 const cloudContentSchema = z.union([

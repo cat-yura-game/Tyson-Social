@@ -11,6 +11,12 @@ struct TysonUser: Codable, Identifiable {
     let verified: Bool?
     let followerCount: Int?
     let followingCount: Int?
+    let viewerFollowing: Bool?
+    let createdAt: String?
+    let lastSeenAt: String?
+    let birthdayMonthDay: String?
+    let birthdayYear: Int?
+    let profileColor: String?
 }
 
 struct TysonPost: Codable, Identifiable {
@@ -23,6 +29,11 @@ struct TysonPost: Codable, Identifiable {
     let publishedAt: String
     let likeCount: Int?
     let commentCount: Int?
+    let authorId: String?
+    let diamondCount: Int?
+    let pinnedAt: String?
+    let promoted: TysonFlag?
+    let viewerReaction: String?
 }
 
 private struct Envelope<T: Codable>: Codable { let data: T }
@@ -38,6 +49,12 @@ actor TysonAPI {
     nonisolated static func mediaURL(_ key: String?) -> URL? {
         guard let key, !key.isEmpty else { return nil }
         return URL(string: "https://api.tysonsocial.eu.cc/api/media/\(key.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? key)")
+    }
+
+    nonisolated static func publicAssetURL(_ path: String?) -> URL? {
+        guard let path, !path.isEmpty else { return nil }
+        if let url = URL(string: path), url.scheme != nil { return url }
+        return URL(string: "https://tysonsocial.eu.cc\(path.hasPrefix("/") ? path : "/\(path)")")
     }
 
     func session() async throws -> TysonUser? {
@@ -104,7 +121,7 @@ actor TysonAPI {
         let _: Envelope<EmptyPayload> = try await requestEncodable(path: "/messages/conversations/\(conversationId)/messages", body: SendTextBody(content: MessageContentPayload(type: "text", text: content)))
     }
 
-    func sendAttachment(conversationId: String, data: Data, type: String, mimeType: String, durationMs: Int? = nil) async throws {
+    func sendAttachment(conversationId: String, data: Data, type: String, mimeType: String, durationMs: Int? = nil, name: String? = nil) async throws {
         let sodium = Sodium()
         let key = sodium.secretBox.key(); let nonce = sodium.secretBox.nonce()
         guard let ciphertext = sodium.secretBox.seal(message: [UInt8](data), secretKey: key, nonce: nonce) else { throw URLError(.cannotParseResponse) }
@@ -113,12 +130,32 @@ actor TysonAPI {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
         let uploaded = try decoder.decode(Envelope<AttachmentUploadPayload>.self, from: responseData)
         let digest = Data(SHA256.hash(data: Data(ciphertext))).base64EncodedString()
-        let content = AttachmentContentPayload(type: type, attachmentId: uploaded.data.attachmentId, key: Data(key).base64EncodedString(), nonce: Data(nonce).base64EncodedString(), digest: digest, mimeType: mimeType, durationMs: durationMs)
+        let content = AttachmentContentPayload(type: type, attachmentId: uploaded.data.attachmentId, key: Data(key).base64EncodedString(), nonce: Data(nonce).base64EncodedString(), digest: digest, mimeType: mimeType, durationMs: durationMs, name: name)
         let _: Envelope<EmptyPayload> = try await requestEncodable(path: "/messages/conversations/\(conversationId)/messages", body: SendAttachmentBody(content: content))
     }
 
-    func createConversation(username: String) async throws {
-        try await requestVoid(path: "/messages/conversations", method: "POST", body: ["recipientUsername": username])
+    func createConversation(username: String) async throws -> TysonConversation {
+        let response: Envelope<CreatedConversationPayload> = try await request(path: "/messages/conversations", method: "POST", body: ["recipientUsername": username])
+        return TysonConversation(id: response.data.conversation.id, title: nil, otherUsername: response.data.conversation.otherUser.username, otherDisplayName: response.data.conversation.otherUser.displayName, lastMessage: nil, updatedAt: nil, otherAvatarKey: response.data.conversation.otherUser.avatarKey, kind: "direct", memberCount: nil)
+    }
+
+    func createGroup(title: String, username: String) async throws -> TysonConversation {
+        let response: Envelope<GroupConversationPayload> = try await requestEncodable(
+            path: "/messages/groups",
+            body: GroupConversationBody(title: title, username: username)
+        )
+        let group = response.data.conversation
+        return TysonConversation(
+            id: group.id,
+            title: group.title,
+            otherUsername: group.username,
+            otherDisplayName: group.title,
+            lastMessage: nil,
+            updatedAt: nil,
+            otherAvatarKey: nil,
+            kind: "group",
+            memberCount: group.memberCount
+        )
     }
 
     func createPost(title: String, body: String) async throws {
@@ -157,8 +194,48 @@ actor TysonAPI {
         return response.data.posts
     }
 
-    func updateProfile(name: String, bio: String) async throws {
-        try await requestVoid(path: "/users/me", method: "PATCH", body: ["displayName": name, "bio": bio])
+    func people(username: String, kind: FollowListKind) async throws -> [TysonPerson] {
+        let response: Envelope<PeoplePayload> = try await request(path: "/users/\(username)/\(kind.rawValue)")
+        return response.data.people
+    }
+
+    func setFollowing(username: String, following: Bool) async throws -> FollowResult {
+        let response: Envelope<FollowResult> = try await requestEncodable(path: "/users/\(username)/follow", method: following ? "PUT" : "DELETE", body: EmptyPayload())
+        return response.data
+    }
+
+    func diamondBalance() async throws -> Int { let response: Envelope<DiamondBalancePayload> = try await request(path: "/diamonds/balance"); return response.data.balance }
+    func diamondTransactions() async throws -> [DiamondTransaction] { let response: Envelope<DiamondTransactionsPayload> = try await request(path: "/diamonds/transactions"); return response.data.transactions }
+    func gifts() async throws -> [TysonGiftType] { let response: Envelope<GiftTypesPayload> = try await request(path: "/gifts"); return response.data.gifts }
+    func myGifts() async throws -> [TysonGift] { let response: Envelope<UserGiftsPayload> = try await request(path: "/users/me/gifts"); return response.data.gifts }
+    func userGifts(username: String) async throws -> [TysonGift] { let response: Envelope<UserGiftsPayload> = try await request(path: "/users/\(username)/gifts"); return response.data.gifts }
+    func buyGift(id: String, recipientUsername: String?) async throws -> Int {
+        let response: Envelope<GiftPurchasePayload> = try await requestEncodable(path: "/gifts/\(id)/buy", body: GiftPurchaseBody(recipientUsername: recipientUsername))
+        return response.data.balance
+    }
+    func starPackages() async throws -> [StarPackage] { let response: Envelope<StarPackagesPayload> = try await request(path: "/diamonds/stars/packages"); return response.data.packages }
+    func starInvoice(packageId: String) async throws -> URL {
+        let response: Envelope<StarInvoicePayload> = try await requestEncodable(path: "/diamonds/stars/invoice", body: StarInvoiceBody(packageId: packageId))
+        guard let url = URL(string: response.data.url) else { throw URLError(.badURL) }; return url
+    }
+
+    func promotePost(id: String, views: Int) async throws { let _: Envelope<PromotionPayload> = try await requestEncodable(path: "/posts/\(id)/promote", body: PromotionBody(views: views)) }
+    func cancelPromotion(id: String) async throws { try await requestVoid(path: "/posts/\(id)/promote", method: "DELETE", body: [:]) }
+    func pinPost(id: String, pinned: Bool) async throws { let _: Envelope<PinPayload> = try await requestEncodable(path: "/posts/\(id)/pin", method: "PUT", body: PinBody(pinned: pinned)) }
+    func deletePost(id: String) async throws { try await requestVoid(path: "/posts/\(id)", method: "DELETE", body: [:]) }
+    func repost(id: String) async throws { let _: Envelope<RepostPayload> = try await requestEncodable(path: "/posts/\(id)/repost", body: RepostBody(body: "")) }
+    func updatePost(id: String, title: String, body: String) async throws { let _: Envelope<UpdatePostPayload> = try await requestEncodable(path: "/posts/\(id)", method: "PUT", body: UpdatePostBody(title: title, body: body)) }
+    func reactToPost(id: String, reaction: String?) async throws -> ReactionPayload { let response: Envelope<ReactionPayload> = try await requestEncodable(path: "/posts/\(id)/reaction", method: "PUT", body: ReactionBody(reaction: reaction)); return response.data }
+
+    func editMessage(conversationId: String, messageId: String, text: String) async throws {
+        let _: Envelope<EditMessagePayload> = try await requestEncodable(path: "/messages/conversations/\(conversationId)/messages/\(messageId)", method: "PUT", body: SendTextBody(content: MessageContentPayload(type: "text", text: text)))
+    }
+    func deleteMessage(conversationId: String, messageId: String) async throws { let _: Envelope<DeleteMessagePayload> = try await requestEncodable(path: "/messages/conversations/\(conversationId)/messages/\(messageId)", method: "DELETE", body: EmptyPayload()) }
+
+    func updateProfile(_ input: ProfileUpdateInput) async throws -> TysonUser {
+        let response: Envelope<SessionPayload> = try await requestEncodable(path: "/users/me", method: "PATCH", body: input)
+        guard let user = response.data.user else { throw URLError(.cannotParseResponse) }
+        return user
     }
 
     func deviceSessions() async throws -> [TysonDeviceSession] {
@@ -183,6 +260,15 @@ actor TysonAPI {
     }
     func saveNotificationSettings(_ value: NotificationSettings) async throws {
         let _: Envelope<NotificationSettings> = try await requestEncodable(path: "/users/me/notification-settings", method: "PUT", body: value)
+    }
+
+    func notifications() async throws -> [TysonNotification] {
+        let response: Envelope<NotificationsPayload> = try await request(path: "/notifications")
+        return response.data.notifications
+    }
+
+    func markNotificationsRead() async throws {
+        try await requestVoid(path: "/notifications/read-all", method: "POST", body: [:])
     }
 
     func aiChat(text: String) async throws -> String {
@@ -252,7 +338,7 @@ actor TysonAPI {
 private struct SessionPayload: Codable { let user: TysonUser? }
 private struct FeedPayload: Codable { let posts: [TysonPost] }
 
-struct TysonConversation: Codable, Identifiable {
+struct TysonConversation: Codable, Identifiable, Hashable {
     let id: String
     let title: String?
     let otherUsername: String?
@@ -272,6 +358,53 @@ struct TysonMessage: Codable, Identifiable {
 }
 private struct ConversationsPayload: Codable { let conversations: [TysonConversation] }
 private struct MessagesPayload: Codable { let messages: [TysonMessage] }
+private struct CreatedConversationPayload: Codable { let conversation: CreatedConversation }
+private struct CreatedConversation: Codable { let id: String; let otherUser: CreatedConversationUser }
+private struct CreatedConversationUser: Codable { let username: String; let displayName: String; let avatarKey: String? }
+private struct GroupConversationBody: Codable { let title: String; let username: String }
+private struct GroupConversationPayload: Codable { let conversation: CreatedGroupConversation }
+private struct CreatedGroupConversation: Codable { let id: String; let title: String; let username: String; let memberCount: Int }
+enum FollowListKind: String { case followers, following }
+struct TysonPerson: Codable, Identifiable { let id: String; let username: String; let displayName: String; let avatarKey: String?; let verified: Int? }
+private struct PeoplePayload: Codable { let people: [TysonPerson] }
+struct FollowResult: Codable { let following: Bool; let followerCount: Int }
+private struct DiamondBalancePayload: Codable { let balance: Int }
+struct DiamondTransaction: Codable, Identifiable { let id: String; let amount: Int; let type: String; let reason: String; let createdAt: String }
+private struct DiamondTransactionsPayload: Codable { let transactions: [DiamondTransaction] }
+struct TysonGiftType: Codable, Identifiable { let id: String; let slug: String; let title: String; let basePrice: Int; let upgradePrice: Int?; let maxSupply: Int; let soldCount: Int; let remaining: Int; let baseImage: String; let isLimited: Bool; let isUnlimited: Bool; let canUpgrade: Bool; let canTransfer: Bool; let canWear: Bool; let exchangeReward: Int?; let exchangeWindowDays: Int?; let active: Bool }
+struct TysonGift: Codable, Identifiable { let id: String; let giftTypeId: String; let title: String; let serialNumber: Int; let maxSupply: Int; let basePrice: Int; let inscription: String?; let isCollectible: Bool; let accentColor: String; let isPublic: Bool; let worn: Bool; let activeListingId: String?; let variant: String?; let image: String; let purchasedAt: String; let upgradedAt: String?; let upgradePrice: Int?; let isLimited: Bool; let isUnlimited: Bool; let canUpgrade: Bool; let canTransfer: Bool; let canWear: Bool; let exchangeReward: Int?; let exchangeWindowDays: Int? }
+private struct GiftTypesPayload: Codable { let gifts: [TysonGiftType] }
+private struct UserGiftsPayload: Codable { let gifts: [TysonGift] }
+private struct GiftPurchaseBody: Codable { let recipientUsername: String? }
+private struct GiftPurchasePayload: Codable { let balance: Int }
+struct StarPackage: Codable, Identifiable { let id: String; let stars: Int; let diamonds: Int; let label: String }
+private struct StarPackagesPayload: Codable { let packages: [StarPackage] }
+private struct StarInvoiceBody: Codable { let packageId: String }
+private struct StarInvoicePayload: Codable { let url: String }
+private struct PromotionBody: Codable { let views: Int }
+private struct PromotionPayload: Codable { let cost: Int?; let balance: Int? }
+private struct PinBody: Codable { let pinned: Bool }
+private struct PinPayload: Codable { let pinned: Bool }
+private struct RepostBody: Codable { let body: String }
+private struct RepostPayload: Codable { let id: String }
+private struct UpdatePostBody: Codable { let title: String; let body: String }
+private struct UpdatePostPayload: Codable { let editedAt: String }
+private struct ReactionBody: Codable { let reaction: String? }
+struct ReactionPayload: Codable { let reaction: String?; let likeCount: Int }
+struct TysonNotification: Codable, Identifiable {
+    let id: String
+    let type: String
+    let entityId: String?
+    let message: String
+    let readAt: String?
+    let createdAt: String
+    let actorUsername: String?
+    let actorDisplayName: String?
+    let actorAvatarKey: String?
+}
+private struct NotificationsPayload: Codable { let notifications: [TysonNotification] }
+private struct EditMessagePayload: Codable { let edited: Bool; let editedAt: String? }
+private struct DeleteMessagePayload: Codable { let deleted: Bool }
 struct AIResponse: Codable { let answer: String }
 struct TysonSearchUser: Codable, Identifiable { let id: String; let username: String; let displayName: String }
 struct TysonSearchPost: Codable, Identifiable { let id: String; let body: String; let title: String?; let username: String; let displayName: String }
@@ -284,6 +417,13 @@ struct TysonDeviceSession: Codable, Identifiable { let id: String; let device: S
 private struct DeviceSessionsPayload: Codable { let sessions: [TysonDeviceSession] }
 struct PrivacySettings: Codable { var lastSeenVisibility: String; var birthdayVisibility: String; var messagingVisibility: String; var storiesVisibility: String }
 struct NotificationSettings: Codable { var messageSoundsEnabled: Bool }
+struct ProfileUpdateInput: Codable {
+    let displayName: String
+    let bio: String
+    let birthdayMonthDay: String?
+    let birthdayYear: Int?
+    let profileColor: String
+}
 struct PollInput: Codable { var question: String; var options: [String] }
 struct CreatePostInput: Codable { var title: String; var body: String; var poll: PollInput?; var scheduledAt: String?; var coauthorUsernames: [String]? }
 private struct CreatePostResult: Codable { let id: String; let status: String }
@@ -291,8 +431,21 @@ private struct EmptyPayload: Codable {}
 private struct MessageContentPayload: Codable { let type: String; let text: String }
 private struct SendTextBody: Codable { let content: MessageContentPayload }
 private struct AttachmentUploadPayload: Codable { let attachmentId: String }
-private struct AttachmentContentPayload: Codable { let type: String; let attachmentId: String; let key: String; let nonce: String; let digest: String; let mimeType: String; let durationMs: Int? }
+private struct AttachmentContentPayload: Codable { let type: String; let attachmentId: String; let key: String; let nonce: String; let digest: String; let mimeType: String; let durationMs: Int?; let name: String? }
 private struct SendAttachmentBody: Codable { let content: AttachmentContentPayload }
+
+struct TysonFlag: Codable, Equatable {
+    let value: Bool
+    init(_ value: Bool) { self.value = value }
+    init(from decoder: Decoder) throws {
+        let box = try decoder.singleValueContainer()
+        if let value = try? box.decode(Bool.self) { self.value = value; return }
+        if let value = try? box.decode(Int.self) { self.value = value != 0; return }
+        if let value = try? box.decode(String.self) { self.value = ["1", "true", "yes"].contains(value.lowercased()); return }
+        self.value = false
+    }
+    func encode(to encoder: Encoder) throws { var box = encoder.singleValueContainer(); try box.encode(value) }
+}
 
 enum JSONValue: Codable {
     case string(String), number(Double), bool(Bool), object([String: JSONValue]), array([JSONValue]), null

@@ -47,7 +47,7 @@ async function pushNewMessage(c: Parameters<typeof fail>[0], conversationId: str
 function attachmentIdFromContent(content: unknown): string | undefined {
   if (!content || typeof content !== 'object') return undefined;
   const value = content as Record<string, unknown>;
-  if ((value.type === 'image' || value.type === 'audio' || value.type === 'video') && typeof value.attachmentId === 'string') return value.attachmentId;
+  if ((value.type === 'image' || value.type === 'audio' || value.type === 'video' || value.type === 'file') && typeof value.attachmentId === 'string') return value.attachmentId;
   if (value.type === 'forwarded') return attachmentIdFromContent(value.content);
   return undefined;
 }
