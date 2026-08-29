@@ -102,9 +102,14 @@ actor TysonAPI {
         UserDefaults.standard.removeObject(forKey: "tyson_access_token")
     }
 
-    func feed() async throws -> [TysonPost] {
-        let response: Envelope<FeedPayload> = try await request(path: "/feed")
+    func feed(view: FeedViewMode = .forYou) async throws -> [TysonPost] {
+        let response: Envelope<FeedPayload> = try await request(path: "/feed?view=\(view.rawValue)")
         return response.data.posts
+    }
+
+    func stories() async throws -> [TysonStory] {
+        let response: Envelope<StoriesPayload> = try await request(path: "/stories")
+        return response.data.stories
     }
 
     func conversations() async throws -> [TysonConversation] {
@@ -350,6 +355,37 @@ actor TysonAPI {
 
 private struct SessionPayload: Codable { let user: TysonUser? }
 private struct FeedPayload: Codable { let posts: [TysonPost] }
+enum FeedViewMode: String, CaseIterable, Identifiable {
+    case forYou = "for-you"
+    case following
+    case fresh
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .forYou: return "Для вас"
+        case .following: return "Подписки"
+        case .fresh: return "Свежие"
+        }
+    }
+}
+struct TysonStory: Codable, Identifiable {
+    let id: String
+    let storageKey: String
+    let mediaType: String
+    let contentType: String
+    let caption: String?
+    let createdAt: String
+    let expiresAt: String
+    let authorId: String
+    let username: String
+    let displayName: String
+    let avatarKey: String?
+    let verified: TysonFlag?
+    let reactionCount: Int?
+    let viewerReaction: String?
+}
+private struct StoriesPayload: Codable { let stories: [TysonStory] }
 
 struct TysonConversation: Codable, Identifiable, Hashable {
     let id: String

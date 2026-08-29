@@ -1,7 +1,11 @@
 import SwiftUI
+import AVKit
 
 struct FeedView: View {
     @State private var posts: [TysonPost] = []
+    @State private var stories: [TysonStory] = []
+    @State private var mode: FeedViewMode = .forYou
+    @State private var openedStory: TysonStory?
     @State private var loading = true
     @State private var loadError: String?
     @State private var diamondBalance = 0
@@ -10,14 +14,24 @@ struct FeedView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 14) {
+                    StoryRail(stories: stories, openedStory: $openedStory)
+                    Picker("Лента", selection: $mode) {
+                        ForEach(FeedViewMode.allCases) { item in
+                            Text(item.title).tag(item)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
                     if let message = loadError { Text(message).foregroundStyle(.secondary).padding() }
                     if loading { ProgressView().padding(40) }
                     ForEach(posts) { post in PostCard(post: post) }
                 }.padding(.vertical)
             }
             .background(TysonColor.background)
-            .refreshable { await load(); await loadBalance() }
-            .task { await load(); await loadBalance() }
+            .refreshable { await load(); await loadStories(); await loadBalance() }
+            .task { await load(); await loadStories(); await loadBalance() }
+            .onChange(of: mode) { _, _ in Task { await load() } }
+            .fullScreenCover(item: $openedStory) { story in StoryViewer(story: story) }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { NavigationLink { DiamondsHubView() } label: { HStack(spacing: 4) { Image(systemName: "diamond.fill").foregroundStyle(.cyan); Text("\(diamondBalance)").font(.caption.bold()) }.padding(.horizontal, 9).padding(.vertical, 6).background(.thinMaterial, in: Capsule()) } }
@@ -29,11 +43,102 @@ struct FeedView: View {
 
     private func load() async {
         loading = true; loadError = nil
-        do { posts = try await TysonAPI.shared.feed() }
+        do { posts = try await TysonAPI.shared.feed(view: mode) }
         catch { loadError = "Не удалось загрузить ленту Tyson." }
         loading = false
     }
+    private func loadStories() async { stories = (try? await TysonAPI.shared.stories()) ?? [] }
     private func loadBalance() async { diamondBalance = (try? await TysonAPI.shared.diamondBalance()) ?? diamondBalance }
+}
+
+private struct StoryRail: View {
+    let stories: [TysonStory]
+    @Binding var openedStory: TysonStory?
+
+    var body: some View {
+        if !stories.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 13) {
+                    ForEach(stories) { story in
+                        Button { openedStory = story } label: {
+                            VStack(spacing: 6) {
+                                ZStack {
+                                    Circle().stroke(AngularGradient(colors: [.pink, .orange, .purple, .pink], center: .center), lineWidth: 3)
+                                    StoryAvatar(story: story).padding(4)
+                                }
+                                .frame(width: 68, height: 68)
+                                Text(story.username).font(.caption2.weight(.medium)).lineLimit(1).frame(width: 70)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Сторис @\(story.username)")
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+            }
+        }
+    }
+}
+
+private struct StoryAvatar: View {
+    let story: TysonStory
+    var body: some View {
+        AsyncImage(url: TysonAPI.mediaURL(story.avatarKey)) { phase in
+            if let image = phase.image { image.resizable().scaledToFill() }
+            else { Circle().fill(TysonColor.accent.gradient).overlay(Text(story.displayName.prefix(1)).foregroundStyle(.white).bold()) }
+        }
+        .clipShape(Circle())
+    }
+}
+
+private struct StoryViewer: View {
+    @Environment(\.dismiss) private var dismiss
+    let story: TysonStory
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            storyMedia
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    StoryAvatar(story: story).frame(width: 38, height: 38)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(story.displayName).font(.subheadline.bold())
+                        Text("@\(story.username)").font(.caption).foregroundStyle(.white.opacity(0.72))
+                    }
+                    Spacer()
+                    Button { dismiss() } label: { Image(systemName: "xmark").font(.headline.weight(.bold)).frame(width: 38, height: 38) }
+                        .buttonStyle(.plain).background(.ultraThinMaterial, in: Circle())
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16).padding(.top, 10)
+                Spacer()
+                if let caption = story.caption, !caption.isEmpty {
+                    Text(caption).font(.body).foregroundStyle(.white).frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20)).padding(16)
+                }
+            }
+        }
+        .task {
+            guard story.mediaType == "video", let url = TysonAPI.mediaURL(story.storageKey) else { return }
+            let item = AVPlayer(url: url); item.isMuted = false; player = item; item.play()
+        }
+        .onDisappear { player?.pause() }
+    }
+
+    @ViewBuilder private var storyMedia: some View {
+        if story.mediaType == "video", let player {
+            VideoPlayer(player: player).ignoresSafeArea()
+        } else {
+            AsyncImage(url: TysonAPI.mediaURL(story.storageKey)) { phase in
+                if let image = phase.image { image.resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                else if phase.error != nil { ContentUnavailableView("Сторис недоступна", systemImage: "exclamationmark.triangle").foregroundStyle(.white) }
+                else { ProgressView().tint(.white) }
+            }
+        }
+    }
 }
 
 struct NotificationsView: View {

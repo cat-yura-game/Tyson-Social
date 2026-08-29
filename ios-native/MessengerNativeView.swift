@@ -89,15 +89,15 @@ struct ConversationView: View {
         Button { dismiss() } label: { Image(systemName: "chevron.left").font(.system(size: 25, weight: .semibold)).frame(width: 50, height: 50) }.glassCircle()
         Group { if let username = conversation.otherUsername, conversation.kind != "group" { NavigationLink { PublicProfileView(username: username) } label: { headerTitle } } else { headerTitle } }.buttonStyle(.plain)
         MessengerAvatar(key: conversation.otherAvatarKey, name: title, size: 50)
-    }.padding(.horizontal, 10).padding(.vertical, 8).background(.ultraThinMaterial) }
-    private var headerTitle: some View { TysonGlass { VStack(spacing: 2) { Text(title).font(.headline).foregroundStyle(.primary).lineLimit(1); Text(conversation.kind == "group" ? "\(conversation.memberCount ?? 0) участников" : "был(а) недавно").font(.caption2).foregroundStyle(.secondary) }.frame(maxWidth: .infinity).frame(height: 48) } }
-    private var recordingBar: some View { HStack { Circle().fill(.red).frame(width: 9, height: 9); Text("Запись голосового…"); Spacer(); Button("Отправить") { Task { await finishVoice() } }; Button("Отмена") { recorder.cancel() } }.font(.subheadline).padding(10).background(.ultraThinMaterial) }
-    private var actionBar: some View { HStack { Image(systemName: editingMessage != nil ? "pencil" : "arrowshape.turn.up.left"); VStack(alignment: .leading) { Text(editingMessage != nil ? "Редактирование" : "Ответ").font(.caption.bold()); Text((editingMessage ?? replyingTo)?.text ?? "").font(.caption).lineLimit(1) }; Spacer(); Button { editingMessage = nil; replyingTo = nil } label: { Image(systemName: "xmark.circle.fill") } }.padding(.horizontal, 14).padding(.vertical, 7).background(.thinMaterial) }
+    }.padding(.horizontal, 10).padding(.vertical, 8) }
+    private var headerTitle: some View { VStack(spacing: 2) { Text(title).font(.headline).foregroundStyle(.primary).lineLimit(1); Text(conversation.kind == "group" ? "\(conversation.memberCount ?? 0) участников" : "был(а) недавно").font(.caption2).foregroundStyle(.secondary) }.frame(maxWidth: .infinity).frame(height: 48) }
+    private var recordingBar: some View { HStack { Circle().fill(.red).frame(width: 9, height: 9); Text("Запись голосового…"); Spacer(); Button("Отправить") { Task { await finishVoice() } }; Button("Отмена") { recorder.cancel() } }.font(.subheadline).padding(10).tysonGlassSurface(Capsule()) }
+    private var actionBar: some View { HStack { Image(systemName: editingMessage != nil ? "pencil" : "arrowshape.turn.up.left"); VStack(alignment: .leading) { Text(editingMessage != nil ? "Редактирование" : "Ответ").font(.caption.bold()); Text((editingMessage ?? replyingTo)?.text ?? "").font(.caption).lineLimit(1) }; Spacer(); Button { editingMessage = nil; replyingTo = nil } label: { Image(systemName: "xmark.circle.fill") } }.padding(.horizontal, 14).padding(.vertical, 7).tysonGlassSurface(Capsule()) }
     private var composer: some View { HStack(alignment: .bottom, spacing: 6) {
         PhotosPicker(selection: $photo, matching: .images) { Image(systemName: "photo").frame(width: 42, height: 42) }.glassCircle()
-        TysonGlass { HStack(alignment: .bottom, spacing: 4) { Menu { PhotosPicker(selection: $video, matching: .videos) { Label("Видео", systemImage: "video") }; Button { showFiles = true } label: { Label("Файл", systemImage: "doc") } } label: { Image(systemName: "plus.circle").frame(width: 34, height: 40) }; TextField("Сообщение", text: $draft, axis: .vertical).lineLimit(1...4).padding(.vertical, 9); Image(systemName: "face.smiling").foregroundStyle(.secondary).frame(width: 32, height: 40) }.padding(.horizontal, 6) }
+        HStack(alignment: .bottom, spacing: 4) { Menu { PhotosPicker(selection: $video, matching: .videos) { Label("Видео", systemImage: "video") }; Button { showFiles = true } label: { Label("Файл", systemImage: "doc") } } label: { Image(systemName: "plus.circle").frame(width: 34, height: 40) }; TextField("Сообщение", text: $draft, axis: .vertical).lineLimit(1...4).padding(.vertical, 9); Image(systemName: "face.smiling").foregroundStyle(.secondary).frame(width: 32, height: 40) }.padding(.horizontal, 6).tysonGlassSurface(Capsule())
         primaryAction
-    }.padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 5).background(.ultraThinMaterial) }
+    }.padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 5) }
     @ViewBuilder private var primaryAction: some View { if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { Button { Task { await recorder.start() } } label: { Image(systemName: "mic.fill").frame(width: 42, height: 42) }.glassCircle() } else { Button { Task { await send() } } label: { Image(systemName: "arrow.up").font(.headline.bold()).foregroundStyle(.white).frame(width: 42, height: 42).background(TysonColor.accent, in: Circle()) } } }
     @ViewBuilder private func messageMenu(_ message: TysonMessage) -> some View { Button { replyingTo = message; editingMessage = nil } label: { Label("Ответить", systemImage: "arrowshape.turn.up.left") }; if message.senderUserId == session.currentUser?.id { if message.content?.objectValue?["type"]?.stringValue == "text" { Button { editingMessage = message; replyingTo = nil; draft = message.text } label: { Label("Редактировать", systemImage: "pencil") } }; Button(role: .destructive) { Task { try? await TysonAPI.shared.deleteMessage(conversationId: conversation.id, messageId: message.id); await load() } } label: { Label("Удалить", systemImage: "trash") } } }
     private func load() async { messages = (try? await TysonAPI.shared.messages(conversationId: conversation.id)) ?? [] }
@@ -107,7 +107,7 @@ struct ConversationView: View {
     private func dayKey(_ value: String?) -> String { guard let value, let date = ISO8601DateFormatter().date(from: value) else { return "" }; return Calendar.current.startOfDay(for: date).description }
 }
 
-private extension View { func glassCircle() -> some View { self.buttonStyle(.plain).background(.ultraThinMaterial, in: Circle()).overlay(Circle().stroke(.white.opacity(0.55), lineWidth: 1)).shadow(color: .black.opacity(0.08), radius: 8, y: 4) } }
+private extension View { func glassCircle() -> some View { self.buttonStyle(.plain).tysonGlassSurface(Circle()) } }
 private struct DaySeparator: View {
     let value: String?
 
@@ -117,7 +117,7 @@ private struct DaySeparator: View {
             .foregroundStyle(.secondary)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
-            .background(.thinMaterial, in: Capsule())
+            .tysonGlassSurface(Capsule())
             .padding(.vertical, 4)
     }
 
@@ -132,7 +132,15 @@ private struct DaySeparator: View {
 private struct MessageBubble: View {
     let message: TysonMessage; let currentUserId: String?
     private var own: Bool { message.senderUserId == currentUserId }; private var type: String { message.content?.objectValue?["type"]?.stringValue ?? "text" }
-    var body: some View { HStack(alignment: .bottom) { if own { Spacer(minLength: 52) }; VStack(alignment: .trailing, spacing: 3) { bubbleContent.padding(.horizontal, 13).padding(.vertical, 9); if let sent = message.sentAt { Text(time(sent)).font(.system(size: 9)).foregroundStyle(own ? .white.opacity(0.7) : .secondary).padding(.trailing, 5).padding(.bottom, 4) } }.background(own ? TysonColor.accent.opacity(0.94) : Color(uiColor: .secondarySystemBackground).opacity(0.88), in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: own ? 20 : 6, bottomTrailingRadius: own ? 6 : 20, topTrailingRadius: 20)).foregroundStyle(own ? .white : .primary).shadow(color: .black.opacity(0.06), radius: 5, y: 2); if !own { Spacer(minLength: 52) } }.frame(maxWidth: .infinity) }
+    var body: some View { HStack(alignment: .bottom) { if own { Spacer(minLength: 52) }; bubble; if !own { Spacer(minLength: 52) } }.frame(maxWidth: .infinity) }
+    private var bubble: some View {
+        VStack(alignment: .trailing, spacing: 3) {
+            bubbleContent.padding(.horizontal, 13).padding(.vertical, 9)
+            if let sent = message.sentAt { Text(time(sent)).font(.system(size: 9)).foregroundStyle(.secondary).padding(.trailing, 5).padding(.bottom, 4) }
+        }
+        .tysonGlassSurface(bubbleShape)
+    }
+    private var bubbleShape: UnevenRoundedRectangle { UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: own ? 20 : 6, bottomTrailingRadius: own ? 6 : 20, topTrailingRadius: 20) }
     @ViewBuilder private var bubbleContent: some View {
         if let attachment = message.attachment {
             MessageAttachmentView(attachment: attachment)

@@ -22,6 +22,21 @@ struct TysonGlass<Content: View>: View {
     }
 }
 
+extension View {
+    /// Uses Apple's Liquid Glass where the OS provides it, with a material fallback for iOS 17–18.
+    @ViewBuilder func tysonGlassSurface<S: Shape>(_ shape: S) -> some View {
+        if #available(iOS 26.0, *) {
+            self
+                .glassEffect(.regular, in: shape)
+        } else {
+            self
+                .background(.ultraThinMaterial, in: shape)
+                .overlay { shape.stroke(.white.opacity(0.35), lineWidth: 1) }
+                .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
+        }
+    }
+}
+
 struct TysonAvatar: View {
     let user: TysonUser?
     var body: some View {

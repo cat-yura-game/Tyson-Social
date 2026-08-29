@@ -109,7 +109,43 @@ struct DiamondHistoryView: View {
 
 struct GiftStoreView: View {
     @State private var gifts: [TysonGiftType] = []; @State private var selected: TysonGiftType?; @State private var error = ""
-    var body: some View { ScrollView { LazyVGrid(columns: [.init(.adaptive(minimum: 150), spacing: 12)], spacing: 12) { ForEach(gifts) { gift in Button { selected = gift } label: { TysonGlass { VStack(spacing: 10) { GiftArtwork(path: gift.baseImage, size: 104); Text(gift.title).font(.headline).multilineTextAlignment(.center); Text("\(gift.basePrice) 💎").font(.subheadline.bold()).foregroundStyle(TysonColor.accent); if gift.isLimited { Text("Осталось \(gift.remaining)").font(.caption2).foregroundStyle(.secondary) } }.padding(14).frame(maxWidth: .infinity, minHeight: 190) } }.buttonStyle(.plain) } }.padding(); if !error.isEmpty { Text(error).foregroundStyle(.red) } }.background(TysonColor.background).navigationTitle("Подарки").task { do { gifts = try await TysonAPI.shared.gifts() } catch { self.error = "Не удалось загрузить подарки." } }.sheet(item: $selected) { gift in GiftPurchaseView(gift: gift) { selected = nil } } }
+    var body: some View { ScrollView { LazyVGrid(columns: [.init(.adaptive(minimum: 150), spacing: 12)], spacing: 12) { ForEach(gifts) { gift in Button { selected = gift } label: { TysonGlass { VStack(spacing: 10) { GiftArtwork(path: gift.baseImage, size: 104); Text(gift.title).font(.headline).multilineTextAlignment(.center); Text("\(gift.basePrice) 💎").font(.subheadline.bold()).foregroundStyle(TysonColor.accent); if gift.isLimited { Text("Осталось \(gift.remaining)").font(.caption2).foregroundStyle(.secondary) } }.padding(14).frame(maxWidth: .infinity, minHeight: 190) } }.buttonStyle(.plain) } }.padding(); if !error.isEmpty { Text(error).foregroundStyle(.red) } }.background(TysonColor.background).navigationTitle("Подарки").task { do { gifts = try await TysonAPI.shared.gifts() } catch { self.error = "Не удалось загрузить подарки." } }.sheet(item: $selected) { gift in GiftDetailView(gift: gift) } }
+}
+
+private struct GiftDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    let gift: TysonGiftType
+    @State private var showPurchase = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 22) {
+                    TysonGlass {
+                        VStack(spacing: 16) {
+                            GiftArtwork(path: gift.baseImage, size: 210)
+                            Text(gift.title).font(.largeTitle.bold()).multilineTextAlignment(.center)
+                            Text("\(gift.basePrice) 💎").font(.title2.bold()).foregroundStyle(TysonColor.accent)
+                            if gift.isLimited { Label("Осталось \(gift.remaining) из \(gift.maxSupply)", systemImage: "sparkles").font(.subheadline).foregroundStyle(.secondary) }
+                            else { Label("Без лимита", systemImage: "infinity").font(.subheadline).foregroundStyle(.secondary) }
+                        }.padding(24).frame(maxWidth: .infinity)
+                    }
+                    VStack(alignment: .leading, spacing: 13) {
+                        Label(gift.canTransfer ? "Можно передарить" : "Без передачи", systemImage: "arrow.left.arrow.right")
+                        Label(gift.canWear ? "Можно надеть в профиль" : "Коллекционный подарок", systemImage: "person.crop.circle")
+                        if gift.canUpgrade { Label("Доступно улучшение за \(gift.upgradePrice ?? 0) 💎", systemImage: "arrow.up.circle") }
+                    }.font(.subheadline).padding(18).tysonGlassSurface(RoundedRectangle(cornerRadius: 24))
+                    Button { showPurchase = true } label: { Label("Купить подарок", systemImage: "gift.fill").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14) }
+                        .buttonStyle(.borderedProminent)
+                }.padding()
+            }
+            .background(TysonColor.background)
+            .navigationTitle("Подарок")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Закрыть") { dismiss() } } }
+            .sheet(isPresented: $showPurchase) { GiftPurchaseView(gift: gift) { dismiss() } }
+        }
+    }
 }
 
 private struct GiftPurchaseView: View {
@@ -119,8 +155,31 @@ private struct GiftPurchaseView: View {
 }
 
 struct MyGiftsView: View {
-    @State private var gifts: [TysonGift] = []
-    var body: some View { ScrollView { if gifts.isEmpty { ContentUnavailableView("Подарков пока нет", systemImage: "gift", description: Text("Откройте каталог и соберите свою коллекцию.")) .padding(.top, 80) } else { LazyVGrid(columns: [.init(.adaptive(minimum: 145), spacing: 12)], spacing: 12) { ForEach(gifts) { gift in TysonGlass { VStack(spacing: 9) { GiftArtwork(path: gift.image, size: 100); Text(gift.title).font(.headline).multilineTextAlignment(.center); Text("№\(gift.serialNumber)").font(.caption).foregroundStyle(.secondary); if gift.worn { Label("Надет", systemImage: "checkmark.seal.fill").font(.caption).foregroundStyle(.green) } }.padding(13).frame(maxWidth: .infinity, minHeight: 180) } } }.padding() } }.background(TysonColor.background).navigationTitle("Мои подарки").task { gifts = (try? await TysonAPI.shared.myGifts()) ?? [] } }
+    @State private var gifts: [TysonGift] = []; @State private var selected: TysonGift?
+    var body: some View { ScrollView { if gifts.isEmpty { ContentUnavailableView("Подарков пока нет", systemImage: "gift", description: Text("Откройте каталог и соберите свою коллекцию.")) .padding(.top, 80) } else { LazyVGrid(columns: [.init(.adaptive(minimum: 145), spacing: 12)], spacing: 12) { ForEach(gifts) { gift in Button { selected = gift } label: { TysonGlass { VStack(spacing: 9) { GiftArtwork(path: gift.image, size: 100); Text(gift.title).font(.headline).multilineTextAlignment(.center); Text("№\(gift.serialNumber)").font(.caption).foregroundStyle(.secondary); if gift.worn { Label("Надет", systemImage: "checkmark.seal.fill").font(.caption).foregroundStyle(.green) } }.padding(13).frame(maxWidth: .infinity, minHeight: 180) } }.buttonStyle(.plain) } }.padding() } }.background(TysonColor.background).navigationTitle("Мои подарки").task { gifts = (try? await TysonAPI.shared.myGifts()) ?? [] }.sheet(item: $selected) { CollectedGiftDetailView(gift: $0) } }
+}
+
+private struct CollectedGiftDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    let gift: TysonGift
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 22) {
+                    TysonGlass { VStack(spacing: 16) { GiftArtwork(path: gift.image, size: 220); Text(gift.title).font(.largeTitle.bold()); Text("Подарок №\(gift.serialNumber)").foregroundStyle(.secondary); if let inscription = gift.inscription, !inscription.isEmpty { Text(inscription).italic().multilineTextAlignment(.center) } }.padding(25).frame(maxWidth: .infinity) }
+                    VStack(alignment: .leading, spacing: 13) {
+                        Label(gift.isCollectible ? "Коллекционный" : "Обычный подарок", systemImage: "seal.fill")
+                        Label(gift.worn ? "Сейчас надет в профиль" : "Не надет в профиль", systemImage: "person.crop.circle")
+                        if gift.canTransfer { Label("Можно передарить", systemImage: "arrow.left.arrow.right") }
+                        if gift.canUpgrade { Label("Можно улучшить", systemImage: "arrow.up.circle") }
+                    }.font(.subheadline).padding(18).tysonGlassSurface(RoundedRectangle(cornerRadius: 24))
+                }.padding()
+            }
+            .background(TysonColor.background).navigationTitle("Подарок").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Закрыть") { dismiss() } } }
+        }
+    }
 }
 
 private struct GiftArtwork: View { let path: String; let size: CGFloat; var body: some View { AsyncImage(url: TysonAPI.publicAssetURL(path)) { phase in if let image = phase.image { image.resizable().scaledToFit() } else { RoundedRectangle(cornerRadius: 22).fill(.blue.opacity(0.1)).overlay(Image(systemName: "gift.fill").font(.largeTitle).foregroundStyle(.blue)) } }.frame(width: size, height: size) } }
