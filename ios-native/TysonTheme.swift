@@ -6,6 +6,19 @@ enum TysonColor {
     static let background = Color(uiColor: .systemGroupedBackground)
 }
 
+enum TysonProfileColor {
+    static func cover(_ value: String?) -> LinearGradient {
+        switch value {
+        case "ocean": return LinearGradient(colors: [Color(red: 0.07, green: 0.21, blue: 0.39), Color(red: 0.13, green: 0.53, blue: 0.76)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case "sunset": return LinearGradient(colors: [Color(red: 0.58, green: 0.18, blue: 0.16), Color(red: 0.95, green: 0.48, blue: 0.22)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case "violet": return LinearGradient(colors: [Color(red: 0.27, green: 0.16, blue: 0.48), Color(red: 0.54, green: 0.31, blue: 0.69)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case "rose": return LinearGradient(colors: [Color(red: 0.54, green: 0.18, blue: 0.34), Color(red: 0.86, green: 0.37, blue: 0.57)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case "graphite": return LinearGradient(colors: [Color(red: 0.12, green: 0.17, blue: 0.19), Color(red: 0.31, green: 0.39, blue: 0.42)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        default: return LinearGradient(colors: [Color(red: 0.07, green: 0.24, blue: 0.16), Color(red: 0.22, green: 0.42, blue: 0.29)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+    }
+}
+
 struct TysonGlass<Content: View>: View {
     @ViewBuilder var content: () -> Content
 

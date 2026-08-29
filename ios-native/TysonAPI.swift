@@ -129,6 +129,13 @@ actor TysonAPI {
         let _: Envelope<EmptyPayload> = try await requestEncodable(path: "/messages/conversations/\(conversationId)/messages", body: SendTextBody(content: MessageContentPayload(type: "text", text: content)))
     }
 
+    func sendSticker(conversationId: String, stickerId: String) async throws {
+        let _: Envelope<EmptyPayload> = try await requestEncodable(
+            path: "/messages/conversations/\(conversationId)/messages",
+            body: SendStickerBody(content: StickerContentPayload(type: "sticker", stickerId: stickerId))
+        )
+    }
+
     func sendAttachment(conversationId: String, data: Data, type: String, mimeType: String, durationMs: Int? = nil, name: String? = nil) async throws {
         let sodium = Sodium()
         let key = sodium.secretBox.key(); let nonce = sodium.secretBox.nonce()
@@ -532,6 +539,8 @@ private struct CreatePostResult: Codable { let id: String; let status: String }
 private struct EmptyPayload: Codable {}
 private struct MessageContentPayload: Codable { let type: String; let text: String }
 private struct SendTextBody: Codable { let content: MessageContentPayload }
+private struct StickerContentPayload: Codable { let type: String; let stickerId: String }
+private struct SendStickerBody: Codable { let content: StickerContentPayload }
 private struct AttachmentUploadPayload: Codable { let attachmentId: String }
 private struct AttachmentContentPayload: Codable { let type: String; let attachmentId: String; let key: String; let nonce: String; let digest: String; let mimeType: String; let durationMs: Int?; let name: String? }
 private struct SendAttachmentBody: Codable { let content: AttachmentContentPayload }

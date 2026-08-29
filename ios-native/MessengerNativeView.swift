@@ -67,7 +67,7 @@ struct NewConversationView: View {
 struct ConversationView: View {
     @EnvironmentObject private var session: AppSession
     let conversation: TysonConversation
-    @State private var messages: [TysonMessage] = []; @State private var draft = ""; @State private var photo: PhotosPickerItem?; @State private var video: PhotosPickerItem?; @State private var showFiles = false; @StateObject private var recorder = TysonVoiceRecorder(); @State private var error = ""; @State private var editingMessage: TysonMessage?; @State private var replyingTo: TysonMessage?
+    @State private var messages: [TysonMessage] = []; @State private var draft = ""; @State private var photo: PhotosPickerItem?; @State private var video: PhotosPickerItem?; @State private var showFiles = false; @StateObject private var recorder = TysonVoiceRecorder(); @State private var error = ""; @State private var editingMessage: TysonMessage?; @State private var replyingTo: TysonMessage?; @State private var showStickers = false; @State private var sendingSticker = false
     private var title: String { conversation.title ?? conversation.otherDisplayName ?? "Диалог" }
     var body: some View {
         ScrollViewReader { proxy in
@@ -93,6 +93,7 @@ struct ConversationView: View {
                 if recorder.recording { recordingBar }
                 if editingMessage != nil || replyingTo != nil { actionBar }
                 if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal) }
+                if showStickers { StickerPicker(disabled: sendingSticker) { id in Task { await sendSticker(id) } } }
                 composer
             }
             .padding(.bottom, 4)
@@ -117,19 +118,36 @@ struct ConversationView: View {
     private var actionBar: some View { HStack { Image(systemName: editingMessage != nil ? "pencil" : "arrowshape.turn.up.left"); VStack(alignment: .leading) { Text(editingMessage != nil ? "Редактирование" : "Ответ").font(.caption.bold()); Text((editingMessage ?? replyingTo)?.text ?? "").font(.caption).lineLimit(1) }; Spacer(); Button { editingMessage = nil; replyingTo = nil } label: { Image(systemName: "xmark.circle.fill") } }.padding(.horizontal, 14).padding(.vertical, 7).tysonGlassSurface(Capsule()) }
     private var composer: some View { HStack(alignment: .bottom, spacing: 6) {
         PhotosPicker(selection: $photo, matching: .images) { Image(systemName: "photo").frame(width: 42, height: 42) }.glassCircle()
-        HStack(alignment: .bottom, spacing: 4) { Menu { PhotosPicker(selection: $video, matching: .videos) { Label("Видео", systemImage: "video") }; Button { showFiles = true } label: { Label("Файл", systemImage: "doc") } } label: { Image(systemName: "plus.circle").frame(width: 34, height: 40) }; TextField("Сообщение", text: $draft, axis: .vertical).lineLimit(1...4).padding(.vertical, 9); Image(systemName: "face.smiling").foregroundStyle(.secondary).frame(width: 32, height: 40) }.padding(.horizontal, 6).tysonGlassSurface(Capsule())
+        HStack(alignment: .bottom, spacing: 4) { Menu { PhotosPicker(selection: $video, matching: .videos) { Label("Видео", systemImage: "video") }; Button { showFiles = true } label: { Label("Файл", systemImage: "doc") } } label: { Image(systemName: "plus.circle").frame(width: 34, height: 40) }; TextField("Сообщение", text: $draft, axis: .vertical).lineLimit(1...4).padding(.vertical, 9); Button { showStickers.toggle() } label: { Image(systemName: showStickers ? "face.smiling.inverse" : "face.smiling").foregroundStyle(.secondary).frame(width: 32, height: 40) }.buttonStyle(.plain).accessibilityLabel("Открыть стикеры") }.padding(.horizontal, 6).tysonGlassSurface(Capsule())
         primaryAction
     }.padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 5) }
     @ViewBuilder private var primaryAction: some View { if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { Button { Task { await recorder.start() } } label: { Image(systemName: "mic.fill").frame(width: 42, height: 42) }.glassCircle() } else { Button { Task { await send() } } label: { Image(systemName: "arrow.up").font(.headline.bold()).foregroundStyle(.white).frame(width: 42, height: 42).background(TysonColor.accent, in: Circle()) } } }
     @ViewBuilder private func messageMenu(_ message: TysonMessage) -> some View { Button { replyingTo = message; editingMessage = nil } label: { Label("Ответить", systemImage: "arrowshape.turn.up.left") }; if message.senderUserId == session.currentUser?.id { if message.content?.objectValue?["type"]?.stringValue == "text" { Button { editingMessage = message; replyingTo = nil; draft = message.text } label: { Label("Редактировать", systemImage: "pencil") } }; Button(role: .destructive) { Task { try? await TysonAPI.shared.deleteMessage(conversationId: conversation.id, messageId: message.id); await load() } } label: { Label("Удалить", systemImage: "trash") } } }
     private func load() async { messages = (try? await TysonAPI.shared.messages(conversationId: conversation.id)) ?? [] }
     private func send() async { let clean = draft.trimmingCharacters(in: .whitespacesAndNewlines); guard !clean.isEmpty else { return }; let value = replyingTo.map { "↪ \($0.text.prefix(80))\n\(clean)" } ?? clean; draft = ""; do { if let editing = editingMessage { try await TysonAPI.shared.editMessage(conversationId: conversation.id, messageId: editing.id, text: clean) } else { try await TysonAPI.shared.sendMessage(conversationId: conversation.id, content: value) }; editingMessage = nil; replyingTo = nil; await load() } catch { draft = clean; self.error = "Не удалось отправить сообщение" } }
+    private func sendSticker(_ id: String) async { sendingSticker = true; defer { sendingSticker = false }; do { try await TysonAPI.shared.sendSticker(conversationId: conversation.id, stickerId: id); showStickers = false; await load() } catch { error = "Не удалось отправить стикер" } }
     private func sendAttachment(_ data: Data, type: String, mime: String, duration: Int? = nil, name: String? = nil) async { do { try await TysonAPI.shared.sendAttachment(conversationId: conversation.id, data: data, type: type, mimeType: mime, durationMs: duration, name: name); await load() } catch { self.error = "Не удалось отправить вложение" } }
     private func finishVoice() async { guard let result = recorder.stop() else { return }; await sendAttachment(result.data, type: "audio", mime: "audio/mp4", duration: result.duration) }
     private func dayKey(_ value: String?) -> String { guard let value, let date = ISO8601DateFormatter().date(from: value) else { return "" }; return Calendar.current.startOfDay(for: date).description }
 }
 
 private extension View { func glassCircle() -> some View { self.buttonStyle(.plain).tysonGlassSurface(Circle()) } }
+private struct TysonSticker: Identifiable { let id: String; let title: String }
+private enum TysonStickerCatalog {
+    static let stickers: [TysonSticker] = [
+        .init(id: "love", title: "Любовь"), .init(id: "looking", title: "Смотрит"), .init(id: "like", title: "Нравится"), .init(id: "dislike", title: "Не нравится"), .init(id: "dead-laugh", title: "Умер со смеху"), .init(id: "fire", title: "Огонь"), .init(id: "laugh", title: "Смешно"), .init(id: "angry", title: "Злой"), .init(id: "crying", title: "Плачет"), .init(id: "shock", title: "Шок"), .init(id: "rocket", title: "Мощно"), .init(id: "thinking", title: "Думает"), .init(id: "confirm", title: "Да"), .init(id: "no", title: "Нет"), .init(id: "awkward", title: "Неловко"), .init(id: "cool", title: "Круто"), .init(id: "got-it", title: "Ну ты понял"), .init(id: "sleep", title: "Сплю"), .init(id: "eye-roll", title: "Закатывает глаза"), .init(id: "suspicious", title: "Подозревает"), .init(id: "quiet", title: "Тихо"), .init(id: "please", title: "Пожалуйста"), .init(id: "salute", title: "Есть")
+    ]
+    static func sticker(id: String) -> TysonSticker? { stickers.first { $0.id == id } }
+    static func url(_ id: String) -> URL? { URL(string: "https://tysonsocial.eu.cc/stickers/\(id).webp") }
+}
+private struct StickerPicker: View {
+    let disabled: Bool; let onSelect: (String) -> Void
+    var body: some View { ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 8) { ForEach(TysonStickerCatalog.stickers) { sticker in Button { onSelect(sticker.id) } label: { StickerArtwork(sticker: sticker).frame(width: 64, height: 64) }.buttonStyle(.plain).disabled(disabled).accessibilityLabel(sticker.title) } }.padding(8) }.tysonGlassSurface(RoundedRectangle(cornerRadius: 22)).padding(.horizontal, 8) }
+}
+private struct StickerArtwork: View {
+    let sticker: TysonSticker
+    var body: some View { AsyncImage(url: TysonStickerCatalog.url(sticker.id)) { phase in if let image = phase.image { image.resizable().scaledToFit() } else if phase.error != nil { Image(systemName: "face.smiling").font(.title2).foregroundStyle(TysonColor.accent) } else { ProgressView() } }.accessibilityLabel(sticker.title) }
+}
 private struct DaySeparator: View {
     let value: String?
 
@@ -154,7 +172,8 @@ private struct DaySeparator: View {
 private struct MessageBubble: View {
     let message: TysonMessage; let currentUserId: String?
     private var own: Bool { message.senderUserId == currentUserId }; private var type: String { message.content?.objectValue?["type"]?.stringValue ?? "text" }
-    var body: some View { HStack(alignment: .bottom) { if own { Spacer(minLength: 52) }; bubble; if !own { Spacer(minLength: 52) } }.frame(maxWidth: .infinity) }
+    private var sticker: TysonSticker? { guard type == "sticker", let id = message.content?.objectValue?["stickerId"]?.stringValue else { return nil }; return TysonStickerCatalog.sticker(id: id) }
+    var body: some View { HStack(alignment: .bottom) { if own { Spacer(minLength: 52) }; if let sticker { VStack(alignment: .trailing, spacing: 2) { StickerArtwork(sticker: sticker).frame(width: 146, height: 146); if let sent = message.sentAt { Text(time(sent)).font(.system(size: 9)).foregroundStyle(.secondary) } } } else { bubble }; if !own { Spacer(minLength: 52) } }.frame(maxWidth: .infinity) }
     private var bubble: some View {
         VStack(alignment: .trailing, spacing: 3) {
             bubbleContent.padding(.horizontal, 13).padding(.vertical, 9)
@@ -169,7 +188,7 @@ private struct MessageBubble: View {
         } else {
             switch type {
             case "gift": VStack(spacing: 6) { Image(systemName: "gift.fill").font(.largeTitle); Text(message.content?.objectValue?["title"]?.stringValue ?? "Подарок Tyson").bold() }
-            case "sticker": Label("Стикер Tyson", systemImage: "face.smiling")
+            case "sticker": EmptyView()
             case "post": Label("Публикация Tyson", systemImage: "doc.text.image")
             default: Text(verbatim: message.text).fixedSize(horizontal: false, vertical: true)
             }
