@@ -350,6 +350,7 @@ actor TysonAPI {
 
     func aiConversations() async throws -> [AIConversation] { let response: Envelope<AIConversationsPayload> = try await request(path: "/ai/conversations"); return response.data.conversations }
     func createAIConversation() async throws -> AIConversation { let response: Envelope<AIConversationPayload> = try await requestEncodable(path: "/ai/conversations", body: EmptyPayload()); return response.data.conversation }
+    func deleteAIConversation(id: String) async throws { try await requestVoid(path: "/ai/conversations/\(id)", method: "DELETE", body: [:]) }
     func aiMessages(conversationId: String) async throws -> [AIMessage] { let response: Envelope<AIMessagesPayload> = try await request(path: "/ai/conversations/\(conversationId)/messages"); return response.data.messages }
     func sendAIMessage(conversationId: String, content: String, modelTier: String, attachment: Data? = nil, filename: String = "attachment", mimeType: String = "application/octet-stream", image: Bool = false) async throws -> AIMessage {
         let boundary = "TysonAI-\(UUID().uuidString)"; var request = URLRequest(url: baseURL.appending(path: "/ai/conversations/\(conversationId)/messages")); request.httpMethod = "POST"; authorize(&request); request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type"); var data = Data()
