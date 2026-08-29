@@ -1,4 +1,8 @@
 name: TysonSocial
+packages:
+  Sodium:
+    url: https://github.com/jedisct1/swift-sodium.git
+    from: 0.9.1
 options:
   bundleIdPrefix: eu.tysonsocial
   deploymentTarget:
@@ -16,9 +20,15 @@ targets:
     resources:
       - Assets.xcassets
       - LaunchScreen.storyboard
-    info:
-      path: Info.plist
+    dependencies:
+      - package: Sodium
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: eu.tysonsocial.app
       SWIFT_VERSION: 5.9
       TARGETED_DEVICE_FAMILY: "1"
+      INFOPLIST_FILE: Info.plist
+      GENERATE_INFOPLIST_FILE: NO
+      MARKETING_VERSION: 0.3.0
+      CURRENT_PROJECT_VERSION: 3
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      SUPPORTS_MACCATALYST: NO

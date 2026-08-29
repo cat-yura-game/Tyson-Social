@@ -14,6 +14,8 @@ jobs:
       - name: Generate Tyson app icon sizes
         run: |
           mkdir -p ios-native/Assets.xcassets/AppIcon.appiconset
+          mkdir -p ios-native/Assets.xcassets/TysonLogo.imageset
+          cp logo.png ios-native/Assets.xcassets/TysonLogo.imageset/tyson-logo.png
           sips -z 40 40 logo.png --out ios-native/Assets.xcassets/AppIcon.appiconset/icon-20@2x.png
           sips -z 60 60 logo.png --out ios-native/Assets.xcassets/AppIcon.appiconset/icon-20@3x.png
           sips -z 58 58 logo.png --out ios-native/Assets.xcassets/AppIcon.appiconset/icon-29@2x.png

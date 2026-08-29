@@ -25,11 +25,11 @@ struct TysonGlass<Content: View>: View {
 struct TysonAvatar: View {
     let user: TysonUser?
     var body: some View {
-        ZStack {
-            Circle().fill(TysonColor.green.gradient)
-            Text((user?.displayName ?? "T").prefix(1).uppercased())
-                .font(.headline.weight(.bold)).foregroundStyle(.white)
+        AsyncImage(url: TysonAPI.mediaURL(user?.avatarKey)) { phase in
+            if let image = phase.image { image.resizable().scaledToFill() }
+            else { ZStack { Circle().fill(TysonColor.green.gradient); Text((user?.displayName ?? "T").prefix(1).uppercased()).font(.headline.weight(.bold)).foregroundStyle(.white) } }
         }
         .frame(width: 42, height: 42)
+        .clipShape(Circle())
     }
 }

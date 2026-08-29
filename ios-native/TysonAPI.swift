@@ -1,4 +1,6 @@
 import Foundation
+import Sodium
+import CryptoKit
 
 struct TysonUser: Codable, Identifiable {
     let id: String
@@ -32,6 +34,11 @@ actor TysonAPI {
         let decoder = JSONDecoder()
         return decoder
     }()
+
+    nonisolated static func mediaURL(_ key: String?) -> URL? {
+        guard let key, !key.isEmpty else { return nil }
+        return URL(string: "https://api.tysonsocial.eu.cc/api/media/\(key.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? key)")
+    }
 
     func session() async throws -> TysonUser? {
         let response: Envelope<SessionPayload> = try await request(path: "/auth/session")
@@ -94,7 +101,19 @@ actor TysonAPI {
     }
 
     func sendMessage(conversationId: String, content: String) async throws {
-        try await requestVoid(path: "/messages/conversations/\(conversationId)/messages", method: "POST", body: ["content": content])
+        let _: Envelope<EmptyPayload> = try await requestEncodable(path: "/messages/conversations/\(conversationId)/messages", body: SendTextBody(content: MessageContentPayload(type: "text", text: content)))
+    }
+
+    func sendAttachment(conversationId: String, data: Data, type: String, mimeType: String, durationMs: Int? = nil) async throws {
+        let sodium = Sodium()
+        guard let key = sodium.secretBox.key(), let nonce = sodium.secretBox.nonce(), let ciphertext = sodium.secretBox.seal(message: [UInt8](data), secretKey: key, nonce: nonce) else { throw URLError(.cannotEncodeContentData) }
+        var upload = URLRequest(url: baseURL.appending(path: "/messages/conversations/\(conversationId)/attachments")); upload.httpMethod = "POST"; authorize(&upload); upload.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type"); upload.httpBody = Data(ciphertext)
+        let (responseData, response) = try await URLSession.shared.data(for: upload)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+        let uploaded = try decoder.decode(Envelope<AttachmentUploadPayload>.self, from: responseData)
+        let digest = Data(SHA256.hash(data: Data(ciphertext))).base64EncodedString()
+        let content = AttachmentContentPayload(type: type, attachmentId: uploaded.data.attachmentId, key: Data(key).base64EncodedString(), nonce: Data(nonce).base64EncodedString(), digest: digest, mimeType: mimeType, durationMs: durationMs)
+        let _: Envelope<EmptyPayload> = try await requestEncodable(path: "/messages/conversations/\(conversationId)/messages", body: SendAttachmentBody(content: content))
     }
 
     func createConversation(username: String) async throws {
@@ -103,6 +122,38 @@ actor TysonAPI {
 
     func createPost(title: String, body: String) async throws {
         try await requestVoid(path: "/posts", method: "POST", body: ["title": title, "body": body])
+    }
+
+    func createPost(_ input: CreatePostInput) async throws {
+        let _: Envelope<CreatePostResult> = try await requestEncodable(path: "/posts", body: input)
+    }
+
+    func createPostWithImage(_ input: CreatePostInput, imageData: Data) async throws {
+        let boundary = "Tyson-\(UUID().uuidString)"
+        var request = URLRequest(url: baseURL.appending(path: "/posts")); request.httpMethod = "POST"; authorize(&request)
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var data = Data()
+        func field(_ name: String, _ value: String) { data.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".data(using: .utf8)!) }
+        field("title", input.title); field("body", input.body)
+        if let poll = input.poll, let json = String(data: try JSONEncoder().encode(poll), encoding: .utf8) { field("poll", json) }
+        if let date = input.scheduledAt { field("scheduledAt", date) }
+        if let names = input.coauthorUsernames, !names.isEmpty { field("coauthorUsernames", names.joined(separator: ",")) }
+        data.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"image\"; filename=\"photo.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".data(using: .utf8)!); data.append(imageData); data.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = data
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+        _ = try decoder.decode(Envelope<CreatePostResult>.self, from: responseData)
+    }
+
+    func profile(username: String) async throws -> TysonUser {
+        let response: Envelope<SessionPayload> = try await request(path: "/users/\(username)")
+        guard let user = response.data.user else { throw URLError(.resourceUnavailable) }
+        return user
+    }
+
+    func posts(username: String) async throws -> [TysonPost] {
+        let response: Envelope<FeedPayload> = try await request(path: "/users/\(username)/posts")
+        return response.data.posts
     }
 
     func updateProfile(name: String, bio: String) async throws {
@@ -136,6 +187,18 @@ actor TysonAPI {
     func aiChat(text: String) async throws -> String {
         let response: Envelope<AIResponse> = try await request(path: "/ai/guest/chat", method: "POST", body: ["message": text])
         return response.data.answer
+    }
+
+    func aiConversations() async throws -> [AIConversation] { let response: Envelope<AIConversationsPayload> = try await request(path: "/ai/conversations"); return response.data.conversations }
+    func createAIConversation() async throws -> AIConversation { let response: Envelope<AIConversationPayload> = try await requestEncodable(path: "/ai/conversations", body: EmptyPayload()); return response.data.conversation }
+    func aiMessages(conversationId: String) async throws -> [AIMessage] { let response: Envelope<AIMessagesPayload> = try await request(path: "/ai/conversations/\(conversationId)/messages"); return response.data.messages }
+    func sendAIMessage(conversationId: String, content: String, modelTier: String, attachment: Data? = nil, filename: String = "attachment", mimeType: String = "application/octet-stream", image: Bool = false) async throws -> AIMessage {
+        let boundary = "TysonAI-\(UUID().uuidString)"; var request = URLRequest(url: baseURL.appending(path: "/ai/conversations/\(conversationId)/messages")); request.httpMethod = "POST"; authorize(&request); request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type"); var data = Data()
+        func field(_ name: String, _ value: String) { data.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".data(using: .utf8)!) }
+        field("content", content); field("modelTier", modelTier)
+        if let attachment { data.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(image ? "image" : "document")\"; filename=\"\(filename)\"\r\nContent-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!); data.append(attachment); data.append("\r\n".data(using: .utf8)!) }
+        data.append("--\(boundary)--\r\n".data(using: .utf8)!); request.httpBody = data
+        let (responseData, response) = try await URLSession.shared.data(for: request); guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }; return try decoder.decode(Envelope<AISendPayload>.self, from: responseData).data.assistantMessage
     }
 
     func search(query: String) async throws -> SearchPayload {
@@ -195,12 +258,16 @@ struct TysonConversation: Codable, Identifiable {
     let otherDisplayName: String?
     let lastMessage: String?
     let updatedAt: String?
+    let otherAvatarKey: String?
+    let kind: String?
+    let memberCount: Int?
 }
 struct TysonMessage: Codable, Identifiable {
     let id: String
-    let content: String?
-    let senderUsername: String?
-    let createdAt: String?
+    let content: JSONValue?
+    let senderUserId: String?
+    let sentAt: String?
+    var text: String { content?.objectValue?["text"]?.stringValue ?? content?.stringValue ?? "Сообщение" }
 }
 private struct ConversationsPayload: Codable { let conversations: [TysonConversation] }
 private struct MessagesPayload: Codable { let messages: [TysonMessage] }
@@ -216,3 +283,37 @@ struct TysonDeviceSession: Codable, Identifiable { let id: String; let device: S
 private struct DeviceSessionsPayload: Codable { let sessions: [TysonDeviceSession] }
 struct PrivacySettings: Codable { var lastSeenVisibility: String; var birthdayVisibility: String; var messagingVisibility: String; var storiesVisibility: String }
 struct NotificationSettings: Codable { var messageSoundsEnabled: Bool }
+struct PollInput: Codable { var question: String; var options: [String] }
+struct CreatePostInput: Codable { var title: String; var body: String; var poll: PollInput?; var scheduledAt: String?; var coauthorUsernames: [String]? }
+private struct CreatePostResult: Codable { let id: String; let status: String }
+private struct EmptyPayload: Codable {}
+private struct MessageContentPayload: Codable { let type: String; let text: String }
+private struct SendTextBody: Codable { let content: MessageContentPayload }
+private struct AttachmentUploadPayload: Codable { let attachmentId: String }
+private struct AttachmentContentPayload: Codable { let type: String; let attachmentId: String; let key: String; let nonce: String; let digest: String; let mimeType: String; let durationMs: Int? }
+private struct SendAttachmentBody: Codable { let content: AttachmentContentPayload }
+
+enum JSONValue: Codable {
+    case string(String), number(Double), bool(Bool), object([String: JSONValue]), array([JSONValue]), null
+    init(from decoder: Decoder) throws {
+        let box = try decoder.singleValueContainer()
+        if box.decodeNil() { self = .null }
+        else if let value = try? box.decode(String.self) { self = .string(value) }
+        else if let value = try? box.decode(Bool.self) { self = .bool(value) }
+        else if let value = try? box.decode(Double.self) { self = .number(value) }
+        else if let value = try? box.decode([String: JSONValue].self) { self = .object(value) }
+        else { self = .array(try box.decode([JSONValue].self)) }
+    }
+    func encode(to encoder: Encoder) throws {
+        var box = encoder.singleValueContainer()
+        switch self { case .string(let v): try box.encode(v); case .number(let v): try box.encode(v); case .bool(let v): try box.encode(v); case .object(let v): try box.encode(v); case .array(let v): try box.encode(v); case .null: try box.encodeNil() }
+    }
+    var stringValue: String? { if case .string(let value) = self { return value }; return nil }
+    var objectValue: [String: JSONValue]? { if case .object(let value) = self { return value }; return nil }
+}
+struct AIConversation: Codable, Identifiable { let id: String; let title: String; let createdAt: String; let updatedAt: String }
+struct AIMessage: Codable, Identifiable { let id: String; let role: String; let content: String; let imageStorageKey: String?; let attachmentName: String?; let attachmentContentType: String?; let modelVersion: String?; let createdAt: String }
+private struct AIConversationsPayload: Codable { let conversations: [AIConversation] }
+private struct AIConversationPayload: Codable { let conversation: AIConversation }
+private struct AIMessagesPayload: Codable { let messages: [AIMessage] }
+private struct AISendPayload: Codable { let assistantMessage: AIMessage }

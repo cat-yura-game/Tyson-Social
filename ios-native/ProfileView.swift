@@ -44,3 +44,16 @@ struct DevicesView: View {
     private func load() async { sessions = (try? await TysonAPI.shared.deviceSessions()) ?? [] }
 }
 struct DiamondHistoryView: View { var body: some View { ContentUnavailableView("История алмазов", systemImage: "diamond.fill", description: Text("Пополнения, награды и покупки отображаются здесь.")) .navigationTitle("Алмазы") } }
+
+struct PublicProfileView: View {
+    let username: String
+    @State private var user: TysonUser?
+    @State private var posts: [TysonPost] = []
+    var body: some View { ScrollView { VStack(spacing: 16) {
+        TysonGlass { VStack(spacing: 12) { TysonAvatarLarge(user: user); Text(user?.displayName ?? username).font(.title.bold()); Text("@\(user?.username ?? username)").foregroundStyle(.secondary); if let bio = user?.bio, !bio.isEmpty { Text(bio).multilineTextAlignment(.center) }; HStack { profileStat("Подписчики", user?.followerCount ?? 0); profileStat("Подписки", user?.followingCount ?? 0) }; HStack { Button("Подписаться") {}.buttonStyle(.borderedProminent); Button { } label: { Image(systemName: "message.fill") }.buttonStyle(.bordered) } }.padding(22).frame(maxWidth: .infinity) }.padding(.horizontal)
+        LazyVStack(spacing: 14) { ForEach(posts) { PostCard(post: $0) } }
+    }.padding(.vertical) }.background(TysonColor.background).navigationTitle("Профиль").navigationBarTitleDisplayMode(.inline).task { async let loadedUser = try? TysonAPI.shared.profile(username: username); async let loadedPosts = try? TysonAPI.shared.posts(username: username); user = await loadedUser; posts = await loadedPosts ?? [] } }
+    private func profileStat(_ title: String, _ value: Int) -> some View { VStack { Text("\(value)").bold(); Text(title).font(.caption).foregroundStyle(.secondary) }.frame(maxWidth: .infinity) }
+}
+
+private struct TysonAvatarLarge: View { let user: TysonUser?; var body: some View { AsyncImage(url: TysonAPI.mediaURL(user?.avatarKey)) { phase in if let image = phase.image { image.resizable().scaledToFill() } else { Circle().fill(TysonColor.green.gradient).overlay(Text((user?.displayName ?? "T").prefix(1)).font(.largeTitle.bold()).foregroundStyle(.white)) } }.frame(width: 94, height: 94).clipShape(Circle()) } }
