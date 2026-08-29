@@ -52,11 +52,8 @@ struct AITabView: View {
     @State private var input = ""; @State private var busy = false; @State private var model = "lite"; @State private var conversations: [AIConversation] = []; @State private var active: AIConversation?; @State private var messages: [AIMessage] = []; @State private var photo: PhotosPickerItem?; @State private var attachmentData: Data?; @State private var attachmentName = ""; @State private var attachmentMime = "application/octet-stream"; @State private var attachmentIsImage = false; @State private var showFiles = false; @State private var showChats = false
     var body: some View { NavigationStack { VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Button { showChats = true } label: { Label("Чаты", systemImage: "bubble.left.and.bubble.right") }
-                    .buttonStyle(.bordered)
-                Spacer()
-                Button { Task { await newChat() } } label: { Label("Новый чат", systemImage: "square.and.pencil") }
-                    .buttonStyle(.borderedProminent)
+                AIGlassAction(title: "Чаты", icon: "bubble.left.and.bubble.right") { showChats = true }
+                AIGlassAction(title: "Новый чат", icon: "square.and.pencil", emphasized: true) { Task { await newChat() } }
             }.padding(.horizontal, 12).padding(.top, 8)
             Picker("Модель", selection: $model) { Text("Flash Lite").tag("lite"); Text("Flash").tag("flash"); Text("Smart").tag("smart") }
                 .pickerStyle(.segmented).padding(6).tysonSystemMaterial(Capsule()).padding(.horizontal, 12).padding(.vertical, 8)
@@ -74,10 +71,33 @@ struct AITabView: View {
     private func clearAttachment() { attachmentData = nil; attachmentName = ""; attachmentIsImage = false; photo = nil }
 }
 
+private struct AIGlassAction: View {
+    let title: String
+    let icon: String
+    var emphasized = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 14)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(emphasized ? TysonColor.accent : .primary)
+        .tysonGlassSurface(Capsule())
+        .accessibilityLabel(title)
+    }
+}
+
 private struct AIChatsSheet: View {
     @Environment(\.dismiss) private var dismiss
     let conversations: [AIConversation]; let activeID: String?; let create: () -> Void; let delete: (AIConversation) -> Void; let open: (AIConversation) -> Void
-    var body: some View { NavigationStack { ScrollView { LazyVStack(spacing: 12) { Button(action: create) { Label("Новый чат", systemImage: "square.and.pencil").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 13) }.buttonStyle(.borderedProminent); if conversations.isEmpty { ContentUnavailableView("Чатов пока нет", systemImage: "bubble.left.and.bubble.right", description: Text("Начните новый разговор с Tyson AI.")) } else { ForEach(conversations) { chat in HStack(spacing: 10) { Button { open(chat); dismiss() } label: { HStack(spacing: 12) { Image(systemName: "sparkles").foregroundStyle(TysonColor.accent); VStack(alignment: .leading, spacing: 3) { Text(chat.title).foregroundStyle(.primary).lineLimit(1); Text(date(chat.updatedAt)).font(.caption).foregroundStyle(.secondary) }; Spacer(); if chat.id == activeID { Image(systemName: "checkmark.circle.fill").foregroundStyle(TysonColor.accent) } }.padding(15).tysonSystemMaterial(RoundedRectangle(cornerRadius: 22)) }.buttonStyle(.plain); Button(role: .destructive) { delete(chat) } label: { Image(systemName: "trash").frame(width: 34, height: 34) }.buttonStyle(.bordered) } } } }.padding() }.navigationTitle("Чаты Tyson AI").toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Готово") { dismiss() } } } } }
+    var body: some View { NavigationStack { ScrollView { LazyVStack(spacing: 12) { AIGlassAction(title: "Новый чат", icon: "square.and.pencil", emphasized: true, action: create); if conversations.isEmpty { ContentUnavailableView("Чатов пока нет", systemImage: "bubble.left.and.bubble.right", description: Text("Начните новый разговор с Tyson AI.")) } else { ForEach(conversations) { chat in HStack(spacing: 10) { Button { open(chat); dismiss() } label: { HStack(spacing: 12) { Image(systemName: "sparkles").foregroundStyle(TysonColor.accent); VStack(alignment: .leading, spacing: 3) { Text(chat.title).foregroundStyle(.primary).lineLimit(1); Text(date(chat.updatedAt)).font(.caption).foregroundStyle(.secondary) }; Spacer(); if chat.id == activeID { Image(systemName: "checkmark.circle.fill").foregroundStyle(TysonColor.accent) } }.padding(15).tysonSystemMaterial(RoundedRectangle(cornerRadius: 22)) }.buttonStyle(.plain); Button(role: .destructive) { delete(chat) } label: { Image(systemName: "trash").frame(width: 36, height: 36) }.buttonStyle(.plain).foregroundStyle(.red).tysonGlassSurface(Circle()) } } } }.padding() }.navigationTitle("Чаты Tyson AI").toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Готово") { dismiss() } } } } }
     private func date(_ value: String) -> String { guard let date = ISO8601DateFormatter().date(from: value) else { return "" }; return date.formatted(date: .abbreviated, time: .shortened) }
 }
 
