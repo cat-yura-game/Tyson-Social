@@ -134,6 +134,19 @@ actor TysonAPI {
         let _: Envelope<EmptyPayload> = try await requestEncodable(path: "/messages/conversations/\(conversationId)/messages", body: SendAttachmentBody(content: content))
     }
 
+    func downloadAttachment(_ attachment: TysonMessageAttachment) async throws -> Data {
+        var request = URLRequest(url: baseURL.appending(path: "/messages/attachments/\(attachment.id)"))
+        authorize(&request)
+        let (ciphertext, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+        if let digest = attachment.digest, Data(SHA256.hash(data: ciphertext)).base64EncodedString() != digest { throw URLError(.cannotDecodeContentData) }
+        guard let key = Data(base64Encoded: attachment.key), let nonce = Data(base64Encoded: attachment.nonce),
+              let plain = Sodium().secretBox.open(authenticatedCipherText: [UInt8](ciphertext), secretKey: [UInt8](key), nonce: [UInt8](nonce)) else {
+            throw URLError(.cannotDecodeContentData)
+        }
+        return Data(plain)
+    }
+
     func createConversation(username: String) async throws -> TysonConversation {
         let response: Envelope<CreatedConversationPayload> = try await request(path: "/messages/conversations", method: "POST", body: ["recipientUsername": username])
         return TysonConversation(id: response.data.conversation.id, title: nil, otherUsername: response.data.conversation.otherUser.username, otherDisplayName: response.data.conversation.otherUser.displayName, lastMessage: nil, updatedAt: nil, otherAvatarKey: response.data.conversation.otherUser.avatarKey, kind: "direct", memberCount: nil)
@@ -355,7 +368,18 @@ struct TysonMessage: Codable, Identifiable {
     let senderUserId: String?
     let sentAt: String?
     var text: String { content?.objectValue?["text"]?.stringValue ?? content?.stringValue ?? "Сообщение" }
+    var attachment: TysonMessageAttachment? {
+        guard let object = content?.objectValue,
+              let type = object["type"]?.stringValue,
+              ["image", "audio", "video", "file"].contains(type),
+              let id = object["attachmentId"]?.stringValue,
+              let key = object["key"]?.stringValue,
+              let nonce = object["nonce"]?.stringValue,
+              let mimeType = object["mimeType"]?.stringValue else { return nil }
+        return TysonMessageAttachment(id: id, type: type, key: key, nonce: nonce, digest: object["digest"]?.stringValue, mimeType: mimeType, name: object["name"]?.stringValue)
+    }
 }
+struct TysonMessageAttachment: Hashable { let id: String; let type: String; let key: String; let nonce: String; let digest: String?; let mimeType: String; let name: String? }
 private struct ConversationsPayload: Codable { let conversations: [TysonConversation] }
 private struct MessagesPayload: Codable { let messages: [TysonMessage] }
 private struct CreatedConversationPayload: Codable { let conversation: CreatedConversation }

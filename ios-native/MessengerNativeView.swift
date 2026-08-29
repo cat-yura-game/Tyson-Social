@@ -1,7 +1,9 @@
 import SwiftUI
 import PhotosUI
 import AVFoundation
+import AVKit
 import UniformTypeIdentifiers
+import UIKit
 
 struct MessengerHomeView: View {
     @State private var conversations: [TysonConversation] = []
@@ -131,8 +133,68 @@ private struct MessageBubble: View {
     let message: TysonMessage; let currentUserId: String?
     private var own: Bool { message.senderUserId == currentUserId }; private var type: String { message.content?.objectValue?["type"]?.stringValue ?? "text" }
     var body: some View { HStack(alignment: .bottom) { if own { Spacer(minLength: 52) }; VStack(alignment: .trailing, spacing: 3) { bubbleContent.padding(.horizontal, 13).padding(.vertical, 9); if let sent = message.sentAt { Text(time(sent)).font(.system(size: 9)).foregroundStyle(own ? .white.opacity(0.7) : .secondary).padding(.trailing, 5).padding(.bottom, 4) } }.background(own ? TysonColor.accent.opacity(0.94) : Color(uiColor: .secondarySystemBackground).opacity(0.88), in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: own ? 20 : 6, bottomTrailingRadius: own ? 6 : 20, topTrailingRadius: 20)).foregroundStyle(own ? .white : .primary).shadow(color: .black.opacity(0.06), radius: 5, y: 2); if !own { Spacer(minLength: 52) } }.frame(maxWidth: .infinity) }
-    @ViewBuilder private var bubbleContent: some View { switch type { case "audio": Label("Голосовое сообщение", systemImage: "waveform.circle.fill"); case "video": Label("Видео", systemImage: "play.rectangle.fill"); case "image": Label("Фотография", systemImage: "photo.fill"); case "file": Label(message.content?.objectValue?["name"]?.stringValue ?? "Файл", systemImage: "doc.fill"); case "gift": VStack(spacing: 6) { Image(systemName: "gift.fill").font(.largeTitle); Text(message.content?.objectValue?["title"]?.stringValue ?? "Подарок Tyson").bold() }; case "sticker": Label("Стикер Tyson", systemImage: "face.smiling"); case "post": Label("Публикация Tyson", systemImage: "doc.text.image"); default: Text(verbatim: message.text).fixedSize(horizontal: false, vertical: true) } }
+    @ViewBuilder private var bubbleContent: some View {
+        if let attachment = message.attachment {
+            MessageAttachmentView(attachment: attachment)
+        } else {
+            switch type {
+            case "gift": VStack(spacing: 6) { Image(systemName: "gift.fill").font(.largeTitle); Text(message.content?.objectValue?["title"]?.stringValue ?? "Подарок Tyson").bold() }
+            case "sticker": Label("Стикер Tyson", systemImage: "face.smiling")
+            case "post": Label("Публикация Tyson", systemImage: "doc.text.image")
+            default: Text(verbatim: message.text).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
     private func time(_ value: String) -> String { guard let date = ISO8601DateFormatter().date(from: value) else { return "" }; return date.formatted(date: .omitted, time: .shortened) }
+}
+
+private struct MessageAttachmentView: View {
+    let attachment: TysonMessageAttachment
+    @State private var data: Data?
+    @State private var videoURL: URL?
+    @State private var player: AVAudioPlayer?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if attachment.type == "image", let data, let image = UIImage(data: data) {
+                Image(uiImage: image).resizable().scaledToFit().frame(maxWidth: 250, maxHeight: 280).clipShape(RoundedRectangle(cornerRadius: 13))
+            } else if attachment.type == "video", let videoURL {
+                VideoPlayer(player: AVPlayer(url: videoURL)).frame(width: 250, height: 170).clipShape(RoundedRectangle(cornerRadius: 13))
+            } else if attachment.type == "audio", data != nil {
+                Button { toggleAudio() } label: { Label(player?.isPlaying == true ? "Пауза" : "Голосовое сообщение", systemImage: player?.isPlaying == true ? "pause.circle.fill" : "play.circle.fill") }.buttonStyle(.plain)
+            } else if attachment.type == "file", let data {
+                ShareLink(item: data, preview: SharePreview(attachment.name ?? "Файл Tyson")) { Label(attachment.name ?? "Файл", systemImage: "doc.fill") }
+            } else if failed {
+                Label("Не удалось загрузить вложение", systemImage: "exclamationmark.triangle")
+            } else {
+                HStack(spacing: 8) { ProgressView(); Text(loadingLabel) }
+            }
+        }
+        .task(id: attachment.id) { await load() }
+    }
+
+    private var loadingLabel: String { ["image": "Загружаем фотографию", "audio": "Загружаем голосовое", "video": "Загружаем видео", "file": "Загружаем файл"][attachment.type] ?? "Загружаем вложение" }
+    private func load() async {
+        do {
+            let loaded = try await TysonAPI.shared.downloadAttachment(attachment)
+            data = loaded
+            if attachment.type == "video" {
+                let ext = attachment.mimeType == "video/webm" ? "webm" : "mp4"
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent("tyson-video-\(attachment.id).\(ext)")
+                try loaded.write(to: url, options: .atomic)
+                videoURL = url
+            }
+        } catch { failed = true }
+    }
+    private func toggleAudio() {
+        if let player {
+            if player.isPlaying { player.pause() } else { player.play() }
+            return
+        }
+        guard let data, let created = try? AVAudioPlayer(data: data) else { failed = true; return }
+        created.prepareToPlay(); created.play(); player = created
+    }
 }
 
 @MainActor final class TysonVoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
