@@ -231,6 +231,29 @@ actor TysonAPI {
         let response: Envelope<GiftPurchasePayload> = try await requestEncodable(path: "/gifts/\(id)/buy", body: GiftPurchaseBody(recipientUsername: recipientUsername))
         return response.data.balance
     }
+    func upgradeGift(id: String) async throws -> TysonGift {
+        let response: Envelope<GiftOperationPayload> = try await requestEncodable(path: "/user-gifts/\(id)/upgrade", body: EmptyPayload())
+        return response.data.gift
+    }
+    func setGiftWorn(id: String, worn: Bool) async throws {
+        if worn { try await requestVoid(path: "/user-gifts/\(id)/wear", method: "POST", body: [:]) }
+        else { try await requestVoid(path: "/users/me/worn-gift", method: "DELETE", body: [:]) }
+    }
+    func setGiftPublic(id: String, isPublic: Bool) async throws {
+        let _: Envelope<GiftVisibilityPayload> = try await requestEncodable(path: "/user-gifts/\(id)/public", method: "PUT", body: GiftVisibilityBody(isPublic: isPublic))
+    }
+    func transferGift(id: String, recipientUsername: String) async throws {
+        try await requestVoid(path: "/user-gifts/\(id)/transfer", method: "POST", body: ["recipientUsername": recipientUsername])
+    }
+    func exchangeGift(id: String) async throws {
+        try await requestVoid(path: "/user-gifts/\(id)/exchange", method: "POST", body: [:])
+    }
+    func listGift(id: String, price: Int) async throws {
+        let _: Envelope<GiftListingPayload> = try await requestEncodable(path: "/user-gifts/\(id)/list", body: GiftListingBody(price: price))
+    }
+    func removeGiftInscription(id: String) async throws {
+        try await requestVoid(path: "/user-gifts/\(id)/inscription", method: "DELETE", body: [:])
+    }
     func starPackages() async throws -> [StarPackage] { let response: Envelope<StarPackagesPayload> = try await request(path: "/diamonds/stars/packages"); return response.data.packages }
     func starInvoice(packageId: String) async throws -> URL {
         let response: Envelope<StarInvoicePayload> = try await requestEncodable(path: "/diamonds/stars/invoice", body: StarInvoiceBody(packageId: packageId))
@@ -432,11 +455,16 @@ private struct DiamondBalancePayload: Codable { let balance: Int }
 struct DiamondTransaction: Codable, Identifiable { let id: String; let amount: Int; let type: String; let reason: String; let createdAt: String }
 private struct DiamondTransactionsPayload: Codable { let transactions: [DiamondTransaction] }
 struct TysonGiftType: Codable, Identifiable { let id: String; let slug: String; let title: String; let basePrice: Int; let upgradePrice: Int?; let maxSupply: Int; let soldCount: Int; let remaining: Int; let baseImage: String; let isLimited: Bool; let isUnlimited: Bool; let canUpgrade: Bool; let canTransfer: Bool; let canWear: Bool; let exchangeReward: Int?; let exchangeWindowDays: Int?; let active: Bool }
-struct TysonGift: Codable, Identifiable { let id: String; let giftTypeId: String; let title: String; let serialNumber: Int; let maxSupply: Int; let basePrice: Int; let inscription: String?; let isCollectible: Bool; let accentColor: String; let isPublic: Bool; let worn: Bool; let activeListingId: String?; let variant: String?; let image: String; let purchasedAt: String; let upgradedAt: String?; let upgradePrice: Int?; let isLimited: Bool; let isUnlimited: Bool; let canUpgrade: Bool; let canTransfer: Bool; let canWear: Bool; let exchangeReward: Int?; let exchangeWindowDays: Int? }
+struct TysonGift: Codable, Identifiable { let id: String; let giftTypeId: String; let title: String; let serialNumber: Int; let maxSupply: Int; let basePrice: Int; let inscription: String?; let isCollectible: Bool; let accentColor: String; let isPublic: Bool; let worn: Bool; let activeListingId: String?; let variant: String?; let image: String; let purchasedAt: String; let upgradedAt: String?; let upgradePrice: Int?; let isLimited: Bool; let isUnlimited: Bool; let canUpgrade: Bool; let canTransfer: Bool; let canWear: Bool; let exchangeReward: Int?; let exchangeWindowDays: Int?; let collectibleVariants: [String]? }
 private struct GiftTypesPayload: Codable { let gifts: [TysonGiftType] }
 private struct UserGiftsPayload: Codable { let gifts: [TysonGift] }
 private struct GiftPurchaseBody: Codable { let recipientUsername: String? }
 private struct GiftPurchasePayload: Codable { let balance: Int }
+private struct GiftOperationPayload: Codable { let gift: TysonGift; let balance: Int? }
+private struct GiftVisibilityBody: Codable { let isPublic: Bool }
+private struct GiftVisibilityPayload: Codable { let isPublic: Bool }
+private struct GiftListingBody: Codable { let price: Int }
+private struct GiftListingPayload: Codable { let listingId: String; let price: Int }
 struct StarPackage: Codable, Identifiable { let id: String; let stars: Int; let diamonds: Int; let label: String }
 private struct StarPackagesPayload: Codable { let packages: [StarPackage] }
 private struct StarInvoiceBody: Codable { let packageId: String }

@@ -42,7 +42,7 @@ struct MessengerHomeView: View {
     private func shortTime(_ value: String) -> String { guard let date = ISO8601DateFormatter().date(from: value) else { return "" }; return date.formatted(date: .omitted, time: .shortened) }
 }
 
-private struct TysonMessengerBackground: View { var body: some View { LinearGradient(colors: [Color(uiColor: .systemGroupedBackground), TysonColor.accent.opacity(0.08), Color(uiColor: .systemGroupedBackground)], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea() } }
+private struct TysonMessengerBackground: View { var body: some View { LinearGradient(colors: [Color(uiColor: .systemBackground), TysonColor.accent.opacity(0.045), Color(uiColor: .systemBackground)], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea() } }
 
 private struct MessengerAvatar: View {
     let key: String?; let name: String; var size: CGFloat = 50
@@ -73,12 +73,14 @@ struct ConversationView: View {
     var body: some View {
         ZStack { TysonMessengerBackground(); VStack(spacing: 0) {
             chatHeader
-            ScrollViewReader { proxy in ScrollView { LazyVStack(spacing: 6) { ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in if index == 0 || dayKey(messages[index - 1].sentAt) != dayKey(message.sentAt) { DaySeparator(value: message.sentAt) }; MessageBubble(message: message, currentUserId: session.currentUser?.id).id(message.id).contextMenu { messageMenu(message) } } }.padding(.horizontal, 11).padding(.vertical, 12) }.onChange(of: messages.count) { _, _ in if let id = messages.last?.id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } } } }
+            ScrollViewReader { proxy in ScrollView { LazyVStack(spacing: 6) { ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in if index == 0 || dayKey(messages[index - 1].sentAt) != dayKey(message.sentAt) { DaySeparator(value: message.sentAt) }; MessageBubble(message: message, currentUserId: session.currentUser?.id).id(message.id).contextMenu { messageMenu(message) } } }.padding(.horizontal, 6).padding(.vertical, 12) }.frame(maxWidth: .infinity, maxHeight: .infinity).onChange(of: messages.count) { _, _ in if let id = messages.last?.id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } } } }
             if recorder.recording { recordingBar }
             if editingMessage != nil || replyingTo != nil { actionBar }
             if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal) }
             composer
         } }
+        .overlay(alignment: .top) { LinearGradient(colors: [Color.black.opacity(0.055), .clear], startPoint: .top, endPoint: .bottom).frame(height: 82).allowsHitTesting(false) }
+        .overlay(alignment: .bottom) { LinearGradient(colors: [.clear, Color.black.opacity(0.035)], startPoint: .top, endPoint: .bottom).frame(height: 76).allowsHitTesting(false) }
         .toolbar(.hidden, for: .navigationBar)
         .task { await load() }
         .onChange(of: photo) { _, item in Task { if let data = try? await item?.loadTransferable(type: Data.self) { await sendAttachment(data, type: "image", mime: "image/jpeg") } } }
