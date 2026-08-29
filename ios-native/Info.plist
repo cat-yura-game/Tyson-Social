@@ -9,9 +9,9 @@
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleName</key><string>Tyson Social</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.3.1</string>
+    <key>CFBundleShortVersionString</key><string>0.3.2</string>
     <key>CFBundleSignature</key><string>????</string>
-    <key>CFBundleVersion</key><string>4</string>
+    <key>CFBundleVersion</key><string>5</string>
     <key>LSRequiresIPhoneOS</key><true/>
     <key>NSMicrophoneUsageDescription</key><string>Tyson использует микрофон для записи голосовых сообщений и голосового ввода.</string>
     <key>NSCameraUsageDescription</key><string>Tyson использует камеру для фотографий и видеосообщений.</string>

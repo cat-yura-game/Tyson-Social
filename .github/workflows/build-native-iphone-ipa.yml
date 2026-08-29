@@ -38,10 +38,15 @@ jobs:
         run: |
           mkdir -p build/Payload
           cp -R build/native-ios/Build/Products/Release-iphoneos/TysonSocial.app build/Payload/TysonSocial.app
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' build/Payload/TysonSocial.app/Info.plist)" = "TysonSocial"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' build/Payload/TysonSocial.app/Info.plist)" = "eu.tysonsocial.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' build/Payload/TysonSocial.app/Info.plist)" = "APPL"
+          codesign --force --deep --sign - --timestamp=none build/Payload/TysonSocial.app
+          codesign --verify --deep --strict --verbose=2 build/Payload/TysonSocial.app
           cd build
-          zip -qry TysonSocial-native-unsigned.ipa Payload
+          zip -qry TysonSocial-native-sideload.ipa Payload
       - uses: actions/upload-artifact@v4
         with:
-          name: TysonSocial-native-iPhone-unsigned
-          path: build/TysonSocial-native-unsigned.ipa
+          name: TysonSocial-native-iPhone-sideload
+          path: build/TysonSocial-native-sideload.ipa
           retention-days: 14
