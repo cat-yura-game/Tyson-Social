@@ -6,10 +6,7 @@ struct TysonSocialApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                TysonColor.background.ignoresSafeArea()
-                RootTabView()
-            }
+            RootTabView()
             .environmentObject(session)
             .tint(TysonColor.accent)
             .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -11,7 +11,7 @@ struct RootTabView: View {
             CreateView().tabItem { Label("Создать", systemImage: "plus") }
             AITabView().tabItem { Label("AI", systemImage: "sparkles") }
             ProfileView().tabItem { Label("Профиль", systemImage: "person.crop.circle") }
-        }.toolbarBackground(.visible, for: .tabBar).toolbarBackground(.ultraThinMaterial, for: .tabBar)
+        }
         .fullScreenCover(isPresented: $session.requiresLogin) { LoginView().interactiveDismissDisabled() }
     }
 }

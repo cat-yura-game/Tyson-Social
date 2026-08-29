@@ -15,20 +15,22 @@ struct MessengerHomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(spacing: 9) {
-                    ForEach(filtered) { conversation in
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(filtered.enumerated()), id: \.element.id) { index, conversation in
                         NavigationLink { ConversationView(conversation: conversation) } label: {
-                            TysonGlass { HStack(spacing: 12) {
+                            HStack(spacing: 12) {
                                 MessengerAvatar(key: conversation.otherAvatarKey, name: conversation.title ?? conversation.otherDisplayName ?? "T", size: 48)
                                 VStack(alignment: .leading, spacing: 4) { Text(conversation.title ?? conversation.otherDisplayName ?? "Диалог").font(.headline).foregroundStyle(.primary).lineLimit(1); Text(conversation.lastMessage?.isEmpty == false ? conversation.lastMessage! : conversation.kind == "group" ? "\(conversation.memberCount ?? 0) участников" : "@\(conversation.otherUsername ?? "user")").font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
                                 Spacer()
                                 VStack(alignment: .trailing, spacing: 8) { if let value = conversation.updatedAt { Text(shortTime(value)).font(.caption2).foregroundStyle(.tertiary) }; Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(.tertiary) }
-                            }.padding(11) }
-                        }.buttonStyle(.plain)
+                            }.padding(.horizontal, 16).padding(.vertical, 11)
+                        }
+                        .buttonStyle(.plain)
+                        if index < filtered.count - 1 { Divider().padding(.leading, 76) }
                     }
-                }.padding(.horizontal, 14).padding(.vertical, 10)
+                }.padding(.vertical, 8)
             }
-            .background(TysonMessengerBackground())
+            .scrollContentBackground(.hidden)
             .overlay { if loading { ProgressView() } else if conversations.isEmpty { ContentUnavailableView("Messenger", systemImage: "message.fill", description: Text("Начните новый диалог или создайте группу.")) } }
             .searchable(text: $search, prompt: "Поиск людей и сообщений")
             .navigationTitle("Сообщения")
@@ -41,8 +43,6 @@ struct MessengerHomeView: View {
     private func load() async { loading = true; conversations = (try? await TysonAPI.shared.conversations()) ?? []; loading = false }
     private func shortTime(_ value: String) -> String { guard let date = ISO8601DateFormatter().date(from: value) else { return "" }; return date.formatted(date: .omitted, time: .shortened) }
 }
-
-private struct TysonMessengerBackground: View { var body: some View { LinearGradient(colors: [Color(uiColor: .systemBackground), TysonColor.accent.opacity(0.045), Color(uiColor: .systemBackground)], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea() } }
 
 private struct MessengerAvatar: View {
     let key: String?; let name: String; var size: CGFloat = 50
@@ -65,34 +65,54 @@ struct NewConversationView: View {
 }
 
 struct ConversationView: View {
-    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var session: AppSession
     let conversation: TysonConversation
     @State private var messages: [TysonMessage] = []; @State private var draft = ""; @State private var photo: PhotosPickerItem?; @State private var video: PhotosPickerItem?; @State private var showFiles = false; @StateObject private var recorder = TysonVoiceRecorder(); @State private var error = ""; @State private var editingMessage: TysonMessage?; @State private var replyingTo: TysonMessage?
     private var title: String { conversation.title ?? conversation.otherDisplayName ?? "Диалог" }
     var body: some View {
-        ZStack { TysonMessengerBackground(); VStack(spacing: 0) {
-            chatHeader
-            ScrollViewReader { proxy in ScrollView { LazyVStack(spacing: 6) { ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in if index == 0 || dayKey(messages[index - 1].sentAt) != dayKey(message.sentAt) { DaySeparator(value: message.sentAt) }; MessageBubble(message: message, currentUserId: session.currentUser?.id).id(message.id).contextMenu { messageMenu(message) } } }.padding(.horizontal, 6).padding(.vertical, 12) }.frame(maxWidth: .infinity, maxHeight: .infinity).onChange(of: messages.count) { _, _ in if let id = messages.last?.id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } } } }
-            if recorder.recording { recordingBar }
-            if editingMessage != nil || replyingTo != nil { actionBar }
-            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal) }
-            composer
-        } }
-        .overlay(alignment: .top) { LinearGradient(colors: [Color.black.opacity(0.055), .clear], startPoint: .top, endPoint: .bottom).frame(height: 82).allowsHitTesting(false) }
-        .overlay(alignment: .bottom) { LinearGradient(colors: [.clear, Color.black.opacity(0.035)], startPoint: .top, endPoint: .bottom).frame(height: 76).allowsHitTesting(false) }
-        .toolbar(.hidden, for: .navigationBar)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 6) {
+                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                        if index == 0 || dayKey(messages[index - 1].sentAt) != dayKey(message.sentAt) { DaySeparator(value: message.sentAt) }
+                        MessageBubble(message: message, currentUserId: session.currentUser?.id)
+                            .id(message.id)
+                            .contextMenu { messageMenu(message) }
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 98)
+            }
+            .scrollIndicators(.hidden)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onChange(of: messages.count) { _, _ in if let id = messages.last?.id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } } }
+        }
+        .overlay(alignment: .bottom) {
+            VStack(spacing: 6) {
+                if recorder.recording { recordingBar }
+                if editingMessage != nil || replyingTo != nil { actionBar }
+                if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal) }
+                composer
+            }
+            .padding(.bottom, 4)
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let username = conversation.otherUsername, conversation.kind != "group" {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink { PublicProfileView(username: username) } label: {
+                        MessengerAvatar(key: conversation.otherAvatarKey, name: title, size: 30)
+                    }
+                }
+            }
+        }
         .task { await load() }
         .onChange(of: photo) { _, item in Task { if let data = try? await item?.loadTransferable(type: Data.self) { await sendAttachment(data, type: "image", mime: "image/jpeg") } } }
         .onChange(of: video) { _, item in Task { if let data = try? await item?.loadTransferable(type: Data.self) { await sendAttachment(data, type: "video", mime: "video/mp4", duration: 1) } } }
         .fileImporter(isPresented: $showFiles, allowedContentTypes: [.data, .pdf, .text]) { result in Task { do { let url = try result.get(); let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }; let data = try Data(contentsOf: url); await sendAttachment(data, type: "file", mime: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream", name: url.lastPathComponent) } catch { self.error = "Не удалось отправить файл" } } }
     }
-    private var chatHeader: some View { HStack(spacing: 9) {
-        Button { dismiss() } label: { Image(systemName: "chevron.left").font(.system(size: 25, weight: .semibold)).frame(width: 50, height: 50) }.glassCircle()
-        Group { if let username = conversation.otherUsername, conversation.kind != "group" { NavigationLink { PublicProfileView(username: username) } label: { headerTitle } } else { headerTitle } }.buttonStyle(.plain)
-        MessengerAvatar(key: conversation.otherAvatarKey, name: title, size: 50)
-    }.padding(.horizontal, 10).padding(.vertical, 8) }
-    private var headerTitle: some View { VStack(spacing: 2) { Text(title).font(.headline).foregroundStyle(.primary).lineLimit(1); Text(conversation.kind == "group" ? "\(conversation.memberCount ?? 0) участников" : "был(а) недавно").font(.caption2).foregroundStyle(.secondary) }.frame(maxWidth: .infinity).frame(height: 48) }
     private var recordingBar: some View { HStack { Circle().fill(.red).frame(width: 9, height: 9); Text("Запись голосового…"); Spacer(); Button("Отправить") { Task { await finishVoice() } }; Button("Отмена") { recorder.cancel() } }.font(.subheadline).padding(10).tysonGlassSurface(Capsule()) }
     private var actionBar: some View { HStack { Image(systemName: editingMessage != nil ? "pencil" : "arrowshape.turn.up.left"); VStack(alignment: .leading) { Text(editingMessage != nil ? "Редактирование" : "Ответ").font(.caption.bold()); Text((editingMessage ?? replyingTo)?.text ?? "").font(.caption).lineLimit(1) }; Spacer(); Button { editingMessage = nil; replyingTo = nil } label: { Image(systemName: "xmark.circle.fill") } }.padding(.horizontal, 14).padding(.vertical, 7).tysonGlassSurface(Capsule()) }
     private var composer: some View { HStack(alignment: .bottom, spacing: 6) {
