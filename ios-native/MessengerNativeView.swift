@@ -37,7 +37,26 @@ struct ConversationView: View {
     private func finishVoice() async { guard let result = recorder.stop() else { return }; await sendAttachment(result.data, type: "audio", mime: "audio/mp4") }
 }
 
-private struct MessageBubble: View { let message: TysonMessage; let own: Bool; var body: some View { HStack { if own { Spacer(minLength: 50) }; Group { if let type = message.content?.objectValue?["type"]?.stringValue, type != "text" { Label(type == "audio" ? "Голосовое сообщение" : type == "video" ? "Видеосообщение" : type == "image" ? "Фотография" : "Файл", systemImage: type == "audio" ? "waveform" : type == "video" ? "video.fill" : type == "image" ? "photo.fill" : "doc.fill") } else { Text(message.text) } }.padding(.horizontal, 14).padding(.vertical, 10).background(own ? TysonColor.accent : Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 18)).foregroundStyle(own ? .white : .primary); if !own { Spacer(minLength: 50) } } }
+private struct MessageBubble: View {
+    let message: TysonMessage
+    let own: Bool
+    var body: some View {
+        HStack {
+            if own { Spacer(minLength: 50) }
+            Group {
+                if let type = message.content?.objectValue?["type"]?.stringValue, type != "text" {
+                    Label(label(for: type), systemImage: icon(for: type))
+                } else { Text(message.text) }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(own ? TysonColor.accent : Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 18))
+            .foregroundStyle(own ? .white : .primary)
+            if !own { Spacer(minLength: 50) }
+        }
+    }
+    private func label(for type: String) -> String { type == "audio" ? "Голосовое сообщение" : type == "video" ? "Видеосообщение" : type == "image" ? "Фотография" : "Файл" }
+    private func icon(for type: String) -> String { type == "audio" ? "waveform" : type == "video" ? "video.fill" : type == "image" ? "photo.fill" : "doc.fill" }
+}
 
 @MainActor final class TysonVoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var recording = false; private var recorder: AVAudioRecorder?; private var url: URL?
