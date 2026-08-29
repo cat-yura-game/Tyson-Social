@@ -116,6 +116,20 @@ actor TysonAPI {
         return response.data.stories
     }
 
+    func createStory(imageData: Data, caption: String = "") async throws {
+        var request = URLRequest(url: baseURL.appending(path: "/stories"))
+        request.httpMethod = "POST"
+        authorize(&request)
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.setValue(caption, forHTTPHeaderField: "X-Story-Caption")
+        request.httpBody = imageData
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        _ = try decoder.decode(Envelope<CreatedStoryPayload>.self, from: data)
+    }
+
     func conversations() async throws -> [TysonConversation] {
         let response: Envelope<ConversationsPayload> = try await request(path: "/messages/conversations")
         return response.data.conversations
@@ -437,6 +451,8 @@ struct TysonStory: Codable, Identifiable {
     let viewerReaction: String?
 }
 private struct StoriesPayload: Codable { let stories: [TysonStory] }
+private struct CreatedStoryPayload: Codable { let story: CreatedStory }
+private struct CreatedStory: Codable { let id: String }
 
 struct TysonConversation: Codable, Identifiable, Hashable {
     let id: String

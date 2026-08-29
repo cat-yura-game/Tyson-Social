@@ -1,11 +1,16 @@
 import SwiftUI
 import AVKit
+import PhotosUI
+import UIKit
 
 struct FeedView: View {
     @State private var posts: [TysonPost] = []
     @State private var stories: [TysonStory] = []
     @State private var mode: FeedViewMode = .forYou
     @State private var openedStory: TysonStory?
+    @State private var pickedStory: PhotosPickerItem?
+    @State private var storyUploadError = ""
+    @State private var uploadingStory = false
     @State private var loading = true
     @State private var loadError: String?
     @State private var diamondBalance = 0
@@ -14,7 +19,7 @@ struct FeedView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 14) {
-                    StoryRail(stories: stories, openedStory: $openedStory)
+                    StoryRail(stories: stories, openedStory: $openedStory, pickedStory: $pickedStory, uploading: uploadingStory)
                     Picker("Лента", selection: $mode) {
                         ForEach(FeedViewMode.allCases) { item in
                             Text(item.title).tag(item)
@@ -23,12 +28,16 @@ struct FeedView: View {
                     .pickerStyle(.segmented)
                     .padding(.horizontal)
                     if let message = loadError { Text(message).foregroundStyle(.secondary).padding() }
+                    if !storyUploadError.isEmpty { Text(storyUploadError).font(.caption).foregroundStyle(.red).padding(.horizontal) }
                     if loading { ProgressView().padding(40) }
                     ForEach(posts) { post in PostCard(post: post) }
                 }.padding(.vertical)
             }
             .refreshable { await load(); await loadStories(); await loadBalance() }
             .task { await load(); await loadStories(); await loadBalance() }
+            .onChange(of: pickedStory) { _, item in
+                Task { await uploadStory(item) }
+            }
             .onChange(of: mode) { _, _ in Task { await load() } }
             .fullScreenCover(item: $openedStory) { story in StoryViewer(story: story) }
             .navigationBarTitleDisplayMode(.inline)
@@ -48,16 +57,48 @@ struct FeedView: View {
     }
     private func loadStories() async { stories = (try? await TysonAPI.shared.stories()) ?? [] }
     private func loadBalance() async { diamondBalance = (try? await TysonAPI.shared.diamondBalance()) ?? diamondBalance }
+    private func uploadStory(_ item: PhotosPickerItem?) async {
+        guard let item, !uploadingStory else { return }
+        uploadingStory = true
+        defer { uploadingStory = false; pickedStory = nil }
+        guard let rawData = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: rawData),
+              let data = image.jpegData(compressionQuality: 0.9) else {
+            storyUploadError = "Не удалось прочитать фотографию для сторис."
+            return
+        }
+        do {
+            try await TysonAPI.shared.createStory(imageData: data)
+            storyUploadError = ""
+            await loadStories()
+        } catch {
+            storyUploadError = "Не удалось опубликовать сторис."
+        }
+    }
 }
 
 private struct StoryRail: View {
     let stories: [TysonStory]
     @Binding var openedStory: TysonStory?
+    @Binding var pickedStory: PhotosPickerItem?
+    let uploading: Bool
 
     var body: some View {
-        if !stories.isEmpty {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Stories").font(.headline).padding(.horizontal, 16)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 13) {
+                    PhotosPicker(selection: $pickedStory, matching: .images) {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Circle().fill(.thinMaterial)
+                                if uploading { ProgressView() } else { Image(systemName: "plus").font(.title2.weight(.semibold)) }
+                            }.frame(width: 68, height: 68)
+                            Text("Добавить").font(.caption2.weight(.medium)).frame(width: 70)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(uploading)
                     ForEach(stories) { story in
                         Button { openedStory = story } label: {
                             VStack(spacing: 6) {
@@ -74,7 +115,6 @@ private struct StoryRail: View {
                     }
                 }
                 .padding(.horizontal, 14)
-                .padding(.top, 8)
             }
         }
     }
