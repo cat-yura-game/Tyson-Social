@@ -78,7 +78,7 @@ struct NotificationsView: View {
         loading = true
         defer { loading = false }
         do { notifications = try await TysonAPI.shared.notifications(); error = "" }
-        catch { error = "Не удалось загрузить уведомления." }
+        catch { self.error = "Не удалось загрузить уведомления." }
     }
     private func icon(for type: String) -> String { ["like": "heart.fill", "comment": "bubble.left.fill", "follow": "person.badge.plus", "mention": "at" ][type] ?? "bell.fill" }
     private func formattedDate(_ value: String) -> String { guard let date = ISO8601DateFormatter().date(from: value) else { return value }; return date.formatted(date: .abbreviated, time: .shortened) }
