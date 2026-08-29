@@ -107,11 +107,12 @@ giftRoutes.get('/users/me/gifts', async (c) => {
 });
 
 giftRoutes.get('/users/:username/gifts', async (c) => {
+  const viewerId = c.get('authUser')?.id ?? '';
   const rows = await c.env.DB.prepare(`SELECT ug.id, ug.gift_type_id AS giftTypeId, ug.serial_number AS serialNumber, ug.variant, ug.inscription, ug.accent_color AS accentColor,
     ug.is_collectible AS isCollectible, ug.is_public AS isPublic, CASE WHEN u.worn_gift_id = ug.id THEN 1 ELSE 0 END AS worn, ug.purchased_at AS purchasedAt, ug.upgraded_at AS upgradedAt,
     gt.title, gt.base_price AS basePrice, gt.max_supply AS maxSupply, gt.base_image AS baseImage, gt.collectible_variants_json AS collectibleVariantsJson, gt.upgrade_price AS upgradePrice, gt.is_limited AS isLimited, gt.is_unlimited AS isUnlimited, gt.can_upgrade AS canUpgrade, gt.can_transfer AS canTransfer, gt.can_wear AS canWear, gt.exchange_reward AS exchangeReward, gt.exchange_window_days AS exchangeWindowDays, NULL AS activeListingId
     FROM users u JOIN user_gifts ug ON ug.owner_user_id = u.id JOIN gift_types gt ON gt.id = ug.gift_type_id
-    WHERE u.username = ? AND ug.is_public = 1 ORDER BY worn DESC, ug.purchased_at DESC`).bind(c.req.param('username')).all<UserGift>();
+    WHERE u.username = ? AND (ug.is_public = 1 OR u.id = ?) ORDER BY worn DESC, ug.purchased_at DESC`).bind(c.req.param('username'), viewerId).all<UserGift>();
   return ok(c, { gifts: rows.results.map(giftDto) });
 });
 

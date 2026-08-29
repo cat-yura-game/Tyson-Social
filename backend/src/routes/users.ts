@@ -142,7 +142,7 @@ userRoutes.post('/me/aliases', async (c) => {
   const result = await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at) SELECT ?, ?, -50, 'debit', 'username_alias', ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND diamond_balance >= 50)`).bind(transactionId, user.id, input.username, now, user.id),
     c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance - 50 WHERE id = ? AND EXISTS (SELECT 1 FROM diamond_transactions WHERE id = ?)').bind(user.id, transactionId),
-    c.env.DB.prepare('INSERT INTO username_aliases (id, user_id, username, created_at) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM diamond_transactions WHERE id = ?)').bind(aliasId, user.id, input.username, now, transactionId),
+    c.env.DB.prepare('INSERT INTO username_aliases (id, user_id, username, purchase_price, created_at) SELECT ?, ?, ?, 50, ? WHERE EXISTS (SELECT 1 FROM diamond_transactions WHERE id = ?)').bind(aliasId, user.id, input.username, now, transactionId),
   ]);
   if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'Not enough diamonds.');
   return ok(c, { alias: { id: aliasId, username: input.username, createdAt: now }, balance: (await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>())?.balance ?? 0 }, 201);

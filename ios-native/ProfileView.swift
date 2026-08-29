@@ -4,15 +4,14 @@ struct ProfileView: View {
     @EnvironmentObject private var session: AppSession
     var body: some View { NavigationStack { List {
         Section { if let user = session.currentUser { NavigationLink { PublicProfileView(username: user.username) } label: { HStack(spacing: 14) { TysonAvatar(user: user); VStack(alignment: .leading) { Text(user.displayName).font(.title3.bold()); Text("@\(user.username)").foregroundStyle(.secondary) } } } } }
-        if let user = session.currentUser { Section { HStack(spacing: 0) { stat("Публикации", "—"); NavigationLink { PeopleListView(username: user.username, kind: .followers) } label: { stat("Подписчики", "\(user.followerCount ?? 0)") }; NavigationLink { PeopleListView(username: user.username, kind: .following) } label: { stat("Подписки", "\(user.followingCount ?? 0)") } } } }
+        if let user = session.currentUser { Section { HStack(spacing: 0) { NavigationLink { PublicProfileView(username: user.username) } label: { stat("Мой профиль", "Открыть") }; NavigationLink { PeopleListView(username: user.username, kind: .followers) } label: { stat("Подписчики", "\(user.followerCount ?? 0)") }; NavigationLink { PeopleListView(username: user.username, kind: .following) } label: { stat("Подписки", "\(user.followingCount ?? 0)") } } } }
         Section("Настройки") {
             NavigationLink { ProfileEditView() } label: { Label("Профиль", systemImage: "person.crop.circle") }
             NavigationLink { PrivacySettingsView() } label: { Label("Конфиденциальность", systemImage: "lock.shield") }
             NavigationLink { NativeNotificationSettingsView() } label: { Label("Уведомления", systemImage: "bell.badge") }
             NavigationLink { AppearanceSettingsView() } label: { Label("Оформление", systemImage: "paintpalette") }
             NavigationLink { DevicesView() } label: { Label("Устройства", systemImage: "iphone.and.arrow.forward") }
-            NavigationLink { AISettingsView() } label: { Label("Tyson AI", systemImage: "sparkles") }
-            NavigationLink { AccountSettingsView() } label: { Label("Аккаунт и безопасность", systemImage: "person.badge.key") }
+            NavigationLink { AdditionalUsernamesView() } label: { Label("Дополнительные username", systemImage: "at") }
         }
         Section("Алмазы и подарки") { NavigationLink { DiamondsHubView() } label: { Label("Алмазы Tyson", systemImage: "diamond.fill") }; NavigationLink { MyGiftsView() } label: { Label("Мои подарки", systemImage: "gift.fill") } }
         Section { Button("Выйти", role: .destructive) { Task { await session.logout() } } }
@@ -66,10 +65,24 @@ struct PrivacySettingsView: View {
     private func visibility(_ title: String, value: Binding<String>) -> some View { Picker(title, selection: value) { Text("Все").tag("everyone"); Text("Подписчики").tag("followers"); Text("Никто").tag("nobody") } }
 }
 
-struct NativeNotificationSettingsView: View { @State private var value = NotificationSettings(messageSoundsEnabled: true); var body: some View { Form { Toggle("Звуки сообщений", isOn: $value.messageSoundsEnabled).onChange(of: value.messageSoundsEnabled) { _, _ in Task { try? await TysonAPI.shared.saveNotificationSettings(value) } }; Toggle("Лайки и комментарии", isOn: .constant(true)); Toggle("Новые подписчики", isOn: .constant(true)); Toggle("Уведомления через Telegram", isOn: .constant(false)) }.navigationTitle("Уведомления").task { if let loaded = try? await TysonAPI.shared.notificationSettings() { value = loaded } } } }
+struct NativeNotificationSettingsView: View { @State private var value = NotificationSettings(messageSoundsEnabled: true); var body: some View { Form { Toggle("Звуки сообщений", isOn: $value.messageSoundsEnabled).onChange(of: value.messageSoundsEnabled) { _, _ in Task { try? await TysonAPI.shared.saveNotificationSettings(value) } } }.navigationTitle("Уведомления").task { if let loaded = try? await TysonAPI.shared.notificationSettings() { value = loaded } } } }
 struct AppearanceSettingsView: View { @AppStorage("tysonTheme") private var theme = "system"; var body: some View { Form { Picker("Тема", selection: $theme) { Text("Системная").tag("system"); Text("Светлая").tag("light"); Text("Тёмная").tag("dark") } }.navigationTitle("Оформление") } }
-struct AISettingsView: View { @State private var memory = false; @State private var profileName = ""; var body: some View { Form { Section("Модель") { Picker("По умолчанию", selection: .constant("lite")) { Text("Flash Lite").tag("lite"); Text("Flash").tag("flash"); Text("Pro").tag("pro") } }; Section("Память AI Pro") { Toggle("Запоминать информацию обо мне", isOn: $memory); TextField("Как AI может к вам обращаться", text: $profileName) } }.navigationTitle("Tyson AI") } }
-struct AccountSettingsView: View { @EnvironmentObject private var session: AppSession; @State private var email = ""; var body: some View { Form { Section("Почта") { TextField("Новая почта", text: $email).keyboardType(.emailAddress); Button("Изменить с подтверждением") {} }; Section("Telegram") { Button("Привязать Telegram") {} }; Section("Безопасность") { NavigationLink("Подтверждение входа") { Text("Telegram, email или оба способа") }; NavigationLink("Дополнительные username") { Text("Коллекционные username") } }; Section { Button("Удалить аккаунт", role: .destructive) {} } }.navigationTitle("Аккаунт") } }
+struct AdditionalUsernamesView: View {
+    @State private var aliases: [TysonAlias] = []; @State private var username = ""; @State private var price = 50; @State private var balance: Int?; @State private var status = ""; @State private var busy = false
+    var body: some View { Form { Section { Text("Дополнительный username работает как ссылка на ваш основной профиль. Стоимость — \(price) 💎.").font(.subheadline).foregroundStyle(.secondary); TextField("Новый username", text: $username).textInputAutocapitalization(.never).autocorrectionDisabled(); Button { Task { await buy() } } label: { HStack { Text("Купить за \(price) 💎"); Spacer(); if busy { ProgressView() } } }.disabled(busy || username.trimmingCharacters(in: .whitespacesAndNewlines).count < 3); if let balance { Text("Баланс после покупки: \(balance) 💎").foregroundStyle(.secondary) }; if !status.isEmpty { Text(status).foregroundStyle(status.contains("готов") ? .green : .red) } } header: { Text("Купить username") }
+        Section("Ваши дополнительные username") { if aliases.isEmpty { Text("Пока нет дополнительных username.").foregroundStyle(.secondary) } else { ForEach(aliases) { alias in HStack { Text("@\(alias.username)"); Spacer(); Button("Удалить", role: .destructive) { Task { await remove(alias) } }.disabled(busy) } } } }
+    }.navigationTitle("Дополнительные username").task { await load() } }
+    private func load() async {
+        guard let value = try? await TysonAPI.shared.aliases() else {
+            status = "Не удалось загрузить username."
+            return
+        }
+        aliases = value.aliases
+        price = value.price
+    }
+    private func buy() async { let value = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: "@", with: ""); guard value.range(of: "^[a-z0-9_]{3,30}$", options: .regularExpression) != nil else { status = "Username: 3–30 символов, латинские буквы, цифры или _."; return }; busy = true; defer { busy = false }; do { balance = try await TysonAPI.shared.buyAlias(username: value); username = ""; status = "Username готов."; await load() } catch { status = "Не удалось купить username: возможно, он занят или не хватает алмазов." } }
+    private func remove(_ alias: TysonAlias) async { busy = true; defer { busy = false }; do { try await TysonAPI.shared.deleteAlias(id: alias.id); aliases.removeAll { $0.id == alias.id } } catch { status = "Не удалось удалить username." } }
+}
 
 struct DevicesView: View {
     @State private var sessions: [TysonDeviceSession] = []
@@ -87,7 +100,7 @@ struct DiamondsHubView: View {
                 NavigationLink { MyGiftsView() } label: { DiamondActionCard(title: "Мои подарки", subtitle: "Коллекция", icon: "shippingbox.fill", color: .purple) }
                 NavigationLink { DiamondHistoryView() } label: { DiamondActionCard(title: "История", subtitle: "Все операции", icon: "clock.arrow.circlepath", color: .blue) }
             }.buttonStyle(.plain).padding(.horizontal)
-        }.padding(.vertical) }.background(TysonColor.background).navigationTitle("Алмазы").navigationBarTitleDisplayMode(.inline).task { balance = (try? await TysonAPI.shared.diamondBalance()) ?? 0 }.refreshable { balance = (try? await TysonAPI.shared.diamondBalance()) ?? balance }
+        }.padding(.vertical) }.navigationTitle("Алмазы").navigationBarTitleDisplayMode(.inline).task { balance = (try? await TysonAPI.shared.diamondBalance()) ?? 0 }.refreshable { balance = (try? await TysonAPI.shared.diamondBalance()) ?? balance }
     }
 }
 
@@ -109,7 +122,7 @@ struct DiamondHistoryView: View {
 
 struct GiftStoreView: View {
     @State private var gifts: [TysonGiftType] = []; @State private var selected: TysonGiftType?; @State private var error = ""
-    var body: some View { ScrollView { LazyVGrid(columns: [.init(.adaptive(minimum: 150), spacing: 12)], spacing: 12) { ForEach(gifts) { gift in Button { selected = gift } label: { TysonGlass { VStack(spacing: 10) { GiftArtwork(path: gift.baseImage, size: 104); Text(gift.title).font(.headline).multilineTextAlignment(.center); Text("\(gift.basePrice) 💎").font(.subheadline.bold()).foregroundStyle(TysonColor.accent); if gift.isLimited { Text("Осталось \(gift.remaining)").font(.caption2).foregroundStyle(.secondary) } }.padding(14).frame(maxWidth: .infinity, minHeight: 190) } }.buttonStyle(.plain) } }.padding(); if !error.isEmpty { Text(error).foregroundStyle(.red) } }.background(TysonColor.background).navigationTitle("Подарки").task { do { gifts = try await TysonAPI.shared.gifts() } catch { self.error = "Не удалось загрузить подарки." } }.sheet(item: $selected) { gift in GiftDetailView(gift: gift) } }
+    var body: some View { ScrollView { LazyVGrid(columns: [.init(.adaptive(minimum: 150), spacing: 12)], spacing: 12) { ForEach(gifts) { gift in Button { selected = gift } label: { TysonGlass { VStack(spacing: 10) { GiftArtwork(path: gift.baseImage, size: 104); Text(gift.title).font(.headline).multilineTextAlignment(.center); Text("\(gift.basePrice) 💎").font(.subheadline.bold()).foregroundStyle(TysonColor.accent); if gift.isLimited { Text("Осталось \(gift.remaining)").font(.caption2).foregroundStyle(.secondary) } }.padding(14).frame(maxWidth: .infinity, minHeight: 190) } }.buttonStyle(.plain) } }.padding(); if !error.isEmpty { Text(error).foregroundStyle(.red) } }.navigationTitle("Подарки").task { do { gifts = try await TysonAPI.shared.gifts() } catch { self.error = "Не удалось загрузить подарки." } }.sheet(item: $selected) { gift in GiftDetailView(gift: gift) } }
 }
 
 private struct GiftDetailView: View {
@@ -139,7 +152,6 @@ private struct GiftDetailView: View {
                         .buttonStyle(.borderedProminent)
                 }.padding()
             }
-            .background(TysonColor.background)
             .navigationTitle("Подарок")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Закрыть") { dismiss() } } }
@@ -156,7 +168,7 @@ private struct GiftPurchaseView: View {
 
 struct MyGiftsView: View {
     @State private var gifts: [TysonGift] = []; @State private var selected: TysonGift?
-    var body: some View { ScrollView { if gifts.isEmpty { ContentUnavailableView("Подарков пока нет", systemImage: "gift", description: Text("Откройте каталог и соберите свою коллекцию.")) .padding(.top, 80) } else { LazyVGrid(columns: [.init(.adaptive(minimum: 145), spacing: 12)], spacing: 12) { ForEach(gifts) { gift in Button { selected = gift } label: { TysonGlass { VStack(spacing: 9) { GiftArtwork(path: gift.image, size: 100); Text(gift.title).font(.headline).multilineTextAlignment(.center); Text("№\(gift.serialNumber)").font(.caption).foregroundStyle(.secondary); if gift.worn { Label("Надет", systemImage: "checkmark.seal.fill").font(.caption).foregroundStyle(.green) } }.padding(13).frame(maxWidth: .infinity, minHeight: 180) } }.buttonStyle(.plain) } }.padding() } }.background(TysonColor.background).navigationTitle("Мои подарки").task { await load() }.sheet(item: $selected, onDismiss: { Task { await load() } }) { CollectedGiftDetailView(gift: $0) } }
+    var body: some View { ScrollView { if gifts.isEmpty { ContentUnavailableView("Подарков пока нет", systemImage: "gift", description: Text("Откройте каталог и соберите свою коллекцию.")) .padding(.top, 80) } else { LazyVGrid(columns: [.init(.adaptive(minimum: 145), spacing: 12)], spacing: 12) { ForEach(gifts) { gift in Button { selected = gift } label: { TysonGlass { VStack(spacing: 9) { GiftArtwork(path: gift.image, size: 100); Text(gift.title).font(.headline).multilineTextAlignment(.center); Text("№\(gift.serialNumber)").font(.caption).foregroundStyle(.secondary); if gift.worn { Label("Надет", systemImage: "checkmark.seal.fill").font(.caption).foregroundStyle(.green) } }.padding(13).frame(maxWidth: .infinity, minHeight: 180) } }.buttonStyle(.plain) } }.padding() } }.navigationTitle("Мои подарки").task { await load() }.sheet(item: $selected, onDismiss: { Task { await load() } }) { CollectedGiftDetailView(gift: $0) } }
     private func load() async { gifts = (try? await TysonAPI.shared.myGifts()) ?? [] }
 }
 
@@ -190,7 +202,7 @@ private struct CollectedGiftDetailView: View {
                     if !actionError.isEmpty { Text(actionError).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center) }
                 }.padding()
             }
-            .background(TysonColor.background).navigationTitle("Подарок").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Подарок").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Закрыть") { dismiss() } } }
             .confirmationDialog("Сделать подарок уникальным?", isPresented: $confirmUpgrade) { Button("Улучшить за \(gift.upgradePrice ?? 25) 💎") { Task { await upgrade() } } } message: { Text("Подарок получит случайный вариант, особый цвет и возможность продажи.") }
             .confirmationDialog("Обменять подарок на \(gift.exchangeReward ?? 0) 💎?", isPresented: $confirmExchange) { Button("Обменять", role: .destructive) { Task { await exchange() } } } message: { Text("Подарок будет удалён из коллекции.") }
@@ -232,7 +244,7 @@ private struct GiftArtwork: View { let path: String; let size: CGFloat; var body
 
 struct PeopleListView: View {
     let username: String; let kind: FollowListKind; @State private var people: [TysonPerson] = []; @State private var loading = true
-    var body: some View { List { if loading { ProgressView().frame(maxWidth: .infinity) } else if people.isEmpty { ContentUnavailableView(kind == .followers ? "Подписчиков пока нет" : "Подписок пока нет", systemImage: "person.2") } else { ForEach(people) { person in NavigationLink { PublicProfileView(username: person.username) } label: { HStack(spacing: 12) { AsyncImage(url: TysonAPI.mediaURL(person.avatarKey)) { phase in if let image = phase.image { image.resizable().scaledToFill() } else { Circle().fill(TysonColor.accent.gradient).overlay(Text(person.displayName.prefix(1)).foregroundStyle(.white).bold()) } }.frame(width: 46, height: 46).clipShape(Circle()); VStack(alignment: .leading) { Text(person.displayName).font(.headline); Text("@\(person.username)").font(.caption).foregroundStyle(.secondary) } } } } } }.navigationTitle(kind == .followers ? "Подписчики" : "Подписки").task { people = (try? await TysonAPI.shared.people(username: username, kind: kind)) ?? []; loading = false } }
+    var body: some View { List { if loading { ProgressView().frame(maxWidth: .infinity) } else if people.isEmpty { ContentUnavailableView(kind == .followers ? "Подписчиков пока нет" : "Подписок пока нет", systemImage: "person.2") } else { ForEach(people) { person in NavigationLink { PublicProfileView(username: person.username) } label: { HStack(spacing: 12) { AsyncImage(url: TysonAPI.mediaURL(person.avatarKey)) { phase in if let image = phase.image { image.resizable().scaledToFill() } else { Circle().fill(TysonColor.accent.gradient).overlay(Text(person.displayName.prefix(1)).foregroundStyle(.white).bold()) } }.frame(width: 46, height: 46).clipShape(Circle()); VStack(alignment: .leading) { HStack(spacing: 4) { Text(person.displayName).font(.headline); if person.verified != 0 { Image(systemName: "checkmark.seal.fill").font(.caption).foregroundStyle(.blue).accessibilityLabel("Подтверждённый аккаунт") } }; Text("@\(person.username)").font(.caption).foregroundStyle(.secondary) } } } } } }.navigationTitle(kind == .followers ? "Подписчики" : "Подписки").task { people = (try? await TysonAPI.shared.people(username: username, kind: kind)) ?? []; loading = false } }
 }
 
 struct PublicProfileView: View {
@@ -244,7 +256,7 @@ struct PublicProfileView: View {
         ZStack { TysonProfileColor.cover(user?.profileColor); VStack(spacing: 12) { TysonAvatarLarge(user: user); HStack(spacing: 6) { Text(user?.displayName ?? username).font(.title.bold()); if user?.verified == true { Image(systemName: "checkmark.seal.fill").foregroundStyle(.white) } }; Text("@\(user?.username ?? username)").foregroundStyle(.white.opacity(0.8)); if let bio = user?.bio, !bio.isEmpty { Text(bio).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true) }; HStack { profileStatLink("Подписчики", user?.followerCount ?? 0, kind: .followers); profileStatLink("Подписки", user?.followingCount ?? 0, kind: .following) }; if !isOwner { HStack { Button { Task { await toggleFollow() } } label: { Label(user?.viewerFollowing == true ? "Вы подписаны" : "Подписаться", systemImage: user?.viewerFollowing == true ? "person.badge.checkmark" : "person.badge.plus") }.buttonStyle(.borderedProminent).disabled(followPending); Button { Task { await openChat() } } label: { Label("Написать", systemImage: "message.fill") }.buttonStyle(.bordered) } }; if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red) } }.foregroundStyle(.white).padding(22).frame(maxWidth: .infinity) }.clipShape(RoundedRectangle(cornerRadius: 28)).overlay { RoundedRectangle(cornerRadius: 28).stroke(.white.opacity(0.32), lineWidth: 1) }.padding(.horizontal)
         Picker("Раздел", selection: $selectedTab) { Text("Публикации").tag(0); Text("Подарки").tag(1) }.pickerStyle(.segmented).padding(.horizontal)
         if selectedTab == 0 { LazyVStack(spacing: 14) { ForEach(posts) { PostCard(post: $0) } } } else if gifts.isEmpty { ContentUnavailableView("Подарков пока нет", systemImage: "gift") } else { LazyVGrid(columns: [.init(.adaptive(minimum: 140), spacing: 12)], spacing: 12) { ForEach(gifts) { gift in Button { selectedGift = gift } label: { TysonGlass { VStack { GiftArtwork(path: gift.image, size: 92); Text(gift.title).font(.caption.bold()); if gift.worn { Text("Надет").font(.caption2).foregroundStyle(.green) } }.padding(12).frame(maxWidth: .infinity) } }.buttonStyle(.plain) } }.padding(.horizontal) }
-    }.padding(.vertical) }.background(TysonColor.background).navigationTitle("Профиль").navigationBarTitleDisplayMode(.inline).navigationDestination(item: $openedConversation) { ConversationView(conversation: $0) }.task { await load() }.sheet(item: $selectedGift) { gift in if isOwner { CollectedGiftDetailView(gift: gift) } else { PublicGiftDetailsView(gift: gift, owner: user) } } }
+    }.padding(.vertical) }.navigationTitle("Профиль").navigationBarTitleDisplayMode(.inline).navigationDestination(item: $openedConversation) { ConversationView(conversation: $0) }.task { await load() }.sheet(item: $selectedGift) { gift in if isOwner { CollectedGiftDetailView(gift: gift) } else { PublicGiftDetailsView(gift: gift, owner: user) } } }
     private func load() async { async let loadedUser = try? TysonAPI.shared.profile(username: username); async let loadedPosts = try? TysonAPI.shared.posts(username: username); async let loadedGifts = try? TysonAPI.shared.userGifts(username: username); user = await loadedUser; posts = await loadedPosts ?? []; gifts = await loadedGifts ?? [] }
     private func toggleFollow() async { guard let user else { return }; followPending = true; defer { followPending = false }; do { let result = try await TysonAPI.shared.setFollowing(username: user.username, following: user.viewerFollowing != true); self.user = TysonUser(id: user.id, username: user.username, displayName: user.displayName, avatarKey: user.avatarKey, bio: user.bio, verified: user.verified, followerCount: result.followerCount, followingCount: user.followingCount, viewerFollowing: result.following, createdAt: user.createdAt, lastSeenAt: user.lastSeenAt, birthdayMonthDay: user.birthdayMonthDay, birthdayYear: user.birthdayYear, profileColor: user.profileColor) } catch { self.error = "Не удалось изменить подписку." } }
     private func openChat() async { guard let user else { return }; do { openedConversation = try await TysonAPI.shared.createConversation(username: user.username) } catch { self.error = "Не удалось открыть диалог." } }
@@ -260,5 +272,5 @@ private struct PublicGiftDetailsView: View {
     var body: some View { NavigationStack { ScrollView { VStack(spacing: 22) {
         TysonGlass { VStack(spacing: 15) { GiftArtwork(path: gift.image, size: 220); Text(gift.title).font(.largeTitle.bold()); Text(gift.isUnlimited ? "Цифровой подарок Tyson" : "№\(gift.serialNumber) из \(gift.maxSupply)").foregroundStyle(.secondary); if let inscription = gift.inscription, !inscription.isEmpty { Text(inscription).italic().multilineTextAlignment(.center) } }.padding(25).frame(maxWidth: .infinity) }
         VStack(alignment: .leading, spacing: 13) { LabeledContent("Владелец", value: "@\(owner?.username ?? "tyson")"); LabeledContent("Статус", value: gift.isCollectible ? "Collectible" : "Цифровой"); LabeledContent("Ценность", value: "\(gift.basePrice + (gift.isCollectible ? (gift.upgradePrice ?? 0) : 0)) 💎"); if !gift.isUnlimited { LabeledContent("Тираж", value: "№\(gift.serialNumber) из \(gift.maxSupply)") }; LabeledContent("Профиль", value: gift.isPublic ? "Виден" : "Скрыт") }.font(.subheadline).padding(18).tysonGlassSurface(RoundedRectangle(cornerRadius: 24))
-    }.padding() }.background(TysonColor.background).navigationTitle("Подарок").navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .topBarLeading) { Button("Закрыть") { dismiss() } } } } }
+    }.padding() }.navigationTitle("Подарок").navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .topBarLeading) { Button("Закрыть") { dismiss() } } } } }
 }

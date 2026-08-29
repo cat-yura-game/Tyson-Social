@@ -27,7 +27,6 @@ struct FeedView: View {
                     ForEach(posts) { post in PostCard(post: post) }
                 }.padding(.vertical)
             }
-            .background(TysonColor.background)
             .refreshable { await load(); await loadStories(); await loadBalance() }
             .task { await load(); await loadStories(); await loadBalance() }
             .onChange(of: mode) { _, _ in Task { await load() } }
@@ -204,7 +203,7 @@ struct PostCard: View {
     var body: some View {
         if !removed { TysonGlass {
             VStack(alignment: .leading, spacing: 12) {
-                HStack { NavigationLink { PublicProfileView(username: post.username) } label: { AsyncImage(url: TysonAPI.mediaURL(post.avatarKey)) { phase in if let image = phase.image { image.resizable().scaledToFill() } else { Circle().fill(TysonColor.green.gradient).overlay(Text(post.displayName.prefix(1)).foregroundStyle(.white).bold()) } }.frame(width: 40, height: 40).clipShape(Circle()) }; VStack(alignment: .leading) { NavigationLink(post.displayName) { PublicProfileView(username: post.username) }.font(.subheadline.bold()).buttonStyle(.plain); Text("@\(post.username)").font(.caption).foregroundStyle(.secondary) }; Spacer(); postMenu }
+                HStack { NavigationLink { PublicProfileView(username: post.username) } label: { AsyncImage(url: TysonAPI.mediaURL(post.avatarKey)) { phase in if let image = phase.image { image.resizable().scaledToFill() } else { Circle().fill(TysonColor.green.gradient).overlay(Text(post.displayName.prefix(1)).foregroundStyle(.white).bold()) } }.frame(width: 40, height: 40).clipShape(Circle()) }; VStack(alignment: .leading) { HStack(spacing: 4) { NavigationLink(post.displayName) { PublicProfileView(username: post.username) }.font(.subheadline.bold()).buttonStyle(.plain); if post.verified?.value == true { Image(systemName: "checkmark.seal.fill").font(.caption).foregroundStyle(.blue).accessibilityLabel("Подтверждённый аккаунт") } }; Text("@\(post.username)").font(.caption).foregroundStyle(.secondary) }; Spacer(); postMenu }
                 if let title = post.title, !title.isEmpty { Text(title).font(.headline) }
                 if pinned { Label("Закреплено в профиле", systemImage: "pin.fill").font(.caption2.bold()).foregroundStyle(.orange) }
                 if promoted { Label("Продвигается", systemImage: "rocket.fill").font(.caption2.bold()).foregroundStyle(.blue) }

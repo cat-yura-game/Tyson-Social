@@ -26,6 +26,7 @@ struct TysonPost: Codable, Identifiable {
     let username: String
     let displayName: String
     let avatarKey: String?
+    let verified: TysonFlag?
     let publishedAt: String
     let likeCount: Int?
     let commentCount: Int?
@@ -237,6 +238,12 @@ actor TysonAPI {
     func gifts() async throws -> [TysonGiftType] { let response: Envelope<GiftTypesPayload> = try await request(path: "/gifts"); return response.data.gifts }
     func myGifts() async throws -> [TysonGift] { let response: Envelope<UserGiftsPayload> = try await request(path: "/users/me/gifts"); return response.data.gifts }
     func userGifts(username: String) async throws -> [TysonGift] { let response: Envelope<UserGiftsPayload> = try await request(path: "/users/\(username)/gifts"); return response.data.gifts }
+    func aliases() async throws -> AliasesPayload {
+        let response: Envelope<AliasesPayload> = try await request(path: "/users/me/aliases")
+        return response.data
+    }
+    func buyAlias(username: String) async throws -> Int { let response: Envelope<AliasPurchasePayload> = try await request(path: "/users/me/aliases", method: "POST", body: ["username": username]); return response.data.balance }
+    func deleteAlias(id: String) async throws { try await requestVoid(path: "/users/me/aliases/\(id)", method: "DELETE", body: [:]) }
     func buyGift(id: String, recipientUsername: String?) async throws -> Int {
         let response: Envelope<GiftPurchasePayload> = try await requestEncodable(path: "/gifts/\(id)/buy", body: GiftPurchaseBody(recipientUsername: recipientUsername))
         return response.data.balance
@@ -471,6 +478,9 @@ private struct CreatedGroupConversation: Codable { let id: String; let title: St
 enum FollowListKind: String { case followers, following }
 struct TysonPerson: Codable, Identifiable { let id: String; let username: String; let displayName: String; let avatarKey: String?; let verified: Int? }
 private struct PeoplePayload: Codable { let people: [TysonPerson] }
+struct TysonAlias: Codable, Identifiable { let id: String; let username: String; let createdAt: String; let purchasePrice: Int? }
+struct AliasesPayload: Codable { let aliases: [TysonAlias]; let price: Int }
+private struct AliasPurchasePayload: Codable { let alias: TysonAlias; let balance: Int }
 struct FollowResult: Codable { let following: Bool; let followerCount: Int }
 private struct DiamondBalancePayload: Codable { let balance: Int }
 struct DiamondTransaction: Codable, Identifiable { let id: String; let amount: Int; let type: String; let reason: String; let createdAt: String }
