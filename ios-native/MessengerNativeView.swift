@@ -22,7 +22,13 @@ struct ConversationView: View {
     let conversation: TysonConversation
     @State private var messages: [TysonMessage] = []; @State private var draft = ""; @State private var photo: PhotosPickerItem?; @State private var video: PhotosPickerItem?; @State private var showFiles = false; @StateObject private var recorder = TysonVoiceRecorder(); @State private var error = ""
     var body: some View { ZStack { TysonColor.background.ignoresSafeArea(); VStack(spacing: 0) {
-        ScrollView { LazyVStack(spacing: 8) { ForEach(messages) { message in MessageBubble(message: message, own: message.senderUserId == session.currentUser?.id) } }.padding() }.refreshable { await load() }
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                ForEach(messages) { message in
+                    MessageBubble(message: message, currentUserId: session.currentUser?.id)
+                }
+            }.padding()
+        }.refreshable { await load() }
         if recorder.recording { HStack { Circle().fill(.red).frame(width: 9, height: 9); Text("Запись голосового…"); Spacer(); Button("Отправить") { Task { await finishVoice() } }; Button("Отмена") { recorder.cancel() } }.padding(10).background(.ultraThinMaterial) }
         if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal) }
         TysonGlass { HStack(spacing: 10) {
@@ -39,7 +45,8 @@ struct ConversationView: View {
 
 private struct MessageBubble: View {
     let message: TysonMessage
-    let own: Bool
+    let currentUserId: String?
+    private var own: Bool { message.senderUserId == currentUserId }
     var body: some View {
         HStack {
             if own { Spacer(minLength: 50) }

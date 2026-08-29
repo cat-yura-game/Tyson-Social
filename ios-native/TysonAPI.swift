@@ -106,7 +106,8 @@ actor TysonAPI {
 
     func sendAttachment(conversationId: String, data: Data, type: String, mimeType: String, durationMs: Int? = nil) async throws {
         let sodium = Sodium()
-        guard let key = sodium.secretBox.key(), let nonce = sodium.secretBox.nonce(), let ciphertext = sodium.secretBox.seal(message: [UInt8](data), secretKey: key, nonce: nonce) else { throw URLError(.cannotEncodeContentData) }
+        let key = sodium.secretBox.key(); let nonce = sodium.secretBox.nonce()
+        guard let ciphertext = sodium.secretBox.seal(message: [UInt8](data), secretKey: key, nonce: nonce) else { throw URLError(.cannotParseResponse) }
         var upload = URLRequest(url: baseURL.appending(path: "/messages/conversations/\(conversationId)/attachments")); upload.httpMethod = "POST"; authorize(&upload); upload.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type"); upload.httpBody = Data(ciphertext)
         let (responseData, response) = try await URLSession.shared.data(for: upload)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
