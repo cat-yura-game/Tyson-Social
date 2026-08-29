@@ -5,8 +5,8 @@
     <key>CFBundleDisplayName</key><string>Tyson</string>
     <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleName</key><string>Tyson Social</string>
-    <key>CFBundleShortVersionString</key><string>0.2.0</string>
-    <key>CFBundleVersion</key><string>2</string>
+    <key>CFBundleShortVersionString</key><string>0.3.0</string>
+    <key>CFBundleVersion</key><string>3</string>
     <key>NSMicrophoneUsageDescription</key><string>Tyson использует микрофон для записи голосовых сообщений и голосового ввода.</string>
     <key>NSCameraUsageDescription</key><string>Tyson использует камеру для фотографий и видеосообщений.</string>
     <key>NSPhotoLibraryUsageDescription</key><string>Tyson использует медиатеку для отправки фотографий и видео.</string>
