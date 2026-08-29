@@ -31,16 +31,35 @@ struct ConversationView: View {
         }.refreshable { await load() }
         if recorder.recording { HStack { Circle().fill(.red).frame(width: 9, height: 9); Text("Запись голосового…"); Spacer(); Button("Отправить") { Task { await finishVoice() } }; Button("Отмена") { recorder.cancel() } }.padding(10).background(.ultraThinMaterial) }
         if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal) }
-        TysonGlass { HStack(spacing: 10) {
-            Menu { PhotosPicker(selection: $photo, matching: .images) { Label("Фотография", systemImage: "photo") }; PhotosPicker(selection: $video, matching: .videos) { Label("Видео", systemImage: "video") }; Button { showFiles = true } label: { Label("Файл", systemImage: "doc") } } label: { Image(systemName: "paperclip").font(.title3) }
-            TextField("Сообщение", text: $draft, axis: .vertical).lineLimit(1...4)
-            if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { Button { Task { await recorder.start() } } label: { Image(systemName: "mic.fill") } } else { Button { Task { await send() } } label: { Image(systemName: "arrow.up.circle.fill").font(.title) } }
-        }.padding(10) }.padding(.horizontal, 8).padding(.bottom, 4)
+        composer
     } }.navigationTitle(conversation.title ?? conversation.otherDisplayName ?? "Диалог").navigationBarTitleDisplayMode(.inline).task { await load() }.onChange(of: photo) { _, item in Task { if let data = try? await item?.loadTransferable(type: Data.self) { await sendAttachment(data, type: "image", mime: "image/jpeg") } } }.onChange(of: video) { _, item in Task { if let data = try? await item?.loadTransferable(type: Data.self) { await sendAttachment(data, type: "video", mime: "video/mp4") } } }.fileImporter(isPresented: $showFiles, allowedContentTypes: [.data, .pdf, .text]) { result in Task { do { let url = try result.get(); let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }; let data = try Data(contentsOf: url); await sendAttachment(data, type: "file", mime: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream") } catch { error = "Не удалось отправить файл" } } } }
     private func load() async { messages = (try? await TysonAPI.shared.messages(conversationId: conversation.id)) ?? [] }
     private func send() async { let value = draft.trimmingCharacters(in: .whitespacesAndNewlines); draft = ""; do { try await TysonAPI.shared.sendMessage(conversationId: conversation.id, content: value); await load() } catch { self.error = "Не удалось отправить сообщение" } }
     private func sendAttachment(_ data: Data, type: String, mime: String) async { do { try await TysonAPI.shared.sendAttachment(conversationId: conversation.id, data: data, type: type, mimeType: mime); await load() } catch { self.error = "Не удалось отправить вложение" } }
     private func finishVoice() async { guard let result = recorder.stop() else { return }; await sendAttachment(result.data, type: "audio", mime: "audio/mp4") }
+    private var composer: some View {
+        TysonGlass {
+            HStack(spacing: 10) {
+                attachmentMenu
+                TextField("Сообщение", text: $draft)
+                primaryAction
+            }.padding(10)
+        }.padding(.horizontal, 8).padding(.bottom, 4)
+    }
+    private var attachmentMenu: some View {
+        Menu {
+            PhotosPicker(selection: $photo, matching: .images) { Label("Фотография", systemImage: "photo") }
+            PhotosPicker(selection: $video, matching: .videos) { Label("Видео", systemImage: "video") }
+            Button { showFiles = true } label: { Label("Файл", systemImage: "doc") }
+        } label: { Image(systemName: "paperclip").font(.title3) }
+    }
+    @ViewBuilder private var primaryAction: some View {
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Button { Task { await recorder.start() } } label: { Image(systemName: "mic.fill") }
+        } else {
+            Button { Task { await send() } } label: { Image(systemName: "arrow.up.circle.fill").font(.title) }
+        }
+    }
 }
 
 private struct MessageBubble: View {
