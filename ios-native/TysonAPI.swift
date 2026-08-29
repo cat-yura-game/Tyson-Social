@@ -103,7 +103,10 @@ actor TysonAPI {
     }
 
     func feed(view: FeedViewMode = .forYou) async throws -> [TysonPost] {
-        let response: Envelope<FeedPayload> = try await request(path: "/feed?view=\(view.rawValue)")
+        let response: Envelope<FeedPayload> = try await request(
+            path: "/feed",
+            queryItems: [URLQueryItem(name: "view", value: view.rawValue)]
+        )
         return response.data.posts
     }
 
@@ -330,12 +333,23 @@ actor TysonAPI {
     }
 
     func search(query: String) async throws -> SearchPayload {
-        let response: Envelope<SearchPayload> = try await request(path: "/search?q=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query)")
+        let response: Envelope<SearchPayload> = try await request(
+            path: "/search",
+            queryItems: [URLQueryItem(name: "q", value: query)]
+        )
         return response.data
     }
 
-    private func request<T: Codable>(path: String, method: String = "GET", body: [String: String]? = nil) async throws -> T {
-        var request = URLRequest(url: baseURL.appending(path: path))
+    private func request<T: Codable>(
+        path: String,
+        method: String = "GET",
+        body: [String: String]? = nil,
+        queryItems: [URLQueryItem] = []
+    ) async throws -> T {
+        var components = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false)
+        components?.queryItems = queryItems.isEmpty ? nil : queryItems
+        guard let url = components?.url else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         authorize(&request)
