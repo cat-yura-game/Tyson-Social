@@ -64,6 +64,7 @@ actor TysonAPI {
 
     func loginChallenge(id: String, approvalToken: String) async throws -> ChallengePayload {
         var request = URLRequest(url: baseURL.appending(path: "/auth/login/challenges/\(id)"))
+        authorize(&request)
         request.setValue(approvalToken, forHTTPHeaderField: "x-login-approval-token")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
@@ -178,6 +179,8 @@ actor TysonAPI {
 
 
     private func authorize(_ request: inout URLRequest) {
+        request.setValue("https://tysonsocial.eu.cc", forHTTPHeaderField: "Origin")
+        request.setValue("TysonSocial-iOS/1.0", forHTTPHeaderField: "User-Agent")
         if let token = UserDefaults.standard.string(forKey: "tyson_access_token") { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
     }
 }
