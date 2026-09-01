@@ -1,4 +1,4 @@
-import { BadgeCheck, Edit3, Heart, MessageCircle, MoreHorizontal, Pin, Repeat2, Rocket, Share2, Sparkles, ThumbsDown, Trash2 } from 'lucide-react';
+import { BadgeCheck, Edit3, Flag, Heart, MessageCircle, MoreHorizontal, Pin, Repeat2, Rocket, Share2, ShieldCheck, Sparkles, ThumbsDown, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest, mediaUrl } from '../api/client';
@@ -22,6 +22,12 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [ownerMenu, setOwnerMenu] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportCategory, setReportCategory] = useState('spam');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportPending, setReportPending] = useState(false);
+  const [reportResult, setReportResult] = useState<{ status: 'removed' | 'review' | 'no_violation'; message: string; aiDisclosure: string } | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
   const [promoted, setPromoted] = useState(Boolean(post.promoted));
   const [pinned, setPinned] = useState(Boolean(post.pinnedAt));
   const [poll, setPoll] = useState<Poll | null>(null);
@@ -108,6 +114,25 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
       setSummaryLoading(false);
     }
   };
+  const submitReport = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user) { navigate('/login'); return; }
+    if (reportPending) return;
+    setReportPending(true); setReportError(null);
+    try {
+      const result = await apiRequest<{ status: 'removed' | 'review' | 'no_violation'; message: string; aiDisclosure: string }>(`/posts/${encodeURIComponent(post.id)}/report`, {
+        method: 'POST', body: JSON.stringify({ category: reportCategory, details: reportDetails }),
+      });
+      setReportResult(result);
+    } catch (error) {
+      setReportError(error instanceof Error ? error.message : 'Не удалось отправить жалобу.');
+    } finally { setReportPending(false); }
+  };
+  const closeReport = () => {
+    const removed = reportResult?.status === 'removed';
+    setReportOpen(false); setReportResult(null); setReportError(null);
+    if (removed) { setDeleted(true); onDeleted?.(post.id); }
+  };
   const togglePin = async () => { try { await apiRequest(`/posts/${post.id}/pin`, { method: 'PUT', body: JSON.stringify({ pinned: !pinned }) }); setPinned((value) => !value); setOwnerMenu(false); } catch (error) { window.alert(error instanceof Error ? error.message : 'Не удалось изменить закрепление.'); } };
   const editPost = async () => {
     const title = window.prompt('Заголовок публикации', post.title) ?? null; if (title === null) return;
@@ -130,9 +155,10 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
       <header className="post-header">
         <Link to={`/profile/${post.username}`} className="avatar">{post.avatarKey ? <img className="avatar-image" src={mediaUrl(post.avatarKey) ?? ''} alt="" /> : post.displayName.slice(0, 1).toUpperCase()}</Link>
         <div className="post-author"><span><Link to={`/profile/${post.username}`}><strong>{post.displayName}</strong>{post.verified && <BadgeCheck className="verified" size={17} aria-label="Подтверждённый аккаунт" />}</Link>{post.wornGiftImage && post.wornGiftId && <WornGiftButton giftId={post.wornGiftId} image={post.wornGiftImage} owner={{ username: post.username, displayName: post.displayName, avatarKey: post.avatarKey }} />}</span><span>@{post.username} · {Math.abs(minutes) < 60 ? time.format(minutes, 'minute') : new Date(post.publishedAt).toLocaleDateString('ru-RU')}</span></div>
-        {user?.id === post.authorId
-          ? <div className="post-owner-menu"><button className="icon-button" type="button" aria-label="Действия с публикацией" onClick={() => setOwnerMenu((value) => !value)}><MoreHorizontal size={20} /></button>{ownerMenu && <div className="post-owner-menu-popover"><button type="button" onClick={() => void editPost()}><Edit3 size={16} />Редактировать</button><button type="button" onClick={() => void togglePin()}><Pin size={16} />{pinned ? 'Открепить от профиля' : 'Закрепить в профиле'}</button>{promoted ? <button type="button" onClick={() => void cancelPromotion()}><Rocket size={16} />Отменить продвижение</button> : <button type="button" onClick={() => void promotePost()}><Rocket size={16} />Продвинуть</button>}<button className="danger" type="button" disabled={deleting} onClick={() => void deletePost()}><Trash2 size={16} />Удалить</button></div>}</div>
-          : <button className="icon-button" type="button" aria-label="Действия с публикацией"><MoreHorizontal size={20} /></button>}
+        <div className="post-owner-menu"><button className="icon-button" type="button" aria-label="Действия с публикацией" aria-expanded={ownerMenu} onClick={() => user ? setOwnerMenu((value) => !value) : navigate('/login')}><MoreHorizontal size={20} /></button>{ownerMenu && <div className="post-owner-menu-popover">
+          {user?.id === post.authorId ? <><button type="button" onClick={() => void editPost()}><Edit3 size={16} />Редактировать</button><button type="button" onClick={() => void togglePin()}><Pin size={16} />{pinned ? 'Открепить от профиля' : 'Закрепить в профиле'}</button>{promoted ? <button type="button" onClick={() => void cancelPromotion()}><Rocket size={16} />Отменить продвижение</button> : <button type="button" onClick={() => void promotePost()}><Rocket size={16} />Продвинуть</button>}<button className="danger" type="button" disabled={deleting} onClick={() => void deletePost()}><Trash2 size={16} />Удалить</button></>
+            : <button className="danger" type="button" onClick={() => { setOwnerMenu(false); setReportOpen(true); }}><Flag size={16} />Пожаловаться на пост</button>}
+        </div>}</div>
       </header>
       <div className="post-body">{pinned && <span className="pinned-label"><Pin size={12} />Закреплено в профиле</span>}{promoted && <span className="promoted-label"><Rocket size={12} />Продвигается</span>}{post.repostOfPostId && <Link className="repost-label" to={`/post/${post.repostOfPostId}`}><Repeat2 size={14} />Репост публикации</Link>}{post.title && <Link to={`/post/${post.id}`}><h2 className="post-title">{post.title}</h2></Link>}{coauthors.length > 0 && <p className="post-coauthors">С соавторами: {coauthors.map((person, index) => <span key={person.username}>{index > 0 && ', '}<Link to={`/profile/${person.username}`}>{person.displayName}</Link></span>)}</p>}<RichPostText text={post.body} />{post.editedAt && <small className="post-edited-label">изменено</small>}</div>
       {post.mediaKey && <Link className="post-media" to={`/post/${post.id}`}><img loading="lazy" src={mediaUrl(post.mediaKey) ?? ''} alt="Изображение публикации" /></Link>}
@@ -147,6 +173,11 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: (postId:
         <button type="button" aria-label="Отправить публикацию в Messenger" onClick={() => navigate(user ? `/messages?sharePost=${post.id}` : '/login')}><Share2 size={19} /></button><button type="button" aria-label="Сделать репост" onClick={() => void repost()}><Repeat2 size={19} /></button>
         {post.body.length > 500 && <button className="ai-action" type="button" disabled={summaryLoading} onClick={() => void summarize()}><Sparkles size={17} /><span>{summaryLoading ? 'Сокращаем…' : summary ? 'Скрыть краткое' : 'Коротко с AI'}</span></button>}
       </footer>
+      {reportOpen && <div className="post-report-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeReport(); }}><section className="post-report-dialog" role="dialog" aria-modal="true" aria-labelledby={`report-title-${post.id}`}>
+        <header><span><ShieldCheck size={21} /></span><div><p>Безопасность Tyson</p><h2 id={`report-title-${post.id}`}>Пожаловаться на пост</h2></div><button type="button" aria-label="Закрыть" onClick={closeReport}><X size={20} /></button></header>
+        {reportResult ? <div className={`post-report-result ${reportResult.status}`}><ShieldCheck size={30} /><h3>{reportResult.status === 'removed' ? 'Публикация удалена' : reportResult.status === 'review' ? 'Жалоба принята' : 'Проверка завершена'}</h3><p>{reportResult.message}</p><small><Sparkles size={14} />{reportResult.aiDisclosure}</small><button className="primary-button" type="button" onClick={closeReport}>Готово</button></div>
+          : <form onSubmit={(event) => void submitReport(event)}><div className="post-report-ai-note"><BadgeCheck size={17} /><span><strong>Проверит нейросеть Tyson</strong><small>Это автоматическая проверка, а не решение человека. Сомнительные случаи передаются на дополнительную проверку.</small></span></div><label><span>Причина</span><select value={reportCategory} onChange={(event) => setReportCategory(event.target.value)}><option value="spam">Спам или навязчивая реклама</option><option value="scam">Мошенничество</option><option value="hate">Разжигание ненависти</option><option value="harassment">Оскорбления или травля</option><option value="violence">Насилие или угрозы</option><option value="sexual">Недопустимый откровенный контент</option><option value="privacy">Раскрытие личных данных</option><option value="other">Другое нарушение</option></select></label><label><span>Что именно нарушено? <small>необязательно</small></span><textarea maxLength={500} rows={4} value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} placeholder="Коротко опишите проблему" /></label><p className="post-report-privacy"><ShieldCheck size={15} />Автор публикации не узнает, кто отправил жалобу.</p>{reportError && <p className="form-error" role="alert">{reportError}</p>}<div className="post-report-actions"><button className="secondary-button" type="button" disabled={reportPending} onClick={closeReport}>Отмена</button><button className="primary-button" type="submit" disabled={reportPending}>{reportPending ? 'Проверяем…' : 'Отправить жалобу'}</button></div></form>}
+      </section></div>}
     </article>
   );
 }

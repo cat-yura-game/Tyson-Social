@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z, ZodError } from 'zod';
 import { createAiProviders } from '../ai/providers';
+import { reportCategories, reportReviewStatus, reviewReportedPost } from '../ai/reported-post-review';
 import { fail, ok } from '../lib/responses';
 import { commentBodySchema, extractLinks, pollSchema, postBodySchema, reactionSchema } from '../schemas/content';
 import { sha256 } from '../security/tokens';
@@ -9,8 +10,8 @@ import { interleaveAuthors, rankFeed, type FeedCandidate } from '../recommendati
 import { extractTrends, type TrendSourcePost } from '../trends/extract-trends';
 import { assertImageSignature, assertValidMedia, createMediaKey, mediaStorage, type AllowedImageType } from '../services/media-storage';
 import { base64Encode } from '../security/encoding';
-import { moderatePublicContent } from '../services/moderation-service';
-import { sendModerationMessage } from '../services/moderation-notification';
+import { moderatePublicContent, saveModerationResult } from '../services/moderation-service';
+import { sendModerationMessage, sendReportedPostRemovalMessage } from '../services/moderation-notification';
 import { uploadLimitForUser } from '../services/upload-limits';
 import { completeDailyTask } from '../services/daily-tasks';
 import { sendPushToUser } from '../services/web-push';
@@ -92,6 +93,10 @@ const POST_SELECT = `SELECT p.id, p.title, p.body, p.like_count AS likeCount, p.
   ,COALESCE((SELECT json_group_array(json_object('username', cu.username, 'displayName', cu.display_name)) FROM post_coauthors pc JOIN users cu ON cu.id = pc.user_id WHERE pc.post_id = p.id), '[]') AS coauthorsJson
   FROM posts p JOIN users u ON u.id = p.author_user_id`;
 const diamondAmountSchema = z.object({ amount: z.number().int().min(1).max(1_000_000) }).strict();
+const postReportSchema = z.object({
+  category: z.enum(reportCategories),
+  details: z.string().trim().max(500).default(''),
+}).strict();
 
 contentRoutes.get('/feed', async (c) => {
   const viewerId = c.get('authUser')?.id ?? '';
@@ -415,6 +420,81 @@ contentRoutes.post('/posts/:id/summary', async (c) => {
     console.error(JSON.stringify({ event: 'post_summary_failed', postId: c.req.param('id'), error: error instanceof Error ? error.message : 'unknown' }));
     return fail(c, 502, 'AI_PROVIDER_UNAVAILABLE', 'AI summary is temporarily unavailable. Try again later.');
   }
+});
+
+contentRoutes.post('/posts/:id/report', async (c) => {
+  const auth = requireUser(c); if ('error' in auth) return auth.error;
+  const input = await json(c, postReportSchema); if (input instanceof Response) return input;
+  const postId = c.req.param('id');
+  const post = await c.env.DB.prepare(`SELECT p.id, p.author_user_id AS authorId, p.title, p.body,
+    (SELECT pm.storage_key FROM post_media pm WHERE pm.post_id = p.id ORDER BY pm.sort_order LIMIT 1) AS mediaKey
+    FROM posts p WHERE p.id = ? AND p.status = 'published'`).bind(postId)
+    .first<{ id: string; authorId: string; title: string; body: string; mediaKey: string | null }>();
+  if (!post) return fail(c, 404, 'POST_NOT_FOUND', 'Публикация не найдена.');
+  if (post.authorId === auth.user.id) return fail(c, 422, 'SELF_REPORT', 'Нельзя пожаловаться на собственную публикацию.');
+  const duplicate = await c.env.DB.prepare('SELECT status FROM post_reports WHERE post_id = ? AND reporter_user_id = ?')
+    .bind(postId, auth.user.id).first<{ status: string }>();
+  if (duplicate) return fail(c, 409, 'REPORT_ALREADY_SENT', 'Вы уже пожаловались на эту публикацию.');
+
+  const reportId = crypto.randomUUID(); const now = new Date().toISOString();
+  await c.env.DB.prepare(`INSERT INTO post_reports
+    (id, post_id, reporter_user_id, category, details, status, created_at)
+    VALUES (?, ?, ?, ?, ?, 'processing', ?)`).bind(reportId, postId, auth.user.id, input.category, input.details, now).run();
+
+  let media: { mimeType: string; base64Data: string } | undefined;
+  if (post.mediaKey) {
+    try {
+      const stored = await mediaStorage(c.env).get(post.mediaKey);
+      if (
+        stored
+        && stored.metadata.contentType.startsWith('image/')
+        && stored.metadata.byteSize <= 5 * 1024 * 1024
+      ) {
+        media = { mimeType: stored.metadata.contentType, base64Data: base64Encode(new Uint8Array(await new Response(stored.body).arrayBuffer())) };
+      }
+    } catch (error) {
+      console.error(JSON.stringify({ event: 'reported_post_media_unavailable', postId, error: error instanceof Error ? error.message : 'unknown' }));
+    }
+  }
+
+  let review;
+  try {
+    review = await reviewReportedPost(c.env, {
+      title: post.title, body: post.body, links: extractLinks(`${post.title}\n${post.body}`),
+      reportCategory: input.category, reportDetails: input.details, ...(media ? { media } : {}),
+    });
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'reported_post_review_failed', reportId, postId, error: error instanceof Error ? error.message : 'unknown' }));
+    review = { action: 'review' as const, confidence: 0.5, categories: ['provider_unavailable'], reason: 'Автоматическая проверка временно недоступна. Жалоба передана на дополнительную проверку.', provider: 'tyson-fallback', modelVersion: 'fallback-v1' };
+  }
+  const status = reportReviewStatus(review);
+  const resolvedAt = new Date().toISOString();
+  const decision = status === 'removed' ? 'block' : status === 'no_violation' ? 'allow' : 'review';
+  await saveModerationResult(c.env.DB, 'post', postId, {
+    decision, riskScore: status === 'removed' ? review.confidence : status === 'no_violation' ? 1 - review.confidence : review.confidence,
+    categories: [`user_report:${input.category}`, ...review.categories], reason: review.reason,
+    provider: review.provider, modelVersion: review.modelVersion,
+  }, `${post.title}\n${post.body}`);
+  const statements = [c.env.DB.prepare(`UPDATE post_reports SET status = ?, ai_action = ?, ai_confidence = ?, ai_reason = ?,
+    ai_categories_json = ?, ai_provider = ?, ai_model_version = ?, resolved_at = ? WHERE id = ?`)
+    .bind(status, review.action, review.confidence, review.reason, JSON.stringify(review.categories), review.provider, review.modelVersion, resolvedAt, reportId)];
+  if (status === 'removed') {
+    statements.push(
+      c.env.DB.prepare(`UPDATE posts SET status = 'blocked', updated_at = ? WHERE id = ? AND status = 'published'`).bind(resolvedAt, postId),
+      c.env.DB.prepare('DELETE FROM post_promotions WHERE post_id = ?').bind(postId),
+    );
+  }
+  await c.env.DB.batch(statements);
+  if (status === 'removed') {
+    c.executionCtx.waitUntil(sendReportedPostRemovalMessage(c.env, post.authorId, review.reason, { title: post.title, body: post.body }));
+  }
+  return ok(c, {
+    reportId, status, aiReviewed: true,
+    aiDisclosure: 'Жалоба проверена нейросетью Tyson. Это автоматическая проверка, а не решение человека.',
+    message: status === 'removed' ? 'Нарушение подтверждено. Публикация удалена.'
+      : status === 'review' ? 'Жалоба принята и передана на дополнительную проверку.'
+        : 'Проверка завершена. Явного нарушения не обнаружено.',
+  }, 201);
 });
 
 contentRoutes.put('/posts/:id/reaction', async (c) => {
