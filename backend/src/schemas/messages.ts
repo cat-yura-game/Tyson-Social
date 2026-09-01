@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { usernameSchema } from './username';
 
 const publicKey = z.string().min(32).max(256).regex(/^[A-Za-z0-9+/=_-]+$/u);
 
@@ -14,7 +15,7 @@ export const conversationSchema = z.object({
 }).strict();
 export const groupConversationSchema = z.object({
   title: z.string().trim().min(1).max(80),
-  username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/u).transform((value) => value.toLowerCase()),
+  username: usernameSchema,
 }).strict();
 export const groupMembersSchema = z.object({ usernames: z.array(z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/u).transform((value) => value.toLowerCase())).min(1).max(49), role: z.enum(['admin', 'member']).default('member') }).strict();
 export const groupMemberRoleSchema = z.object({ role: z.enum(['admin', 'member']) }).strict();

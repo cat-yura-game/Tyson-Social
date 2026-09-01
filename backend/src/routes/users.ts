@@ -17,6 +17,7 @@ import { deleteCookie } from 'hono/cookie';
 import { z } from 'zod';
 import { deleteUserAccount } from '../services/account-deletion';
 import { sendPushToUser } from '../services/web-push';
+import { USERNAME_PATTERN, usernameSchema } from '../schemas/username';
 
 export const userRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 const authorPushPreferenceSchema = z.object({ authorUserId: z.string().uuid(), enabled: z.boolean() }).strict();
@@ -29,7 +30,10 @@ const privacySettingsSchema = z.object({
 }).strict();
 const notificationSettingsSchema = z.object({ messageSoundsEnabled: z.boolean() }).strict();
 const powerSavingSettingsSchema = z.object({ powerSavingEnabled: z.boolean(), blockImagesEnabled: z.boolean() }).strict();
-const aliasSchema = z.object({ username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_]+$/u).transform((value) => value.toLowerCase()) }).strict();
+const aliasSchema = z.object({ username: usernameSchema }).strict();
+const aliasOrderSchema = z.object({
+  aliasIds: z.array(z.string().uuid()).max(20).refine((ids) => new Set(ids).size === ids.length),
+}).strict();
 
 /** Accepts older cached clients without letting an obsolete optional field block an entire profile save. */
 export function normalizeProfileUpdate(raw: unknown): z.infer<typeof updateProfileSchema> {
@@ -37,9 +41,10 @@ export function normalizeProfileUpdate(raw: unknown): z.infer<typeof updateProfi
   if (parsed.success) return parsed.data;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid profile payload.');
   const value = raw as Record<string, unknown>; const normalized: Record<string, unknown> = {};
+  if (Object.hasOwn(value, 'username') && !usernameSchema.safeParse(value.username).success) throw new Error('Invalid profile payload.');
   if (typeof value.displayName === 'string' && value.displayName.trim().length >= 1 && value.displayName.trim().length <= 80) normalized.displayName = value.displayName.trim();
   if (typeof value.bio === 'string' && value.bio.trim().length <= 500) normalized.bio = value.bio.trim();
-  if (typeof value.username === 'string' && /^[A-Za-z0-9_]{3,30}$/u.test(value.username.trim())) normalized.username = value.username.trim().toLowerCase();
+  if (typeof value.username === 'string' && value.username.trim().length >= 3 && value.username.trim().length <= 30 && USERNAME_PATTERN.test(value.username.trim())) normalized.username = value.username.trim().toLowerCase();
   const birthday = typeof value.birthdayMonthDay === 'string' ? value.birthdayMonthDay.trim() : value.birthdayMonthDay;
   const birthdayValid = birthday === null || (typeof birthday === 'string' && /^\d{2}-\d{2}$/u.test(birthday) && (() => { const parts = birthday.split('-'); const day = Number(parts[0]); const month = Number(parts[1]); return month >= 1 && month <= 12 && day >= 1 && day <= new Date(2000, month, 0).getDate(); })());
   if (Object.hasOwn(value, 'birthdayMonthDay') && birthdayValid) {
@@ -123,7 +128,7 @@ userRoutes.get('/me/analytics', async (c) => {
 
 userRoutes.get('/me/aliases', async (c) => {
   const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
-  const rows = await c.env.DB.prepare('SELECT id, username, created_at AS createdAt, purchase_price AS purchasePrice FROM username_aliases WHERE user_id = ? ORDER BY created_at').bind(user.id).all();
+  const rows = await c.env.DB.prepare('SELECT id, username, created_at AS createdAt, purchase_price AS purchasePrice, sort_order AS sortOrder FROM username_aliases WHERE user_id = ? ORDER BY sort_order, created_at').bind(user.id).all();
   return ok(c, { aliases: rows.results, price: 50 });
 });
 
@@ -142,10 +147,31 @@ userRoutes.post('/me/aliases', async (c) => {
   const result = await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO diamond_transactions (id, user_id, amount, type, reason, related_entity_id, created_at) SELECT ?, ?, -50, 'debit', 'username_alias', ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND diamond_balance >= 50)`).bind(transactionId, user.id, input.username, now, user.id),
     c.env.DB.prepare('UPDATE users SET diamond_balance = diamond_balance - 50 WHERE id = ? AND EXISTS (SELECT 1 FROM diamond_transactions WHERE id = ?)').bind(user.id, transactionId),
-    c.env.DB.prepare('INSERT INTO username_aliases (id, user_id, username, purchase_price, created_at) SELECT ?, ?, ?, 50, ? WHERE EXISTS (SELECT 1 FROM diamond_transactions WHERE id = ?)').bind(aliasId, user.id, input.username, now, transactionId),
+    c.env.DB.prepare(`INSERT INTO username_aliases (id, user_id, username, purchase_price, created_at, sort_order)
+      SELECT ?, ?, ?, 50, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM username_aliases WHERE user_id = ?), 0)
+      WHERE EXISTS (SELECT 1 FROM diamond_transactions WHERE id = ?)`)
+      .bind(aliasId, user.id, input.username, now, user.id, transactionId),
   ]);
   if ((result[0]?.meta.changes ?? 0) !== 1) return fail(c, 409, 'INSUFFICIENT_DIAMONDS', 'Not enough diamonds.');
-  return ok(c, { alias: { id: aliasId, username: input.username, createdAt: now }, balance: (await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>())?.balance ?? 0 }, 201);
+  return ok(c, { alias: { id: aliasId, username: input.username, createdAt: now, sortOrder: count?.count ?? 0 }, balance: (await c.env.DB.prepare('SELECT diamond_balance AS balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>())?.balance ?? 0 }, 201);
+});
+
+userRoutes.put('/me/aliases/order', async (c) => {
+  const user = c.get('authUser'); if (!user) return fail(c, 401, 'AUTH_REQUIRED', 'Authentication is required.');
+  let input: z.infer<typeof aliasOrderSchema>;
+  try { input = aliasOrderSchema.parse(await parseJsonBody(c.req.raw)); }
+  catch { return fail(c, 422, 'VALIDATION_ERROR', 'Invalid username order.'); }
+  const owned = await c.env.DB.prepare('SELECT id FROM username_aliases WHERE user_id = ?').bind(user.id).all<{ id: string }>();
+  if (owned.results.length !== input.aliasIds.length || owned.results.some((alias) => !input.aliasIds.includes(alias.id))) {
+    return fail(c, 422, 'ALIAS_ORDER_MISMATCH', 'The order must contain all your additional usernames exactly once.');
+  }
+  if (input.aliasIds.length > 0) {
+    const cases = input.aliasIds.map(() => 'WHEN ? THEN ?').join(' ');
+    const bindings = input.aliasIds.flatMap((id, index) => [id, index]);
+    await c.env.DB.prepare(`UPDATE username_aliases SET sort_order = CASE id ${cases} ELSE sort_order END WHERE user_id = ?`)
+      .bind(...bindings, user.id).run();
+  }
+  return ok(c, { reordered: true, aliasIds: input.aliasIds });
 });
 
 userRoutes.delete('/me/aliases/:id', async (c) => {
@@ -569,7 +595,7 @@ userRoutes.get('/:username', async (c) => {
   const profile = publicProfile(user);
   if (!canSee(privacy?.lastSeenVisibility)) profile.lastSeenAt = null;
   if (!canSee(privacy?.birthdayVisibility)) { profile.birthdayMonthDay = null; profile.birthdayYear = null; }
-  const aliases = await c.env.DB.prepare('SELECT id, username, created_at AS createdAt, purchase_price AS purchasePrice FROM username_aliases WHERE user_id = ? ORDER BY created_at').bind(user.id).all();
+  const aliases = await c.env.DB.prepare('SELECT id, username, created_at AS createdAt, purchase_price AS purchasePrice, sort_order AS sortOrder FROM username_aliases WHERE user_id = ? ORDER BY sort_order, created_at').bind(user.id).all();
   return ok(c, { user: { ...profile, followerCount: stats?.followerCount ?? 0,
     followingCount: stats?.followingCount ?? 0, viewerFollowing: stats?.viewerFollowing === 1, aliases: aliases.results } });
 });

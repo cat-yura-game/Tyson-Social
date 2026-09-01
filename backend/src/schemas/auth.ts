@@ -1,17 +1,11 @@
 import { z } from 'zod';
-
-const username = z.string()
-  .trim()
-  .min(3)
-  .max(30)
-  .regex(/^[a-zA-Z0-9_]+$/, 'Username may contain only letters, numbers and underscores.')
-  .transform((value) => value.toLowerCase());
+import { usernameSchema } from './username';
 
 const password = z.string().min(12).max(128);
 
 export const registerSchema = z.object({
   email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
-  username,
+  username: usernameSchema,
   displayName: z.string().trim().min(1).max(80),
   password,
 }).strict();
@@ -32,7 +26,7 @@ export const changeEmailSchema = z.object({
 export const updateProfileSchema = z.object({
   displayName: z.string().trim().min(1).max(80).optional(),
   bio: z.string().trim().max(500).optional(),
-  username: username.optional(),
+  username: usernameSchema.optional(),
   birthdayMonthDay: z.string().regex(/^\d{2}-\d{2}$/u).refine((value) => {
     const parts = value.split('-').map(Number);
     const day = parts[0] ?? 0;
