@@ -465,7 +465,7 @@ contentRoutes.post('/posts/:id/report', async (c) => {
     });
   } catch (error) {
     console.error(JSON.stringify({ event: 'reported_post_review_failed', reportId, postId, error: error instanceof Error ? error.message : 'unknown' }));
-    review = { action: 'review' as const, confidence: 0.5, categories: ['provider_unavailable'], reason: 'Автоматическая проверка временно недоступна. Жалоба передана на дополнительную проверку.', provider: 'tyson-fallback', modelVersion: 'fallback-v1' };
+    review = { action: 'review' as const, confidence: 0.5, categories: ['provider_unavailable'], reason: 'Проверка временно недоступна. Жалоба передана на дополнительную проверку.', provider: 'tyson-fallback', modelVersion: 'fallback-v1' };
   }
   const status = reportReviewStatus(review);
   const resolvedAt = new Date().toISOString();
@@ -489,8 +489,7 @@ contentRoutes.post('/posts/:id/report', async (c) => {
     c.executionCtx.waitUntil(sendReportedPostRemovalMessage(c.env, post.authorId, review.reason, { title: post.title, body: post.body }));
   }
   return ok(c, {
-    reportId, status, aiReviewed: true,
-    aiDisclosure: 'Жалоба проверена нейросетью Tyson. Это автоматическая проверка, а не решение человека.',
+    reportId, status,
     message: status === 'removed' ? 'Нарушение подтверждено. Публикация удалена.'
       : status === 'review' ? 'Жалоба принята и передана на дополнительную проверку.'
         : 'Проверка завершена. Явного нарушения не обнаружено.',
